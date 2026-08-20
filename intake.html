@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#131019">
+<title>색보정 사전 문진 | 맹그라미 DI</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────
+   맹그라미 DI — 사전 문진 폼
+   설정은 파일 맨 아래 CONFIG 객체만 수정하세요.
+   ───────────────────────────────────────────── */
+:root{
+  color-scheme:dark;
+  --ink:#131019;
+  --panel:#211C2B;
+  --panel-2:#2B2437;
+  --line:#443B54;
+  --line-soft:#2F2839;
+  --text:#F6F3F9;
+  --muted:#BBB3C8;
+  --muted-2:#D3CCE0;
+  --accent-text:#F2749E;
+  --pink:#E14079;
+  --mid:#A2317E;
+  --purple:#4C2583;
+  --grad:linear-gradient(90deg,#E14079 0%,#A2317E 52%,#4C2583 100%);
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --r:10px;
+}
+*{box-sizing:border-box}
+/* 기기가 라이트 모드여도 폼 위젯을 다크로 고정 */
+html,body,input,select,textarea,button{color-scheme:dark}
+select option{background:#211C2B;color:#F6F3F9}
+input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.85);opacity:.7;cursor:pointer}
+input[type=date]::-webkit-datetime-edit{color:var(--text)}
+input[type=date]::-webkit-datetime-edit-text,
+input[type=date]::-webkit-datetime-edit-month-field,
+input[type=date]::-webkit-datetime-edit-day-field,
+input[type=date]::-webkit-datetime-edit-year-field{color:var(--text)}
+input[type=date]:invalid::-webkit-datetime-edit{color:#8B8299}
+/* 자동완성 시 흰 배경으로 뒤집히는 것 방지 */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus{
+  -webkit-text-fill-color:var(--text);
+  -webkit-box-shadow:0 0 0 1000px var(--panel) inset;
+  box-shadow:0 0 0 1000px var(--panel) inset;
+  caret-color:var(--text);
+  transition:background-color 9999s ease-out}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--ink);color:var(--text);
+  font-family:var(--sans);font-size:17px;line-height:1.72;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:760px;margin:0 auto;padding:0 20px 96px}
+
+/* ── 상단 진행 레일 (시그니처) ── */
+.rail{position:sticky;top:0;z-index:40;background:rgba(19,16,25,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line-soft)}
+.rail__bar{height:3px;background:var(--line-soft)}
+.rail__fill{height:100%;width:0%;background:var(--grad);transition:width .45s cubic-bezier(.4,0,.2,1)}
+.rail__meta{max-width:760px;margin:0 auto;padding:9px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;
+  font-family:var(--mono);font-size:12px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+.rail__meta b{color:var(--text);font-weight:600}
+
+/* ── 헤더 ── */
+header{padding:64px 0 40px;border-bottom:1px solid var(--line-soft)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent-text);margin:0 0 18px}
+h1{margin:0;font-size:clamp(30px,7vw,46px);font-weight:800;letter-spacing:-.035em;line-height:1.15}
+h1 em{font-style:normal;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{margin:22px 0 0;color:var(--muted-2);max-width:50ch;font-size:17px;line-height:1.7}
+.lede strong{color:var(--text);font-weight:600}
+
+/* ── 섹션 ── */
+section{padding:54px 0;border-bottom:1px solid var(--line-soft)}
+.sec__head{display:flex;gap:14px;align-items:baseline;margin-bottom:6px}
+.sec__no{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent-text);letter-spacing:.1em;padding-top:4px}
+h2{margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em}
+.sec__note{margin:0 0 30px 36px;color:var(--muted-2);font-size:16px}
+
+/* ── 필드 ── */
+.f{margin:0 0 32px}
+.f>label,.f__legend{display:block;font-size:16.5px;font-weight:600;margin-bottom:11px;letter-spacing:-.01em}
+.req{color:var(--pink);font-family:var(--mono);font-size:11px;margin-left:6px;vertical-align:2px}
+.hint{display:block;font-weight:400;color:var(--muted-2);font-size:15px;line-height:1.55;margin-top:5px}
+fieldset{border:0;padding:0;margin:0 0 32px}
+input[type=text],input[type=tel],input[type=email],input[type=date],select,textarea{
+  width:100%;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 15px;font-family:inherit;font-size:16.5px;transition:border-color .18s,background .18s}
+textarea{min-height:96px;resize:vertical;line-height:1.6}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 19px) 24px,calc(100% - 13px) 24px;background-size:6px 6px;background-repeat:no-repeat;padding-right:40px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--pink);background:var(--panel-2)}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--pink);outline-offset:2px}
+::placeholder{color:#8B8299}
+
+/* 선택지 칩 */
+.opts{display:flex;flex-wrap:wrap;gap:8px}
+.opt{position:relative}
+.opt input{position:absolute;inset:0;opacity:0;cursor:pointer;margin:0}
+.opt span{display:block;padding:11px 17px;border:1px solid var(--line);border-radius:999px;background:var(--panel);
+  font-size:15.5px;color:var(--muted-2);transition:.18s;cursor:pointer}
+.opt input:checked+span{border-color:transparent;color:#fff;background:var(--grad)}
+.opt input:focus-visible+span{outline:2px solid var(--pink);outline-offset:2px}
+.opt input:hover+span{color:var(--text);border-color:var(--accent-text)}
+
+/* 동의·단일 체크 */
+.check{display:flex;gap:11px;align-items:flex-start;padding:13px 15px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);margin-bottom:9px;cursor:pointer}
+.check input{margin:3px 0 0;accent-color:var(--pink);width:16px;height:16px;flex:none}
+.check span{font-size:15.5px;line-height:1.6;color:var(--muted-2)}
+.check span b{color:var(--text);font-weight:600}
+
+/* 콜아웃 */
+.callout{border-left:2px solid var(--mid);background:var(--panel);border-radius:0 var(--r) var(--r) 0;padding:16px 18px;margin:0 0 30px;font-size:15.5px;color:var(--muted-2)}
+.callout b{color:var(--text);font-weight:600;display:block;margin-bottom:3px}
+
+/* 조건부 노출 */
+.cond{display:none;border-left:2px solid var(--pink);padding-left:16px;margin:-8px 0 26px}
+.cond.on{display:block;animation:slide .3s ease}
+@keyframes slide{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+
+/* 파일 */
+.drop{display:block;position:relative;width:100%;border:1px dashed var(--line);border-radius:var(--r);padding:26px 22px;text-align:center;background:var(--panel);cursor:pointer;transition:.18s}
+.drop:hover,.drop.over{border-color:var(--pink);background:var(--panel-2)}
+.drop p{margin:0;font-size:15px;color:var(--muted-2)}
+.drop b{display:block;color:var(--text);font-size:16px;margin-bottom:5px}
+.files{list-style:none;margin:12px 0 0;padding:0;font-family:var(--mono);font-size:13px;color:var(--muted-2)}
+.files li{padding:8px 0;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.files .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.files .sz{flex:none;color:var(--muted)}
+.files .del{flex:none;background:none;border:0;color:var(--muted);cursor:pointer;font-family:var(--mono);font-size:16px;line-height:1;padding:4px 6px;border-radius:6px}
+.files .del:hover{color:var(--pink);background:var(--panel-2)}
+.files .del:focus-visible{outline:2px solid var(--pink);outline-offset:2px}
+.fileerr:empty,.filenote:empty,.files:empty{display:none}
+.fileerr{margin:10px 0 0;font-size:14.5px;color:var(--pink)}
+.filenote{margin:10px 0 0;font-size:14.5px;color:var(--muted-2)}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.drop:focus-within{border-color:var(--pink);background:var(--panel-2);outline:2px solid var(--pink);outline-offset:2px}
+
+/* 제출 */
+.submit{margin-top:40px}
+button.send{width:100%;border:0;border-radius:var(--r);padding:17px;background:var(--grad);color:#fff;
+  font-family:inherit;font-size:16px;font-weight:700;letter-spacing:-.01em;cursor:pointer;transition:filter .18s}
+button.send:hover{filter:brightness(1.12)}
+button.send:disabled{filter:grayscale(.7) brightness(.7);cursor:not-allowed}
+button.send:focus-visible{outline:2px solid var(--pink);outline-offset:3px}
+.ghost{margin-top:10px;width:100%;background:transparent;border:1px solid var(--line);color:var(--muted-2);
+  border-radius:var(--r);padding:14px;font-family:inherit;font-size:15.5px;cursor:pointer}
+.ghost:hover{color:var(--text);border-color:var(--mid)}
+.status{margin-top:14px;font-size:15px;color:var(--muted-2);text-align:center;min-height:20px}
+.status.err{color:var(--pink)}
+
+/* 완료 화면 */
+.done{display:none;padding:80px 0;text-align:center}
+.done.on{display:block}
+.done h2{font-size:26px;margin-bottom:12px}
+.ticket{font-family:var(--mono);font-size:14px;letter-spacing:.06em;color:var(--accent-text);margin:0 0 14px}
+.ticket:empty{display:none}
+.done p{color:var(--muted-2);max-width:44ch;margin:0 auto;font-size:17px}
+.summary{display:none;margin-top:20px}
+.summary.on{display:block}
+.summary textarea{min-height:260px;font-family:var(--mono);font-size:12px;line-height:1.7}
+
+footer{padding:34px 0;color:var(--muted-2);font-size:15px}
+footer .mono{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-text)}
+footer a{color:var(--text);text-decoration:none;border-bottom:1px solid var(--line)}
+
+@media (max-width:560px){
+  header{padding:44px 0 32px}
+  section{padding:34px 0}
+  .sec__note{margin-left:0}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+/* 윈도우 고대비 모드 */
+@media (forced-colors:active){
+  .opt span{border-color:ButtonBorder;color:ButtonText;background:ButtonFace}
+  .opt input:checked+span{background:Highlight;color:HighlightText;forced-color-adjust:none}
+  .rail__fill,button.send{forced-color-adjust:none}
+  .cond{border-left-color:Highlight}
+}
+</style>
+</head>
+<body>
+
+<div class="rail">
+  <div class="rail__bar"><div class="rail__fill" id="fill"></div></div>
+  <div class="rail__meta">
+    <span>MGRM DI — Intake</span>
+    <span>필수 <b id="cnt">0</b> / <b id="tot">0</b></span>
+  </div>
+</div>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Colorist ALI · 맹그라미 DI</p>
+  <h1>색보정 작업 전<br><em>사전 문진</em></h1>
+  <p class="lede">작업 방향과 납품 규격을 미리 맞추기 위한 질문입니다. <strong>모르는 항목은 "모르겠음"을 골라주세요.</strong> 촬영 담당자에게 확인하거나 파일을 보고 저희가 판독합니다. 작성에는 5~10분 정도 걸립니다.</p>
+</header>
+
+<form id="form" novalidate>
+
+<!-- 01 ───────────────────────────────── -->
+<section>
+  <div class="sec__head"><span class="sec__no">01</span><h2>프로젝트 기본</h2></div>
+  <p class="sec__note">일정과 견적의 기준이 되는 항목입니다.</p>
+
+  <div class="f">
+    <label for="title">프로젝트명<span class="req">필수</span></label>
+    <input type="text" id="title" name="프로젝트명" data-req placeholder="예: OO브랜드 2026 S/S 캠페인">
+  </div>
+
+  <fieldset>
+    <span class="f__legend">영상 종류<span class="req">필수</span></span>
+    <div class="opts" data-req-group>
+      <label class="opt"><input type="radio" name="영상 종류" value="광고"><span>광고</span></label>
+      <label class="opt"><input type="radio" name="영상 종류" value="홍보·브랜드"><span>홍보·브랜드</span></label>
+      <label class="opt"><input type="radio" name="영상 종류" value="드라마"><span>드라마</span></label>
+      <label class="opt"><input type="radio" name="영상 종류" value="영화"><span>영화</span></label>
+      <label class="opt"><input type="radio" name="영상 종류" value="뮤직비디오"><span>뮤직비디오</span></label>
+      <label class="opt"><input type="radio" name="영상 종류" value="온라인 콘텐츠"><span>온라인 콘텐츠</span></label>
+      <label class="opt"><input type="radio" name="영상 종류" value="기타"><span>기타</span></label>
+    </div>
+  </fieldset>
+
+  <div class="f">
+    <label for="length">최종 러닝타임<span class="req">필수</span>
+      <span class="hint">여러 편이면 편수와 길이를 함께 적어주세요.</span></label>
+    <input type="text" id="length" name="러닝타임" data-req placeholder="예: 본편 60초 + 15초 3종">
+  </div>
+
+  <div class="f">
+    <label for="cuts">대략적인 컷 수 <span class="hint">모르시면 비워두셔도 됩니다.</span></label>
+    <input type="text" id="cuts" name="컷 수" placeholder="예: 40컷 내외">
+  </div>
+
+  <fieldset>
+    <span class="f__legend">최종 게재처 <span class="hint">해당하는 것을 모두 선택해주세요. 밝기·채도 기준이 달라집니다.</span></span>
+    <div class="opts">
+      <label class="opt"><input type="checkbox" name="게재처" value="TV 방송"><span>TV 방송</span></label>
+      <label class="opt"><input type="checkbox" name="게재처" value="극장"><span>극장</span></label>
+      <label class="opt"><input type="checkbox" name="게재처" value="유튜브·웹"><span>유튜브·웹</span></label>
+      <label class="opt"><input type="checkbox" name="게재처" value="인스타·숏폼"><span>인스타·숏폼</span></label>
+      <label class="opt"><input type="checkbox" name="게재처" value="옥외·전광판"><span>옥외·전광판</span></label>
+      <label class="opt"><input type="checkbox" name="게재처" value="행사·사내 상영"><span>행사·사내 상영</span></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <span class="f__legend">편집 진행 상태<span class="req">필수</span>
+      <span class="hint">편집이 확정되지 않은 상태에서 색보정을 시작하면 재작업이 생길 수 있습니다.</span></span>
+    <div class="opts" data-req-group>
+      <label class="opt"><input type="radio" name="편집 상태" value="편집 완료(락)"><span>편집 완료(락)</span></label>
+      <label class="opt"><input type="radio" name="편집 상태" value="편집 중"><span>편집 중</span></label>
+      <label class="opt"><input type="radio" name="편집 상태" value="아직 미정"><span>아직 미정</span></label>
+    </div>
+  </fieldset>
+
+  <div class="f">
+    <label for="due">납품 희망일<span class="req">필수</span></label>
+    <input type="date" id="due" name="납품 희망일" data-req>
+  </div>
+
+  <div class="f">
+    <label for="mid">중간 확인이 가능한 날 <span class="hint">1차 룩을 함께 보고 방향을 잡는 날입니다.</span></label>
+    <input type="date" id="mid" name="중간 확인일">
+  </div>
+</section>
+
+<!-- 02 ───────────────────────────────── -->
+<section>
+  <div class="sec__head"><span class="sec__no">02</span><h2>촬영 소스 상태</h2></div>
+  <p class="sec__note">색보정으로 다룰 수 있는 폭이 여기서 정해집니다.</p>
+
+  <div class="callout">
+    <b>촬영 원본은 이 폼으로 받지 않습니다</b>
+    문진을 보내주시면 <b style="display:inline">프로젝트 전용 업로드 경로</b>를 회신 메일로 보내드립니다. 촬영 원본·편집 데이터·룩북·납품 규격서를 그 경로에 한 번에 올려주시면 됩니다.
+  </div>
+
+  <div class="f">
+    <label for="cam">카메라 기종</label>
+    <input type="text" id="cam" name="카메라 기종" placeholder="예: ARRI ALEXA 35 / SONY FX6 / 모르겠음">
+  </div>
+
+  <fieldset>
+    <span class="f__legend">촬영 포맷<span class="req">필수</span></span>
+    <div class="opts" data-req-group>
+      <label class="opt"><input type="radio" name="촬영 포맷" value="RAW"><span>RAW</span></label>
+      <label class="opt"><input type="radio" name="촬영 포맷" value="Log"><span>Log</span></label>
+      <label class="opt"><input type="radio" name="촬영 포맷" value="일반 촬영"><span>일반 촬영</span></label>
+      <label class="opt"><input type="radio" name="촬영 포맷" value="섞여 있음"><span>섞여 있음</span></label>
+      <label class="opt"><input type="radio" name="촬영 포맷" value="모르겠음" data-unknown><span>모르겠음</span></label>
+    </div>
+  </fieldset>
+
+  <div class="f">
+    <label for="fps">프레임레이트</label>
+    <select id="fps" name="프레임레이트" data-unknown-select>
+      <option value="">선택해주세요</option>
+      <option>23.976p</option><option>24p</option><option>25p</option>
+      <option>29.97p</option><option>30p</option><option>50p</option>
+      <option>59.94p</option><option>60p</option><option>혼합</option>
+      <option value="모르겠음">모르겠음</option>
+    </select>
+  </div>
+
+  <div class="f">
+    <label for="res">해상도</label>
+    <select id="res" name="해상도" data-unknown-select>
+      <option value="">선택해주세요</option>
+      <option>HD (1920×1080)</option><option>UHD (3840×2160)</option>
+      <option>4K DCI 이상</option><option>혼합</option>
+      <option value="모르겠음">모르겠음</option>
+    </select>
+  </div>
+
+  <fieldset>
+    <span class="f__legend">촬영 현장에서 LUT을 씌워 모니터링하셨나요?
+      <span class="hint">사용하셨다면 그 LUT 파일이 감독님이 기대하는 색의 출발점이 됩니다. 아래에 함께 올려주세요.</span></span>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="현장 LUT" value="사용함"><span>사용함</span></label>
+      <label class="opt"><input type="radio" name="현장 LUT" value="사용 안 함"><span>사용 안 함</span></label>
+      <label class="opt"><input type="radio" name="현장 LUT" value="모르겠음" data-unknown><span>모르겠음</span></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <span class="f__legend">여러 대의 카메라를 섞어 쓰셨나요?
+      <span class="hint">기종이 섞이면 색을 맞추는 작업이 추가됩니다.</span></span>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="멀티 카메라" value="한 기종"><span>한 기종만</span></label>
+      <label class="opt"><input type="radio" name="멀티 카메라" value="여러 기종"><span>여러 기종</span></label>
+      <label class="opt"><input type="radio" name="멀티 카메라" value="모르겠음" data-unknown><span>모르겠음</span></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <span class="f__legend">편집본은 어떤 형태로 주실 수 있나요?<span class="req">필수</span>
+      <span class="hint">편집 데이터(XML·AAF·EDL)와 원본을 함께 주시면 원본 화질 그대로 작업합니다.</span></span>
+    <div class="opts" data-req-group>
+      <label class="opt"><input type="radio" name="편집본 형태" value="편집 데이터 + 촬영 원본"><span>편집 데이터 + 촬영 원본</span></label>
+      <label class="opt"><input type="radio" name="편집본 형태" value="편집된 통파일"><span>편집된 통파일</span></label>
+      <label class="opt"><input type="radio" name="편집본 형태" value="모르겠음" data-unknown><span>모르겠음</span></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <span class="f__legend">자막·CG·모션그래픽 작업이 있나요?</span>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="자막·CG" value="없음"><span>없음</span></label>
+      <label class="opt"><input type="radio" name="자막·CG" value="색보정 전에 붙음"><span>색보정 전에 붙음</span></label>
+      <label class="opt"><input type="radio" name="자막·CG" value="색보정 후에 붙음"><span>색보정 후에 붙음</span></label>
+      <label class="opt"><input type="radio" name="자막·CG" value="미정"><span>미정</span></label>
+    </div>
+  </fieldset>
+
+  <div class="cond" id="condTech">
+    <div class="f">
+      <label for="dop">촬영 담당자 연락처
+        <span class="hint">기술 항목에 "모르겠음"이 있어 여쭙습니다. 촬영감독님이나 촬영 데이터 담당자에게 저희가 직접 확인하겠습니다.</span></label>
+      <input type="text" id="dop" name="촬영 담당자 연락처" placeholder="예: 김OO 촬영감독 / 010-0000-0000">
+    </div>
+  </div>
+</section>
+
+<!-- 03 ───────────────────────────────── -->
+<section>
+  <div class="sec__head"><span class="sec__no">03</span><h2>원하는 룩</h2></div>
+  <p class="sec__note">가장 중요한 항목입니다. 말보다 그림이 정확합니다.</p>
+
+  <div class="f">
+    <label for="ref">참고하고 싶은 영상·사진<span class="req">필수</span>
+      <span class="hint">링크를 2~3개 적어주세요. 유튜브·비메오·핀터레스트 모두 좋습니다.</span></label>
+    <textarea id="ref" name="레퍼런스 링크" data-req placeholder="https://&#10;https://"></textarea>
+  </div>
+
+  <div class="f">
+    <label for="reflike">그 레퍼런스에서 정확히 무엇이 좋으셨나요?<span class="req">필수</span>
+      <span class="hint">색감 / 대비 / 피부톤 / 분위기 중 무엇인지 한 줄이면 충분합니다.</span></label>
+    <textarea id="reflike" name="레퍼런스에서 좋았던 점" data-req placeholder="예: 그림자가 푸르게 빠지는 느낌과 살짝 바랜 하이라이트"></textarea>
+  </div>
+
+  <div class="f">
+    <label for="avoid">반대로 피하고 싶은 느낌이 있나요?
+      <span class="hint">"이건 아니다" 쪽이 방향을 더 빨리 좁혀줍니다.</span></label>
+    <textarea id="avoid" name="피하고 싶은 느낌" placeholder="예: 너무 노랗고 진한 영화 같은 톤은 피하고 싶습니다"></textarea>
+  </div>
+
+  <fieldset>
+    <span class="f__legend">인물 피부톤 기준<span class="req">필수</span></span>
+    <div class="opts" data-req-group>
+      <label class="opt"><input type="radio" name="피부톤" value="자연스럽게"><span>자연스럽게</span></label>
+      <label class="opt"><input type="radio" name="피부톤" value="화사하게"><span>화사하게</span></label>
+      <label class="opt"><input type="radio" name="피부톤" value="광고톤(클린·고채도)"><span>광고톤(클린·고채도)</span></label>
+      <label class="opt"><input type="radio" name="피부톤" value="맡기겠습니다"><span>맡기겠습니다</span></label>
+      <label class="opt"><input type="radio" name="피부톤" value="인물 없음"><span>인물 없음</span></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <span class="f__legend">반드시 지켜져야 할 브랜드색·제품색이 있나요?</span>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="브랜드색" value="있음" data-cond="condColor"><span>있음</span></label>
+      <label class="opt"><input type="radio" name="브랜드색" value="없음" data-cond-off="condColor"><span>없음</span></label>
+    </div>
+  </fieldset>
+  <div class="cond" id="condColor">
+    <div class="f">
+      <label for="colorspec">색 기준을 알려주세요
+        <span class="hint">색상 코드, 컬러칩, 제품 실물 사진 중 아무거나 좋습니다.</span></label>
+      <input type="text" id="colorspec" name="브랜드색 기준" placeholder="예: Pantone 186C / 로고 #E14079">
+    </div>
+  </div>
+
+  <fieldset>
+    <span class="f__legend">이전에 나온 시리즈나 기존 영상이 있나요?</span>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="기존 시리즈" value="있음(톤 이어가기)" data-cond="condSeries"><span>있음 — 톤을 이어가고 싶음</span></label>
+      <label class="opt"><input type="radio" name="기존 시리즈" value="있음(새로 가기)" data-cond="condSeries"><span>있음 — 새롭게 가고 싶음</span></label>
+      <label class="opt"><input type="radio" name="기존 시리즈" value="없음" data-cond-off="condSeries"><span>없음</span></label>
+    </div>
+  </fieldset>
+  <div class="cond" id="condSeries">
+    <div class="f">
+      <label for="serieslink">기존 영상 링크</label>
+      <input type="text" id="serieslink" name="기존 영상 링크" placeholder="https://">
+    </div>
+  </div>
+
+  <fieldset>
+    <span class="f__legend">룩북·레퍼런스 파일
+      <span class="hint">이미지·PDF·LUT 파일을 올려주세요. 한 개당 50MB 이하, 영상 원본은 제외입니다.</span></span>
+    <label class="drop" id="drop">
+      <input type="file" id="files" name="첨부" multiple class="sr" accept=".jpg,.jpeg,.png,.pdf,.cube,.zip,.heic,.webp">
+      <p><b>파일 선택 또는 여기에 끌어다 놓기</b>JPG · PNG · PDF · CUBE · ZIP · 개당 50MB 이하</p>
+    </label>
+    <ul class="files" id="filelist"></ul>
+    <p class="fileerr" id="fileerr" role="alert"></p>
+    <p class="filenote" id="filenote"></p>
+  </fieldset>
+</section>
+
+<!-- 04 ───────────────────────────────── -->
+<section>
+  <div class="sec__head"><span class="sec__no">04</span><h2>납품 규격</h2></div>
+  <p class="sec__note">모르셔도 괜찮습니다. 규격이 없으면 표준안을 제안해 드립니다.</p>
+
+  <fieldset>
+    <span class="f__legend">최종 파일을 어디에 넘기시나요?<span class="req">필수</span></span>
+    <div class="opts" data-req-group>
+      <label class="opt"><input type="radio" name="최종 전달처" value="방송사"><span>방송사</span></label>
+      <label class="opt"><input type="radio" name="최종 전달처" value="광고 대행사·매체사"><span>대행사·매체사</span></label>
+      <label class="opt"><input type="radio" name="최종 전달처" value="직접 업로드"><span>직접 업로드</span></label>
+      <label class="opt"><input type="radio" name="최종 전달처" value="기타"><span>기타</span></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <span class="f__legend">전달받은 납품 규격서가 있나요?</span>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="규격서" value="있음(첨부 예정)"><span>있음 — 위에 첨부</span></label>
+      <label class="opt"><input type="radio" name="규격서" value="없음(표준안 요청)"><span>없음 — 표준안 제안 요청</span></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <span class="f__legend">추가로 필요한 버전 <span class="hint">해당하는 것을 모두 선택해주세요.</span></span>
+    <div class="opts">
+      <label class="opt"><input type="checkbox" name="추가 버전" value="세로 9:16"><span>세로 9:16</span></label>
+      <label class="opt"><input type="checkbox" name="추가 버전" value="정사각 1:1"><span>정사각 1:1</span></label>
+      <label class="opt"><input type="checkbox" name="추가 버전" value="축약본"><span>축약본</span></label>
+      <label class="opt"><input type="checkbox" name="추가 버전" value="자막 없는 무자막 소재"><span>무자막 소재</span></label>
+      <label class="opt"><input type="checkbox" name="추가 버전" value="없음"><span>없음</span></label>
+    </div>
+  </fieldset>
+</section>
+
+<!-- 05 ───────────────────────────────── -->
+<section>
+  <div class="sec__head"><span class="sec__no">05</span><h2>진행 방식</h2></div>
+  <p class="sec__note">누가 무엇을 언제 확인하는지 미리 정해두면 수정이 크게 줄어듭니다.</p>
+
+  <div class="f">
+    <label for="decider">최종 컨펌 권한이 있는 분<span class="req">필수</span>
+      <span class="hint">이름과 직함을 적어주세요. 이 분이 확인하면 확정으로 처리합니다.</span></label>
+    <input type="text" id="decider" name="최종 결정권자" data-req placeholder="예: 이OO 감독 / OO브랜드 마케팅팀장">
+  </div>
+
+  <div class="f">
+    <label for="contactpoint">피드백을 모아서 주실 담당자
+      <span class="hint">여러 분의 의견이 각각 오면 서로 충돌하는 경우가 많습니다.</span></label>
+    <input type="text" id="contactpoint" name="피드백 담당자" placeholder="예: 위와 동일 / 박OO PD">
+  </div>
+
+  <fieldset>
+    <span class="f__legend">확인은 어떤 방식이 편하신가요?<span class="req">필수</span></span>
+    <div class="opts" data-req-group>
+      <label class="opt"><input type="radio" name="감수 방식" value="원격 리뷰 링크"><span>원격 리뷰 링크</span></label>
+      <label class="opt"><input type="radio" name="감수 방식" value="작업실 입회 세션"><span>작업실 입회 세션</span></label>
+      <label class="opt"><input type="radio" name="감수 방식" value="상관없음"><span>상관없음</span></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <span class="f__legend">리뷰 영상을 주로 어떤 화면으로 보시나요?<span class="req">필수</span>
+      <span class="hint">색을 판단하는 화면이 무엇인지에 따라 저희가 보내드리는 파일과 안내가 달라집니다.</span></span>
+    <div class="opts" data-req-group>
+      <label class="opt"><input type="radio" name="리뷰 환경" value="캘리브레이션된 모니터"><span>색보정된 전문 모니터</span></label>
+      <label class="opt"><input type="radio" name="리뷰 환경" value="일반 모니터"><span>일반 데스크탑 모니터</span></label>
+      <label class="opt"><input type="radio" name="리뷰 환경" value="노트북"><span>노트북</span></label>
+      <label class="opt"><input type="radio" name="리뷰 환경" value="스마트폰·태블릿"><span>스마트폰·태블릿</span></label>
+      <label class="opt"><input type="radio" name="리뷰 환경" value="모르겠음" data-unknown><span>모르겠음</span></label>
+    </div>
+  </fieldset>
+
+  <div class="f">
+    <label for="etc">그 밖에 미리 알려주실 내용</label>
+    <textarea id="etc" name="기타 참고사항" placeholder="예산 범위, 촬영 당시 문제가 있었던 컷, 꼭 살려야 하는 장면 등 무엇이든 좋습니다."></textarea>
+  </div>
+</section>
+
+<!-- 06 ───────────────────────────────── -->
+<section>
+  <div class="sec__head"><span class="sec__no">06</span><h2>연락처</h2></div>
+  <p class="sec__note">검토 후 1영업일 안에 회신드립니다.</p>
+
+  <div class="f">
+    <label for="company">회사·단체명</label>
+    <input type="text" id="company" name="회사명" placeholder="예: OO프로덕션">
+  </div>
+  <div class="f">
+    <label for="name">담당자 성함<span class="req">필수</span></label>
+    <input type="text" id="name" name="담당자" data-req>
+  </div>
+  <div class="f">
+    <label for="phone">연락처<span class="req">필수</span></label>
+    <input type="tel" id="phone" name="연락처" data-req placeholder="010-0000-0000">
+  </div>
+  <div class="f">
+    <label for="email">이메일<span class="req">필수</span></label>
+    <input type="email" id="email" name="이메일" data-req placeholder="name@example.com">
+  </div>
+
+  <label class="check">
+    <input type="checkbox" name="동의: 소스 보관" data-req value="동의">
+    <span><b>전달 소스 보관 기간에 동의합니다.</b> 전달해주신 촬영 소스와 작업 데이터는 <b>작업 완료 후 3개월</b> 동안 보관하며, 이후 파기합니다.</span>
+  </label>
+  <label class="check">
+    <input type="checkbox" name="동의: 수정 범위" data-req value="동의">
+    <span><b>수정 범위 안내를 확인했습니다.</b> 광고·홍보물은 1차 그레이딩과 수정 2회가 포함되며, 영화·드라마는 세션 단위로 별도 협의합니다.</span>
+  </label>
+
+  <div class="submit">
+    <button type="submit" class="send" id="send">문진 보내기</button>
+    <button type="button" class="ghost" id="copy">작성 내용 텍스트로 복사</button>
+    <p class="status" id="status"></p>
+  </div>
+
+  <div class="summary" id="summaryBox">
+    <textarea id="summary" readonly></textarea>
+  </div>
+</section>
+
+</form>
+
+<div class="done" id="done">
+  <h2>문진이 전송되었습니다</h2>
+  <p class="ticket" id="ticket"></p>
+  <p>적어주신 메일로 접수 확인과 <b>전용 업로드 경로</b>를 보내드렸습니다. 촬영 원본·편집 데이터·룩북을 그 경로에 올려주시면 검토 후 1영업일 안에 회신드립니다.</p>
+</div>
+
+<footer>
+  <p class="mono">맹그라미 DI Center</p>
+  <p>서울특별시 금천구 문성로 22-3, 103호 · Colorist ALI<br>
+  <a href="https://mgrm.kr" target="_blank" rel="noopener">mgrm.kr</a></p>
+</footer>
+
+</div>
+
+<script>
+/* ══════════════════════════════════════════════
+   설정 — 이 부분만 수정하시면 됩니다
+   ══════════════════════════════════════════════ */
+const CONFIG = {
+  // 구글 앱스스크립트 웹앱 주소 (배포 후 받은 /exec 로 끝나는 URL)
+  endpoint: "https://script.google.com/macros/s/AKfycbxMgNVVuNMrzjTKSyXSd_lG4YI2BcBD0QI7-rh25Jv0J1xZr2qEB7PTS9CEzkes7bAF5g/exec",
+  // endpoint가 비어 있을 때 메일이 열릴 주소
+  email: "",
+  // 첨부는 폼에서 받지 않고, 접수 후 전용 업로드 경로로 안내합니다.
+  uploads: false,
+};
+
+const form = document.getElementById('form');
+const statusEl = document.getElementById('status');
+
+/* ── 진행률 ── */
+const reqFields = [...form.querySelectorAll('[data-req]')];
+const reqGroups = [...form.querySelectorAll('[data-req-group]')];
+document.getElementById('tot').textContent = reqFields.length + reqGroups.length;
+
+function progress(){
+  let done = 0;
+  reqFields.forEach(el=>{
+    if(el.type === 'checkbox'){ if(el.checked) done++; }
+    else if(el.value.trim()) done++;
+  });
+  reqGroups.forEach(g=>{ if(g.querySelector('input:checked')) done++; });
+  const total = reqFields.length + reqGroups.length;
+  document.getElementById('cnt').textContent = done;
+  document.getElementById('fill').style.width = (done/total*100) + '%';
+  return done === total;
+}
+form.addEventListener('input', progress);
+form.addEventListener('change', progress);
+
+/* ── "모르겠음" 선택 시 촬영 담당자 연락처 노출 ── */
+function checkUnknown(){
+  const radioUnknown = [...form.querySelectorAll('[data-unknown]')].some(el=>el.checked);
+  const selUnknown = [...form.querySelectorAll('[data-unknown-select]')].some(el=>el.value === '모르겠음');
+  document.getElementById('condTech').classList.toggle('on', radioUnknown || selUnknown);
+}
+form.addEventListener('change', checkUnknown);
+
+/* ── 조건부 필드 ── */
+form.addEventListener('change', e=>{
+  const on = e.target.dataset.cond, off = e.target.dataset.condOff;
+  if(on) document.getElementById(on).classList.add('on');
+  if(off) document.getElementById(off).classList.remove('on');
+});
+
+/* ── 파일 선택 ── */
+const fileInput = document.getElementById('files');
+const drop = document.getElementById('drop');
+const filelist = document.getElementById('filelist');
+const fileerr = document.getElementById('fileerr');
+const filenote = document.getElementById('filenote');
+
+const MAX_ONE = 50 * 1024 * 1024;      // 개당 50MB
+const MAX_ALL = 200 * 1024 * 1024;     // 합계 200MB
+const OK_EXT = ['jpg','jpeg','png','webp','heic','pdf','cube','zip'];
+let picked = [];
+
+function fmt(b){ return b < 1048576 ? (b/1024).toFixed(0)+' KB' : (b/1048576).toFixed(1)+' MB'; }
+
+/* 선택한 파일을 input에 다시 써 넣어 폼 전송에 포함시킨다 */
+function syncInput(){
+  try{
+    const dt = new DataTransfer();
+    picked.forEach(f=>dt.items.add(f));
+    fileInput.files = dt.files;
+  }catch(e){ /* 구형 브라우저 — 목록 표시는 유지 */ }
+}
+
+function addFiles(list){
+  const errs = [];
+  [...list].forEach(f=>{
+    const ext = (f.name.split('.').pop() || '').toLowerCase();
+    if(!OK_EXT.includes(ext)){ errs.push(`${f.name} — 받지 않는 형식입니다`); return; }
+    if(f.size > MAX_ONE){ errs.push(`${f.name} — 50MB를 넘습니다`); return; }
+    if(picked.some(p=>p.name === f.name && p.size === f.size)) return;   // 중복 무시
+    if(picked.reduce((a,b)=>a+b.size,0) + f.size > MAX_ALL){
+      errs.push(`${f.name} — 전체 합계 200MB를 넘습니다`); return;
+    }
+    picked.push(f);
+  });
+  fileerr.textContent = errs.join(' / ');
+  syncInput();
+  render();
+}
+
+function render(){
+  filelist.textContent = '';
+  picked.forEach((f,i)=>{
+    const li = document.createElement('li');
+    const nm = document.createElement('span'); nm.className='nm'; nm.textContent = f.name;
+    const sz = document.createElement('span'); sz.className='sz'; sz.textContent = fmt(f.size);
+    const del = document.createElement('button');
+    del.type='button'; del.className='del'; del.textContent='×';
+    del.setAttribute('aria-label', f.name + ' 빼기');
+    del.addEventListener('click', ev=>{
+      ev.preventDefault(); ev.stopPropagation();
+      picked.splice(i,1); fileerr.textContent=''; syncInput(); render();
+    });
+    li.append(nm, sz, del);
+    filelist.appendChild(li);
+  });
+}
+
+/* 파일 선택창: 새로 고른 파일을 기존 목록에 더한다 (덮어쓰지 않음) */
+fileInput.addEventListener('change', ()=>{
+  const incoming = [...fileInput.files];
+  syncInput();                 // 브라우저가 덮어쓴 것을 되돌린 뒤
+  addFiles(incoming);          // 더한다
+});
+
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();drop.classList.add('over')}));
+['dragleave','dragend'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over')}));
+drop.addEventListener('drop', e=>{
+  e.preventDefault(); e.stopPropagation();
+  drop.classList.remove('over');
+  if(e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+});
+
+/* 폼 바깥에 파일을 떨어뜨려도 브라우저가 파일을 열지 않도록 (작성 내용 보호) */
+['dragover','drop'].forEach(ev=>window.addEventListener(ev, e=>{
+  if(!drop.contains(e.target)) e.preventDefault();
+}));
+
+/* 수신 주소가 없으면 첨부가 전송될 수 없으므로 업로드 영역을 감춘다 */
+function setupUploadMode(){
+  if(!CONFIG.uploads){
+    drop.style.display = 'none';
+    filenote.textContent = '파일은 이 화면에서 올리지 않으셔도 됩니다. 접수 확인 메일로 프로젝트 전용 업로드 경로를 보내드리니, 룩북·레퍼런스도 촬영 원본과 함께 그 경로에 올려주세요. 급하시면 위 칸에 드라이브 링크를 적어주셔도 좋습니다.';
+  }
+}
+setupUploadMode();
+
+/* 작성 중 이탈 방지 */
+let touched = false;
+form.addEventListener('input', ()=>{ touched = true; }, {once:true});
+window.addEventListener('beforeunload', e=>{ if(touched && !window.__sent){ e.preventDefault(); e.returnValue=''; } });
+
+/* ── 작성 내용 텍스트로 ── */
+function buildText(){
+  const data = new FormData(form);
+  const map = new Map();
+  for(const [k,v] of data.entries()){
+    if(k === '첨부' || !String(v).trim()) continue;
+    map.set(k, map.has(k) ? map.get(k)+', '+v : v);
+  }
+  let out = '색보정 사전 문진 — 맹그라미 DI\n';
+  out += '작성일 ' + new Date().toLocaleDateString('ko-KR') + '\n';
+  out += '─'.repeat(34) + '\n';
+  for(const [k,v] of map) out += `${k}: ${v}\n`;
+  const fn = picked.map(f=>f.name);
+  if(fn.length) out += `첨부 파일: ${fn.join(', ')}\n`;
+  return out;
+}
+
+document.getElementById('copy').addEventListener('click', async ()=>{
+  const text = buildText();
+  document.getElementById('summary').value = text;
+  document.getElementById('summaryBox').classList.add('on');
+  try{
+    await navigator.clipboard.writeText(text);
+    statusEl.className = 'status';
+    statusEl.textContent = '복사했습니다. 메일이나 메신저에 붙여넣어 보내주세요.';
+  }catch{
+    statusEl.className = 'status';
+    statusEl.textContent = '아래 상자의 내용을 복사해 보내주세요.';
+  }
+});
+
+/* ── 전송 ── */
+form.addEventListener('submit', async e=>{
+  e.preventDefault();
+  if(!progress()){
+    statusEl.className = 'status err';
+    statusEl.textContent = '필수 항목이 비어 있습니다. 상단 표시를 확인해주세요.';
+    const missing = reqFields.find(el => el.type === 'checkbox' ? !el.checked : !el.value.trim())
+                 || reqGroups.find(g => !g.querySelector('input:checked'));
+    if(missing) missing.scrollIntoView({block:'center', behavior:'smooth'});
+    return;
+  }
+
+  const btn = document.getElementById('send');
+
+  if(!CONFIG.endpoint){
+    const text = buildText();
+    document.getElementById('summary').value = text;
+    document.getElementById('summaryBox').classList.add('on');
+    if(CONFIG.email){
+      window.__sent = true;
+      location.href = `mailto:${CONFIG.email}?subject=${encodeURIComponent('[색보정 문진] ' + (document.getElementById('title').value || ''))}&body=${encodeURIComponent(text)}`;
+      statusEl.className = 'status';
+      statusEl.textContent = '메일 앱이 열립니다. 첨부 파일은 메일에 직접 붙여주세요.';
+    }else{
+      statusEl.className = 'status';
+      statusEl.textContent = '아래 상자의 내용을 복사해 보내주세요.';
+    }
+    return;
+  }
+
+  btn.disabled = true;
+  statusEl.className = 'status';
+  statusEl.textContent = '보내는 중…';
+
+  const payload = {};
+  const fd = new FormData(form);
+  for(const [k,v] of fd.entries()){
+    if(k === '첨부') continue;
+    payload[k] = payload[k] ? payload[k] + ', ' + v : v;
+  }
+  payload['_작성시각'] = new Date().toLocaleString('ko-KR');
+  payload['_유입경로'] = document.referrer || '직접 접속';
+
+  /* text/plain 으로 보내면 사전 요청(preflight)이 발생하지 않아
+     앱스스크립트에서 그대로 받을 수 있습니다. */
+  const opts = {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(payload)
+  };
+
+  function succeed(no){
+    window.__sent = true;
+    if(no) document.getElementById('ticket').textContent = '접수번호 ' + no;
+    form.style.display = 'none';
+    document.getElementById('done').classList.add('on');
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+
+  try{
+    const res = await fetch(CONFIG.endpoint, opts);
+    let no = '';
+    try{ no = (await res.json()).no || ''; }catch(_){}
+    succeed(no);
+  }catch(err){
+    /* 응답을 읽지 못하는 환경(구형 브라우저·차단)에서는 한 번 더 시도 */
+    try{
+      await fetch(CONFIG.endpoint, {...opts, mode:'no-cors'});
+      succeed('');
+    }catch(err2){
+      btn.disabled = false;
+      statusEl.className = 'status err';
+      statusEl.textContent = '전송에 실패했습니다. 아래 "작성 내용 텍스트로 복사"를 눌러 메일로 보내주세요.';
+    }
+  }
+});
+
+progress();
+</script>
+</body>
+</html>
