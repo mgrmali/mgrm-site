@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>컬러리버브 COLOR REVERB | 맹그라미 DI · Color Grading</title>
+<meta name="description" content="컬러리버브는 맹그라미의 DI·컬러그레이딩 전문 부문입니다. ARRIRAW부터 최종 마스터까지, 색으로 이야기의 여운을 만듭니다.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/gh/moonspam/NanumSquare@2.0/nanumsquare.css" rel="stylesheet">
+
+<style>
+:root{
+  --bg:        #08080B;
+  --bg-alt:    #101015;
+  --bg-card:   #16161C;
+  --line:      #26262E;
+  --ink:       #F0F0F5;
+  --ink-soft:  #9C9CAC;
+  --ink-faint: #6A6A78;
+
+  --ci-a:  #E84478;
+  --ci-b:  #7B5EA7;
+  --ci:    linear-gradient(100deg, var(--ci-a), var(--ci-b));
+
+  --display:'Montserrat', sans-serif;
+  --body:   'NanumSquare','Montserrat',sans-serif;
+
+  --pad: clamp(20px,5vw,80px);
+  --gut: clamp(60px,9vw,150px);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+body{
+  font-family:var(--body);background:var(--bg);color:var(--ink);
+  line-height:1.7;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--ci-a);outline-offset:3px}
+
+.wrap{max-width:1280px;margin:0 auto;padding-inline:var(--pad)}
+.sect{padding-block:var(--gut)}
+.grad{background:var(--ci);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+.eyebrow{
+  font-family:var(--display);font-size:11px;font-weight:700;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--ink-faint);
+  display:flex;align-items:center;gap:12px;margin-bottom:22px;
+}
+.eyebrow::before{content:"";width:26px;height:2px;border-radius:2px;background:var(--ci)}
+.sect-title{
+  font-family:var(--display);font-size:clamp(28px,4.4vw,50px);
+  font-weight:800;line-height:1.1;letter-spacing:-.02em;margin-bottom:16px;
+}
+.lead{max-width:62ch;color:var(--ink-soft);font-size:clamp(14px,1.5vw,16.5px)}
+
+.rise{opacity:0;transform:translateY(24px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.3,1)}
+.rise.in{opacity:1;transform:none}
+
+/* ── NAV ── */
+header{
+  position:fixed;inset:0 0 auto 0;z-index:100;
+  background:rgba(8,8,11,.72);backdrop-filter:saturate(160%) blur(14px);
+  border-bottom:1px solid transparent;transition:border-color .3s;
+}
+header.scrolled{border-bottom-color:var(--line)}
+.bar{display:flex;align-items:center;justify-content:space-between;height:68px;gap:16px}
+.brand{font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:9px}
+.brand em{font-style:normal;font-size:10px;font-weight:600;letter-spacing:.2em;color:var(--ink-faint)}
+.nav{display:flex;align-items:center;gap:clamp(16px,2.4vw,34px)}
+.nav a{
+  font-family:var(--display);font-size:12px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;position:relative;padding-block:6px;color:var(--ink-soft);transition:color .3s;
+}
+.nav a:hover{color:var(--ink)}
+.nav a.home{
+  color:var(--ink);border:1px solid var(--line);border-radius:999px;
+  padding:8px 15px;font-size:11px;
+}
+.nav a.home:hover{border-color:var(--ci-a)}
+@media(max-width:760px){
+  .nav a:not(.home){display:none}
+}
+
+/* ── HERO ── */
+.hero{
+  min-height:100svh;display:flex;align-items:center;padding-top:68px;
+  position:relative;overflow:hidden;
+}
+.hero::before{
+  content:"";position:absolute;inset:0;
+  background:
+    radial-gradient(75% 55% at 18% 22%, rgba(232,68,120,.16), transparent 62%),
+    radial-gradient(70% 60% at 84% 78%, rgba(123,94,167,.2), transparent 64%);
+  pointer-events:none;
+}
+.hero-inner{position:relative;width:100%;max-width:1280px;margin:0 auto;padding-inline:var(--pad)}
+.kicker{
+  font-family:var(--display);font-size:11px;font-weight:700;letter-spacing:.24em;
+  text-transform:uppercase;color:var(--ink-faint);margin-bottom:26px;
+}
+.kicker b{color:var(--ci-a);font-weight:700}
+.unit{
+  font-family:var(--display);font-size:10.5px;font-weight:600;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--ink-faint);margin-bottom:14px;opacity:.8;
+}
+.kicker.tagline{
+  font-size:clamp(12px,1.5vw,15px);font-weight:700;letter-spacing:.16em;
+  color:var(--ink-soft);margin-bottom:22px;
+}
+.hero h1{
+  font-family:var(--display);font-weight:800;
+  font-size:clamp(38px,9.4vw,134px);line-height:.93;letter-spacing:-.04em;
+}
+.hero h1 .l2{display:block;padding-left:.05em}
+.hero-desc{margin-top:clamp(26px,3vw,38px);max-width:30ch;color:var(--ink-soft);font-size:clamp(15px,1.9vw,21px);letter-spacing:-.01em}
+.hero-cta{margin-top:36px;display:flex;flex-wrap:wrap;gap:12px}
+.btn{
+  font-family:var(--display);font-size:12.5px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;padding:14px 26px;border-radius:999px;
+  border:1px solid var(--line);transition:.25s;
+}
+.btn-fill{background:var(--ci);color:#fff;border-color:transparent}
+.btn-fill:hover{filter:brightness(1.08);transform:translateY(-2px)}
+.btn-line:hover{border-color:var(--ink);transform:translateY(-2px)}
+
+/* ── STATEMENT ── */
+.statement{background:var(--bg-alt);border-block:1px solid var(--line)}
+.statement p{
+  font-family:var(--display);font-weight:600;
+  font-size:clamp(20px,3vw,36px);line-height:1.4;letter-spacing:-.02em;
+  max-width:22ch;
+}
+.statement .sig{
+  margin-top:28px;font-family:var(--body);font-size:14px;color:var(--ink-soft);font-weight:400;
+}
+
+/* ── REEL ── */
+.reel-frame{
+  aspect-ratio:16/9;border-radius:16px;border:1px solid var(--line);overflow:hidden;
+  background:linear-gradient(150deg,#16161C,#22222B);
+  display:grid;place-items:center;position:relative;
+}
+.reel-frame::after{
+  content:"Vimeo Reel Embed";
+  font-family:var(--display);font-size:11px;font-weight:700;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--ink-faint);
+}
+.play{
+  position:absolute;width:64px;height:64px;border-radius:50%;background:var(--ci);
+  display:grid;place-items:center;box-shadow:0 10px 34px -10px rgba(232,68,120,.7);
+  transform:translateY(-22px);
+}
+.play::before{
+  content:"";border-style:solid;border-width:9px 0 9px 15px;
+  border-color:transparent transparent transparent #fff;margin-left:4px;
+}
+
+/* ── BEFORE / AFTER ── */
+.ba{
+  position:relative;border-radius:16px;overflow:hidden;aspect-ratio:21/9;
+  border:1px solid var(--line);cursor:ew-resize;user-select:none;touch-action:none;background:#1B1B21;
+}
+@media(max-width:700px){.ba{aspect-ratio:4/3}}
+.ba-layer{position:absolute;inset:0}
+.ba-before{background:linear-gradient(150deg,#3A3A42,#55555F 45%,#42424C);filter:saturate(.26) contrast(.8) brightness(.92)}
+.ba-after{
+  background:
+    radial-gradient(120% 90% at 22% 18%, rgba(232,68,120,.44), transparent 58%),
+    radial-gradient(110% 95% at 82% 84%, rgba(123,94,167,.52), transparent 60%),
+    linear-gradient(150deg,#24242C,#3C3C47 45%,#282832);
+  clip-path:inset(0 0 0 50%);
+}
+.ba-tag{
+  position:absolute;top:14px;font-family:var(--display);font-size:10px;font-weight:700;
+  letter-spacing:.2em;text-transform:uppercase;padding:5px 11px;border-radius:999px;
+  background:rgba(8,8,11,.66);backdrop-filter:blur(6px);
+}
+.ba-tag.l{left:14px}.ba-tag.r{right:14px}
+.ba-handle{position:absolute;top:0;bottom:0;left:50%;width:2px;background:var(--ci);transform:translateX(-1px);pointer-events:none}
+.ba-knob{
+  position:absolute;top:50%;left:50%;width:42px;height:42px;border-radius:50%;
+  transform:translate(-50%,-50%);background:var(--ci);display:grid;place-items:center;
+  box-shadow:0 6px 22px -6px rgba(232,68,120,.6);pointer-events:none;
+}
+.ba-knob::before{
+  content:"";width:14px;height:14px;border-left:2px solid #fff;border-bottom:2px solid #fff;
+  transform:rotate(45deg) scale(.72);
+}
+.ba-cap{
+  margin-top:12px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  font-size:13px;color:var(--ink-faint);
+}
+.ba-cap b{color:var(--ink-soft);font-weight:700}
+.ba-list{display:grid;gap:clamp(30px,4vw,52px);margin-top:44px}
+
+/* ── WORKS TABLE ── */
+.works{width:100%;border-collapse:collapse;font-size:14.5px}
+.works thead th{
+  font-family:var(--display);font-size:10.5px;font-weight:700;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-faint);text-align:left;
+  padding:0 16px 14px 0;border-bottom:1px solid var(--line);
+}
+.works td{padding:18px 16px 18px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.works tbody tr{transition:background .25s}
+.works tbody tr:hover{background:var(--bg-alt)}
+.works .t{font-weight:800;font-size:15.5px}
+.works .m{color:var(--ink-soft)}
+.works .y{color:var(--ink-faint);font-family:var(--display);font-size:13px;font-weight:600;white-space:nowrap}
+.works .role{
+  display:inline-block;font-family:var(--display);font-size:10px;font-weight:700;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--ci-a);margin-bottom:5px;
+}
+@media(max-width:760px){
+  .works thead{display:none}
+  .works tr{display:block;border-bottom:1px solid var(--line);padding-block:16px}
+  .works td{display:block;border:0;padding:2px 0}
+}
+
+/* ── PIPELINE ── */
+.pipeline{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
+  background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+}
+@media(max-width:860px){.pipeline{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.pipeline{grid-template-columns:1fr}}
+.step{background:var(--bg);padding:28px 24px}
+.step .n{font-family:var(--display);font-size:10px;font-weight:800;letter-spacing:.14em;color:var(--ci-a);margin-bottom:12px;text-transform:uppercase}
+.step h4{font-family:var(--display);font-size:15px;font-weight:700;margin-bottom:8px}
+.step p{font-size:13px;color:var(--ink-soft);line-height:1.65}
+
+/* ── SETUP ── */
+.setup{display:grid;grid-template-columns:1fr 1fr;gap:clamp(28px,5vw,64px)}
+@media(max-width:860px){.setup{grid-template-columns:1fr}}
+.spec-group{margin-bottom:26px}
+.spec-group h4{
+  font-family:var(--display);font-size:10.5px;font-weight:700;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-faint);margin-bottom:12px;
+}
+.chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none}
+.chips li{
+  font-family:var(--display);font-size:11.5px;font-weight:600;letter-spacing:.06em;
+  padding:8px 14px;border-radius:999px;border:1px solid var(--line);color:var(--ink-soft);
+}
+
+/* ── CONTACT ── */
+.contact{background:var(--bg-alt);border-top:1px solid var(--line)}
+.contact-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:clamp(30px,5vw,70px);align-items:start}
+@media(max-width:860px){.contact-grid{grid-template-columns:1fr}}
+.reach{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.reach div{background:var(--bg);padding:20px 24px}
+.reach dt{
+  font-family:var(--display);font-size:10.5px;font-weight:700;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px;
+}
+.reach dd{font-size:15px;font-weight:700}
+.reach dd span{display:block;font-size:13px;font-weight:400;color:var(--ink-soft);margin-top:3px}
+
+footer{padding-block:40px;border-top:1px solid var(--line)}
+.foot{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;align-items:center}
+.foot small{font-size:12px;color:var(--ink-faint)}
+.foot a.back{
+  font-family:var(--display);font-size:11.5px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-soft);
+}
+.foot a.back:hover{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<header id="hd">
+  <div class="wrap bar">
+    <a href="#top" class="brand">컬러리버브 <em>COLOR REVERB</em></a>
+    <nav class="nav">
+      <a href="#reel">Reel</a>
+      <a href="#look">Look</a>
+      <a href="#works">Works</a>
+      <a href="#process">Process</a>
+      <a href="#contact">Contact</a>
+      <a href="design.html">밤구름디자인</a>
+      <a href="index.html" class="home">← 맹그라미</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ══ HERO ══ -->
+<section class="hero" id="top">
+  <div class="hero-inner">
+    <p class="unit">맹그라미 미디어 콘텐츠 그룹 · DI 부문</p>
+    <p class="kicker tagline">Adding <b>Color</b> to Emotion.</p>
+    <h1>
+      <span class="grad">Color</span>
+      <span class="l2">Reverb</span>
+    </h1>
+    <p class="hero-desc">
+      감정에도 온도가 있습니다.
+    </p>
+    <div class="hero-cta">
+      <a href="#works" class="btn btn-fill">참여 작품</a>
+      <a href="#contact" class="btn btn-line">DI 문의</a>
+    </div>
+  </div>
+</section>
+
+<!-- ══ STATEMENT ══ -->
+<section class="sect statement">
+  <div class="wrap rise">
+    <p>색은 마지막에 오지만,<br><span class="grad">가장 오래 남습니다.</span></p>
+    <p class="sig">
+      관객은 조명 설계도, 렌즈 선택도 기억하지 못합니다.
+      다만 그 장면이 어떤 온도였는지는 남습니다.
+      색은 이야기를 설명하지 않고, 이야기가 끝난 자리에 남습니다.
+    </p>
+  </div>
+</section>
+
+<!-- ══ REEL ══ -->
+<section class="sect" id="reel">
+  <div class="wrap">
+    <div class="reel-frame rise"><span class="play"></span></div>
+  </div>
+</section>
+
+<!-- ══ LOOK / BEFORE-AFTER ══ -->
+<section class="sect" id="look" style="background:var(--bg-alt);border-block:1px solid var(--line)">
+  <div class="wrap">
+    <div class="rise">
+      <p class="eyebrow">Look</p>
+      <h2 class="sect-title">같은 화면, 다른 온도</h2>
+      <p class="lead">왼쪽은 카메라가 본 것, 오른쪽은 관객이 볼 것. 핸들을 끌어보세요.</p>
+    </div>
+
+    <div class="ba-list">
+      <div class="rise">
+        <div class="ba" data-ba role="slider" tabindex="0" aria-label="그레이딩 전후 비교 1" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+          <div class="ba-layer ba-before"></div>
+          <div class="ba-layer ba-after"></div>
+          <span class="ba-tag l">카메라가 본 것</span>
+          <span class="ba-tag r">관객이 볼 것</span>
+          <div class="ba-handle"><span class="ba-knob"></span></div>
+        </div>
+        <div class="ba-cap">
+          <span><b>작품명이 들어갑니다</b> · 감독 000</span>
+          <span>ARRI ALEXA 35 · LogC4 / AWG4</span>
+        </div>
+      </div>
+
+      <div class="rise">
+        <div class="ba" data-ba role="slider" tabindex="0" aria-label="그레이딩 전후 비교 2" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+          <div class="ba-layer ba-before"></div>
+          <div class="ba-layer ba-after"></div>
+          <span class="ba-tag l">카메라가 본 것</span>
+          <span class="ba-tag r">관객이 볼 것</span>
+          <div class="ba-handle"><span class="ba-knob"></span></div>
+        </div>
+        <div class="ba-cap">
+          <span><b>작품명이 들어갑니다</b> · 감독 000</span>
+          <span>ARRIRAW · ASC CDL</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ WORKS ══ -->
+<section class="sect" id="works">
+  <div class="wrap">
+    <div class="rise">
+      <p class="eyebrow">Works</p>
+      <h2 class="sect-title">맡았던 색들</h2>
+      <p class="lead" style="margin-bottom:44px">어떤 작업을 했는지가 어떤 말보다 정확합니다.</p>
+    </div>
+
+    <table class="works rise">
+      <thead>
+        <tr>
+          <th>작품</th><th>감독</th><th>촬영</th><th>포맷</th><th>연도</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="t"><span class="role">Color Grading</span><br>작품명이 들어갑니다</td>
+          <td class="m">감독명</td>
+          <td class="m">촬영감독명</td>
+          <td class="m">ARRIRAW</td>
+          <td class="y">2026</td>
+        </tr>
+        <tr>
+          <td class="t"><span class="role">DI · DIT</span><br>작품명이 들어갑니다</td>
+          <td class="m">감독명</td>
+          <td class="m">촬영감독명</td>
+          <td class="m">ProRes 4444</td>
+          <td class="y">2026</td>
+        </tr>
+        <tr>
+          <td class="t"><span class="role">Color Grading</span><br>작품명이 들어갑니다</td>
+          <td class="m">감독명</td>
+          <td class="m">촬영감독명</td>
+          <td class="m">LogC4</td>
+          <td class="y">2025</td>
+        </tr>
+        <tr>
+          <td class="t"><span class="role">On-set Look</span><br>작품명이 들어갑니다</td>
+          <td class="m">감독명</td>
+          <td class="m">촬영감독명</td>
+          <td class="m">ASC CDL</td>
+          <td class="y">2025</td>
+        </tr>
+        <tr>
+          <td class="t"><span class="role">Color Grading</span><br>작품명이 들어갑니다</td>
+          <td class="m">감독명</td>
+          <td class="m">촬영감독명</td>
+          <td class="m">ARRIRAW</td>
+          <td class="y">2024</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══ PROCESS ══ -->
+<section class="sect" id="process" style="background:var(--bg-alt);border-block:1px solid var(--line)">
+  <div class="wrap">
+    <div class="rise">
+      <p class="eyebrow">Process</p>
+      <h2 class="sect-title">받아서, 맞추고, 찾고, 넘깁니다</h2>
+      <p class="lead" style="margin-bottom:44px">색을 만드는 일은 네 번의 손을 거칩니다.</p>
+    </div>
+
+    <div class="pipeline">
+      <div class="step rise">
+        <p class="n">01 / Ingest</p><h4>받습니다</h4>
+        <p>원본이 다치지 않았는지부터 봅니다. 여기서 잃은 것은 되돌릴 수 없습니다.</p>
+      </div>
+      <div class="step rise">
+        <p class="n">02 / Conform</p><h4>맞춥니다</h4>
+        <p>편집이 정한 순서대로 원본을 다시 세웁니다. 색을 만질 자리를 만드는 일입니다.</p>
+      </div>
+      <div class="step rise">
+        <p class="n">03 / Grade</p><h4>찾습니다</h4>
+        <p>이 장면이 어떤 온도여야 하는지, 감독과 함께 찾아갑니다.</p>
+      </div>
+      <div class="step rise">
+        <p class="n">04 / Master</p><h4>넘깁니다</h4>
+        <p>어디에 걸려도 같은 색이 나오도록 정리해서 보냅니다.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ SETUP ══ -->
+<section class="sect" id="setup">
+  <div class="wrap setup">
+    <div class="rise">
+      <p class="eyebrow">Setup</p>
+      <h2 class="sect-title">무엇으로 보느냐</h2>
+      <p class="lead">
+        색을 판단하려면 판단할 수 있는 환경이 있어야 합니다.
+        아래는 그 조건입니다.
+      </p>
+    </div>
+
+    <div class="rise">
+      <div class="spec-group">
+        <h4>Camera / Format</h4>
+        <ul class="chips">
+          <li>ARRI ALEXA 35</li><li>ARRIRAW</li><li>ProRes 4444</li><li>LogC4</li><li>AWG4</li>
+        </ul>
+      </div>
+      <div class="spec-group">
+        <h4>Color Pipeline</h4>
+        <ul class="chips">
+          <li>ASC CDL</li><li>Show LUT</li><li>On-set Look</li><li>Shot Matching</li>
+        </ul>
+      </div>
+      <div class="spec-group">
+        <h4>Delivery</h4>
+        <ul class="chips">
+          <li>Rec.709</li><li>Broadcast QC</li><li>Master Export</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ CONTACT ══ -->
+<section class="sect contact" id="contact">
+  <div class="wrap contact-grid">
+    <div class="rise">
+      <p class="eyebrow">Contact</p>
+      <h2 class="sect-title">색을 맡기신다면</h2>
+      <p class="lead">
+        어떤 장면인지, 어떤 느낌이었으면 하는지부터 이야기해 주세요.
+        나머지는 저희가 여쭤보겠습니다.
+        짧은 클립으로 먼저 보여드릴 수도 있습니다.
+      </p>
+      <div class="hero-cta" style="margin-top:30px">
+        <a href="mailto:wlsdnr601@mgrm.kr" class="btn btn-fill">메일 보내기</a>
+        <a href="index.html#contact" class="btn btn-line">맹그라미 문의폼</a>
+      </div>
+    </div>
+
+    <dl class="reach rise">
+      <div><dt>Colorist</dt><dd>ALI<span>맹그라미 DI센터</span></dd></div>
+      <div><dt>Email</dt><dd><a href="mailto:wlsdnr601@mgrm.kr">wlsdnr601@mgrm.kr</a></dd></div>
+      <div><dt>Tel</dt><dd>054-853-6231<span>Mobile 010-9982-6230</span></dd></div>
+      <div><dt>DI Center</dt><dd>서울 금천구 문성로 22-3<span>103호</span></dd></div>
+      <div><dt>Instagram</dt><dd><a href="https://instagram.com/Colorist_ali" target="_blank" rel="noopener">@Colorist_ali ↗</a></dd></div>
+    </dl>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <a href="#top" class="brand">컬러리버브 <em>COLOR REVERB</em></a>
+    <a href="index.html" class="back">← 맹그라미 MGRM</a>
+    <small>© 2026 맹그라미 MGRM. All rights reserved.</small>
+  </div>
+</footer>
+
+<script>
+const hd=document.getElementById('hd');
+addEventListener('scroll',()=>hd.classList.toggle('scrolled',scrollY>10),{passive:true});
+
+const io=new IntersectionObserver(es=>{
+  es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})
+},{threshold:.12});
+document.querySelectorAll('.rise').forEach((el,i)=>{
+  el.style.transitionDelay=(i%3)*70+'ms';io.observe(el);
+});
+
+document.querySelectorAll('[data-ba]').forEach(ba=>{
+  const after=ba.querySelector('.ba-after');
+  const handle=ba.querySelector('.ba-handle');
+  let drag=false;
+  const set=p=>{
+    p=Math.max(0,Math.min(100,p));
+    after.style.clipPath=`inset(0 0 0 ${p}%)`;
+    handle.style.left=p+'%';
+    ba.setAttribute('aria-valuenow',Math.round(p));
+  };
+  const from=e=>{
+    const r=ba.getBoundingClientRect();
+    set((e.clientX-r.left)/r.width*100);
+  };
+  ba.addEventListener('pointerdown',e=>{drag=true;ba.setPointerCapture(e.pointerId);from(e)});
+  ba.addEventListener('pointermove',e=>{if(drag)from(e)});
+  ba.addEventListener('pointerup',()=>drag=false);
+  ba.addEventListener('pointercancel',()=>drag=false);
+  ba.addEventListener('keydown',e=>{
+    const c=parseFloat(ba.getAttribute('aria-valuenow'));
+    if(e.key==='ArrowLeft'){set(c-4);e.preventDefault()}
+    if(e.key==='ArrowRight'){set(c+4);e.preventDefault()}
+  });
+  set(50);
+});
+</script>
+</body>
+</html>

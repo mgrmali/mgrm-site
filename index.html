@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>맹그라미 MGRM | 미디어 콘텐츠 그룹</title>
+<meta name="description" content="맹그라미는 미디어 콘텐츠 그룹입니다. 기획·디자인·촬영·후반작업까지, 모든 미디어에 알맞은 콘텐츠를 만듭니다.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/gh/moonspam/NanumSquare@2.0/nanumsquare.css" rel="stylesheet">
+
+<style>
+/* ============================================================
+   TOKENS
+   ============================================================ */
+:root{
+  --ink:        #101014;
+  --ink-soft:   #4A4A55;
+  --ink-faint:  #9A9AA6;
+  --paper:      #FFFFFF;
+  --paper-alt:  #F4F4F6;
+  --line:       #E3E3E8;
+
+  --dark:       #0B0B0E;
+  --dark-alt:   #16161B;
+  --dark-line:  #2A2A32;
+  --dark-ink:   #EDEDF2;
+  --dark-soft:  #8E8E9C;
+
+  --ci-a:       #E84478;
+  --ci-b:       #7B5EA7;
+  --ci:         linear-gradient(100deg, var(--ci-a), var(--ci-b));
+
+  --display: 'Montserrat', sans-serif;
+  --body:    'NanumSquare', 'Montserrat', sans-serif;
+
+  --pad: clamp(20px, 5vw, 80px);
+  --gut: clamp(56px, 9vw, 140px);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+body{
+  font-family:var(--body);
+  background:var(--paper);
+  color:var(--ink);
+  line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+a{color:inherit;text-decoration:none}
+img{max-width:100%;display:block}
+:focus-visible{outline:2px solid var(--ci-a);outline-offset:3px}
+
+/* ============================================================
+   SHARED
+   ============================================================ */
+.wrap{max-width:1280px;margin:0 auto;padding-inline:var(--pad)}
+.sect{padding-block:var(--gut)}
+
+.eyebrow{
+  font-family:var(--display);
+  font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--ink-faint);
+  display:flex;align-items:center;gap:12px;margin-bottom:22px;
+}
+.eyebrow::before{
+  content:"";width:26px;height:2px;border-radius:2px;background:var(--ci);
+}
+.sect-title{
+  font-family:var(--display);
+  font-size:clamp(30px,4.6vw,54px);
+  font-weight:800;line-height:1.08;letter-spacing:-.02em;
+  margin-bottom:18px;
+}
+.sect-lead{
+  max-width:60ch;color:var(--ink-soft);font-size:clamp(14px,1.5vw,16.5px);
+}
+.grad-text{
+  background:var(--ci);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+
+/* reveal on scroll */
+.rise{opacity:0;transform:translateY(24px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.3,1)}
+.rise.in{opacity:1;transform:none}
+
+/* ============================================================
+   NAV
+   ============================================================ */
+header{
+  position:fixed;inset:0 0 auto 0;z-index:100;
+  background:rgba(255,255,255,.82);
+  backdrop-filter:saturate(160%) blur(14px);
+  border-bottom:1px solid transparent;
+  transition:border-color .3s, background .3s;
+}
+header.scrolled{border-bottom-color:var(--line)}
+header.on-dark{background:rgba(11,11,14,.78);border-bottom-color:var(--dark-line)}
+header.on-dark .logo,header.on-dark .nav a{color:var(--dark-ink)}
+header.on-dark .burger span{background:var(--dark-ink)}
+
+.bar{display:flex;align-items:center;justify-content:space-between;height:68px}
+.logo{
+  font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:-.01em;
+  display:flex;align-items:baseline;gap:9px;transition:color .3s;
+}
+.logo em{
+  font-style:normal;font-size:11px;font-weight:600;letter-spacing:.18em;
+  color:var(--ink-faint);
+}
+.nav{display:flex;gap:clamp(18px,2.6vw,38px)}
+.nav a{
+  font-family:var(--display);font-size:12.5px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;position:relative;padding-block:6px;transition:color .3s;
+}
+.nav a::after{
+  content:"";position:absolute;left:0;bottom:0;height:2px;width:0;
+  background:var(--ci);transition:width .3s ease;
+}
+.nav a:hover::after,.nav a.active::after{width:100%}
+
+.burger{display:none;flex-direction:column;gap:5px;background:none;border:0;cursor:pointer;padding:8px}
+.burger span{width:22px;height:2px;background:var(--ink);border-radius:2px;transition:.3s}
+
+@media(max-width:860px){
+  .burger{display:flex}
+  .nav{
+    position:fixed;inset:68px 0 auto 0;background:var(--paper);
+    flex-direction:column;gap:0;padding:12px var(--pad) 28px;
+    border-bottom:1px solid var(--line);
+    transform:translateY(-120%);transition:transform .38s cubic-bezier(.3,.8,.3,1);
+  }
+  .nav.open{transform:none}
+  .nav a{padding-block:14px;font-size:14px;border-bottom:1px solid var(--line)}
+  .nav a:last-child{border-bottom:0}
+  header.on-dark .nav{background:var(--dark);border-color:var(--dark-line)}
+  header.on-dark .nav a{border-color:var(--dark-line)}
+}
+
+/* ============================================================
+   HERO
+   ============================================================ */
+.hero{
+  min-height:100svh;display:flex;flex-direction:column;justify-content:center;
+  padding-top:68px;position:relative;overflow:hidden;
+}
+.hero-inner{max-width:1280px;margin:0 auto;padding-inline:var(--pad);width:100%}
+.hero h1.claim{
+  font-family:var(--display);font-weight:500;
+  font-size:clamp(32px,7.6vw,104px);
+  line-height:1.02;letter-spacing:-.035em;color:var(--ink-faint);
+}
+.hero h1.claim span{display:block}
+.hero h1.claim span:nth-child(2){padding-left:.07em}
+.hero h1.claim span:nth-child(3){padding-left:.14em}
+.hero h1.claim b{font-weight:800;color:var(--ink)}
+.hero-desc{
+  margin-top:clamp(26px,3vw,38px);max-width:34ch;color:var(--ink-soft);
+  font-size:clamp(15px,1.9vw,21px);letter-spacing:-.01em;
+}
+.hero-cta{margin-top:38px;display:flex;flex-wrap:wrap;gap:12px}
+.btn{
+  font-family:var(--display);font-size:12.5px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;padding:14px 26px;border-radius:999px;
+  border:1px solid var(--line);transition:.25s;
+}
+.btn-fill{background:var(--ci);color:#fff;border-color:transparent}
+.btn-fill:hover{filter:brightness(1.08);transform:translateY(-2px)}
+.btn-line:hover{border-color:var(--ink);transform:translateY(-2px)}
+
+.hero-scroll{
+  position:absolute;left:var(--pad);bottom:26px;
+  font-family:var(--display);font-size:10.5px;font-weight:600;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--ink-faint);
+  display:flex;align-items:center;gap:10px;
+}
+.hero-scroll i{
+  display:block;width:44px;height:1px;background:var(--line);position:relative;overflow:hidden;
+}
+.hero-scroll i::after{
+  content:"";position:absolute;inset:0;background:var(--ci);
+  animation:sweep 2.4s ease-in-out infinite;
+}
+@keyframes sweep{0%{transform:translateX(-100%)}60%,100%{transform:translateX(100%)}}
+
+/* ============================================================
+   ABOUT
+   ============================================================ */
+.about{background:var(--paper-alt)}
+.about-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:clamp(32px,5vw,72px);align-items:start;
+}
+.about-body p{color:var(--ink-soft);font-size:15.5px;margin-bottom:18px}
+.about-body p:last-child{margin-bottom:0}
+.about-body strong{color:var(--ink);font-weight:800}
+
+.facts{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.fact{background:var(--paper);padding:22px 24px}
+.fact dt{
+  font-family:var(--display);font-size:10.5px;font-weight:700;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-faint);margin-bottom:8px;
+}
+.fact dd{font-size:15px;font-weight:700}
+.fact dd span{display:block;font-size:13px;font-weight:400;color:var(--ink-soft);margin-top:3px}
+
+@media(max-width:860px){.about-grid{grid-template-columns:1fr}}
+
+/* ============================================================
+   WORK GRID (Video / Design)
+   ============================================================ */
+.work-head{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;margin-bottom:44px}
+.grid{display:grid;gap:clamp(14px,1.8vw,24px)}
+.grid-3{grid-template-columns:repeat(3,1fr)}
+.grid-2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:960px){.grid-3{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.grid-3,.grid-2{grid-template-columns:1fr}}
+
+.card{
+  border-radius:14px;overflow:hidden;background:var(--paper-alt);
+  border:1px solid var(--line);transition:.35s cubic-bezier(.2,.7,.3,1);
+}
+.card:hover{transform:translateY(-5px);box-shadow:0 18px 40px -22px rgba(16,16,20,.35)}
+.thumb{
+  aspect-ratio:16/9;position:relative;display:grid;place-items:center;
+  background:linear-gradient(135deg,#EFEFF3,#E1E1E9);
+}
+.thumb.ratio-45{aspect-ratio:4/5}
+.thumb::after{
+  content:attr(data-ph);
+  font-family:var(--display);font-size:10.5px;font-weight:700;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-faint);
+}
+.play{
+  position:absolute;width:52px;height:52px;border-radius:50%;
+  background:rgba(255,255,255,.92);display:grid;place-items:center;
+  box-shadow:0 6px 18px -8px rgba(0,0,0,.4);transition:.3s;z-index:1;
+}
+.card:hover .play{transform:scale(1.1)}
+.play::before{
+  content:"";border-style:solid;border-width:7px 0 7px 12px;
+  border-color:transparent transparent transparent var(--ci-a);margin-left:3px;
+}
+.card-meta{padding:18px 20px 22px}
+.card-tag{
+  font-family:var(--display);font-size:10px;font-weight:700;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ci-a);margin-bottom:8px;
+}
+.card-title{font-size:16px;font-weight:800;letter-spacing:-.01em}
+.card-note{font-size:13px;color:var(--ink-faint);margin-top:5px}
+
+/* ============================================================
+   COLOR — dark section
+   ============================================================ */
+.color{background:var(--dark);color:var(--dark-ink);position:relative}
+.color .eyebrow{color:var(--dark-soft)}
+.color .sect-lead{color:var(--dark-soft)}
+.cr-teaser{
+  display:grid;grid-template-columns:1.2fr 1fr;gap:clamp(28px,5vw,64px);align-items:end;
+}
+@media(max-width:860px){.cr-teaser{grid-template-columns:1fr;align-items:start}}
+.color-id{
+  border:1px solid var(--dark-line);border-radius:14px;padding:24px 26px;background:var(--dark-alt);
+}
+.color-id .name{font-family:var(--display);font-size:26px;font-weight:800;letter-spacing:-.01em}
+.color-id .role{font-size:13px;color:var(--dark-soft);margin-top:4px}
+.color-id .handle{
+  display:inline-block;margin-top:16px;font-family:var(--display);
+  font-size:11.5px;font-weight:600;letter-spacing:.1em;
+  padding-bottom:2px;border-bottom:1px solid var(--dark-line);
+}
+.color-id .handle:hover{border-color:var(--ci-a)}
+
+.pipeline{
+  margin-top:clamp(44px,6vw,76px);
+  display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
+  background:var(--dark-line);border:1px solid var(--dark-line);border-radius:14px;overflow:hidden;
+}
+@media(max-width:860px){.pipeline{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.pipeline{grid-template-columns:1fr}}
+.step{background:var(--dark);padding:26px 24px}
+.step .n{
+  font-family:var(--display);font-size:11px;font-weight:800;letter-spacing:.16em;
+  color:var(--ci-a);margin-bottom:12px;
+}
+.step h4{font-family:var(--display);font-size:15px;font-weight:700;margin-bottom:8px}
+.step p{font-size:13px;color:var(--dark-soft);line-height:1.65}
+
+.spec{
+  margin-top:28px;display:flex;flex-wrap:wrap;gap:8px;
+}
+.spec li{
+  list-style:none;font-family:var(--display);font-size:11px;font-weight:600;
+  letter-spacing:.08em;padding:7px 13px;border-radius:999px;
+  border:1px solid var(--dark-line);color:var(--dark-soft);
+}
+
+
+/* ============================================================
+   PROCESS FLOW
+   ============================================================ */
+.flow{
+  list-style:none;display:grid;grid-template-columns:repeat(7,1fr);
+  gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:14px;overflow:hidden;counter-reset:f;
+}
+@media(max-width:1100px){.flow{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:760px){.flow{grid-template-columns:repeat(2,1fr)}}
+
+.flow li{
+  background:var(--paper);padding:26px 20px 24px;position:relative;
+  display:flex;flex-direction:column;gap:5px;min-height:132px;
+}
+.flow li::before{
+  counter-increment:f;content:"0" counter(f);
+  font-family:var(--display);font-size:10px;font-weight:800;letter-spacing:.14em;
+  color:var(--ink-faint);margin-bottom:10px;
+}
+.flow .s{font-size:17px;font-weight:800;letter-spacing:-.01em}
+.flow em{
+  font-style:normal;font-family:var(--display);font-size:10.5px;font-weight:600;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);
+}
+.flow li.hi{background:var(--paper-alt)}
+.flow li.hi::before{background:var(--ci);-webkit-background-clip:text;background-clip:text;color:transparent}
+.flow li.hi .s{background:var(--ci);-webkit-background-clip:text;background-clip:text;color:transparent}
+.flow li a{
+  margin-top:auto;padding-top:12px;
+  font-family:var(--display);font-size:10.5px;font-weight:700;letter-spacing:.08em;
+  color:var(--ci-a);
+}
+.flow li a:hover{text-decoration:underline}
+
+/* ============================================================
+   BRANDS
+   ============================================================ */
+.brands{background:var(--dark);color:var(--dark-ink)}
+.brands .eyebrow{color:var(--dark-soft)}
+.brands .sect-lead{color:var(--dark-soft)}
+.brand-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(14px,1.8vw,22px);margin-top:clamp(38px,5vw,56px)}
+@media(max-width:980px){.brand-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){.brand-grid{grid-template-columns:1fr}}
+.brand-card{
+  border:1px solid var(--dark-line);border-radius:16px;overflow:hidden;
+  background:var(--dark-alt);display:flex;flex-direction:column;
+  transition:.35s cubic-bezier(.2,.7,.3,1);
+}
+.brand-card:hover{transform:translateY(-5px);border-color:#3A3A46}
+.brand-vis{aspect-ratio:16/10;position:relative;display:grid;place-items:center}
+.brand-vis.cr{
+  background:
+    radial-gradient(110% 90% at 24% 20%, rgba(232,68,120,.4), transparent 60%),
+    radial-gradient(110% 95% at 80% 82%, rgba(123,94,167,.46), transparent 62%),
+    linear-gradient(150deg,#1B1B22,#2C2C36);
+}
+.brand-vis.nc{
+  background:
+    radial-gradient(90% 80% at 26% 26%, rgba(91,107,192,.55), transparent 62%),
+    radial-gradient(85% 85% at 76% 74%, rgba(123,94,167,.5), transparent 62%),
+    linear-gradient(150deg,#14141F,#22222F);
+}
+.brand-vis.bm{
+  background:
+    radial-gradient(90% 120% at 50% 108%, rgba(232,68,120,.22), transparent 62%),
+    linear-gradient(180deg,#101016,#08080B);
+}
+.brand-vis.bm::after{
+  content:"";position:absolute;width:58%;height:34%;border-radius:4px;
+  background:linear-gradient(160deg,#2A2A34,#3A3A46);
+  box-shadow:0 0 70px -10px rgba(232,68,120,.45);
+}
+.brand-wordmark{
+  position:relative;z-index:1;font-family:var(--display);
+  font-size:clamp(20px,2.6vw,30px);font-weight:800;letter-spacing:-.01em;color:#fff;
+}
+.brand-body{padding:24px 26px 28px;display:flex;flex-direction:column;gap:10px;flex:1}
+.brand-kr{font-size:17px;font-weight:800}
+.brand-role{
+  font-family:var(--display);font-size:10px;font-weight:700;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ci-a);
+}
+.brand-desc{font-size:14px;color:var(--dark-soft);line-height:1.68}
+.brand-go{
+  margin-top:auto;padding-top:16px;font-family:var(--display);
+  font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+}
+
+/* ============================================================
+   CONTACT
+   ============================================================ */
+.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:clamp(32px,5vw,72px)}
+@media(max-width:860px){.contact-grid{grid-template-columns:1fr}}
+.field{margin-bottom:16px}
+.field label{
+  display:block;font-family:var(--display);font-size:10.5px;font-weight:700;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:7px;
+}
+.field input,.field textarea,.field select{
+  width:100%;font-family:var(--body);font-size:15px;color:var(--ink);
+  padding:13px 15px;border:1px solid var(--line);border-radius:10px;
+  background:var(--paper);transition:.25s;
+}
+.field textarea{min-height:130px;resize:vertical}
+.field input:focus,.field textarea:focus,.field select:focus{
+  outline:none;border-color:var(--ci-a);box-shadow:0 0 0 3px rgba(232,68,120,.1);
+}
+.form-note{font-size:12.5px;color:var(--ink-faint);margin-top:10px}
+
+.reach{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.reach div{background:var(--paper);padding:20px 24px}
+.reach dt{
+  font-family:var(--display);font-size:10.5px;font-weight:700;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px;
+}
+.reach dd{font-size:15px;font-weight:700}
+.reach dd span{display:block;font-size:13px;font-weight:400;color:var(--ink-soft);margin-top:3px}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+footer{background:var(--dark);color:var(--dark-soft);padding-block:44px}
+.foot{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:center}
+.foot .logo{color:var(--dark-ink)}
+.foot small{font-size:12px;letter-spacing:.02em}
+.foot-links{display:flex;gap:20px}
+.foot-links a{
+  font-family:var(--display);font-size:11.5px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;
+}
+.foot-links a:hover{color:var(--dark-ink)}
+</style>
+</head>
+<body>
+
+<!-- ══════════ NAV ══════════ -->
+<header id="hd">
+  <div class="wrap bar">
+    <a href="#top" class="logo">맹그라미 <em>MEDIA CONTENTS GROUP</em></a>
+    <nav class="nav" id="nav">
+      <a href="#about">About</a>
+      <a href="#process">Process</a>
+      <a href="#video">Contents</a>
+      <a href="#brands">Brands</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <button class="burger" id="burger" aria-label="메뉴 열기" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</header>
+
+<!-- ══════════ HERO ══════════ -->
+<section class="hero" id="top">
+  <div class="hero-inner">
+    <h1 class="claim">
+      <span>We <b>Make</b> It.</span>
+      <span>We <b class="grad-text">Color</b> It.</span>
+      <span>We <b>Show</b> It.</span>
+    </h1>
+
+    <p class="hero-desc">
+      빛을 담고, 다듬어, 다시 빛냅니다.
+    </p>
+
+    <div class="hero-cta">
+      <a href="#process" class="btn btn-fill">작업 방식 보기</a>
+      <a href="#contact" class="btn btn-line">작업 문의</a>
+    </div>
+  </div>
+  <div class="hero-scroll"><i></i> Scroll</div>
+</section>
+
+<!-- ══════════ ABOUT ══════════ -->
+<section class="sect about" id="about">
+  <div class="wrap">
+    <div class="about-grid">
+      <div class="rise">
+        <p class="eyebrow">About</p>
+        <h2 class="sect-title">매체는 늘고,<br>이야기는 하나입니다</h2>
+        <div class="about-body">
+          <p>
+            극장 스크린, 방송, 유튜브, 세로 화면, 옥외 전광판, 그리고 종이.
+            같은 이야기라도 도착하는 자리마다 필요한 형태가 다릅니다.
+          </p>
+          <p>
+            맹그라미는 <strong>미디어 콘텐츠 그룹</strong>입니다.
+            영상 한 편을 납품하고 끝내는 대신, 그 이야기가 놓일 모든 자리에 맞는
+            형태로 만듭니다. 한 편이 열 개의 얼굴을 갖게 하는 일입니다.
+          </p>
+          <p>
+            기획·디자인·촬영·DIT·편집·DI를 한 팀이 다루고,
+            완성된 것이 걸리는 극장까지 직접 운영합니다.
+            만드는 일과 보여주는 일을 같은 자리에서 생각합니다.
+          </p>
+        </div>
+      </div>
+
+      <dl class="facts rise">
+        <div class="fact">
+          <dt>Contents</dt>
+          <dd>영상 · 숏폼 · 디자인 · 출판<span>매체에 맞는 형태로 다시 만듭니다</span></dd>
+        </div>
+        <div class="fact">
+          <dt>Post</dt>
+          <dd>DIT · DI<span>현장 데이터 관리부터 최종 컬러까지</span></dd>
+        </div>
+        <div class="fact">
+          <dt>Cinema</dt>
+          <dd>블랙마리아<span>300인치 상영 공간 직접 운영</span></dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ PROCESS ══════════ -->
+<section class="sect" id="process">
+  <div class="wrap">
+    <div class="rise">
+      <p class="eyebrow">Process</p>
+      <h2 class="sect-title">한 줄로 이어지는 작업</h2>
+      <p class="sect-lead" style="margin-bottom:clamp(40px,5vw,64px)">
+        아래 일곱 구간을 모두 안에서 처리합니다. 넘기는 지점이 없으니 의도가 새지 않습니다.
+      </p>
+    </div>
+
+    <ol class="flow rise">
+      <li><span class="s">기획</span><em>Concept</em></li>
+      <li class="hi"><span class="s">디자인</span><em>Design</em><a href="design.html">밤구름 ↗</a></li>
+      <li><span class="s">촬영</span><em>Shoot</em></li>
+      <li><span class="s">DIT</span><em>Data</em></li>
+      <li><span class="s">편집</span><em>Edit</em></li>
+      <li class="hi"><span class="s">DI</span><em>Color</em><a href="color.html">컬러리버브 ↗</a></li>
+      <li class="hi"><span class="s">상영</span><em>Screen</em><a href="blackmaria.html">블랙마리아 ↗</a></li>
+    </ol>
+  </div>
+</section>
+
+<!-- ══════════ VIDEO ══════════ -->
+<section class="sect" id="video">
+  <div class="wrap">
+    <div class="work-head rise">
+      <div>
+        <p class="eyebrow">Contents</p>
+        <h2 class="sect-title">만든 것들</h2>
+        <p class="sect-lead">브랜드 필름부터 세로 화면 숏폼까지. 놓일 자리를 먼저 정하고 시작합니다.</p>
+      </div>
+    </div>
+
+    <div class="grid grid-3">
+      <article class="card rise">
+        <div class="thumb" data-ph="Vimeo Embed"><span class="play"></span></div>
+        <div class="card-meta">
+          <p class="card-tag">Brand Film · 16:9</p>
+          <h3 class="card-title">작품 제목이 들어갑니다</h3>
+          <p class="card-note">클라이언트명 · 2026</p>
+        </div>
+      </article>
+      <article class="card rise">
+        <div class="thumb" data-ph="Vimeo Embed"><span class="play"></span></div>
+        <div class="card-meta">
+          <p class="card-tag">Promotion · 16:9</p>
+          <h3 class="card-title">작품 제목이 들어갑니다</h3>
+          <p class="card-note">클라이언트명 · 2026</p>
+        </div>
+      </article>
+      <article class="card rise">
+        <div class="thumb" data-ph="Vimeo Embed"><span class="play"></span></div>
+        <div class="card-meta">
+          <p class="card-tag">Campaign · Broadcast</p>
+          <h3 class="card-title">작품 제목이 들어갑니다</h3>
+          <p class="card-note">클라이언트명 · 2025</p>
+        </div>
+      </article>
+      <article class="card rise">
+        <div class="thumb" data-ph="Vimeo Embed"><span class="play"></span></div>
+        <div class="card-meta">
+          <p class="card-tag">Shortform · 9:16</p>
+          <h3 class="card-title">작품 제목이 들어갑니다</h3>
+          <p class="card-note">클라이언트명 · 2025</p>
+        </div>
+      </article>
+      <article class="card rise">
+        <div class="thumb" data-ph="Vimeo Embed"><span class="play"></span></div>
+        <div class="card-meta">
+          <p class="card-tag">Documentary · Cinema</p>
+          <h3 class="card-title">작품 제목이 들어갑니다</h3>
+          <p class="card-note">클라이언트명 · 2025</p>
+        </div>
+      </article>
+      <article class="card rise">
+        <div class="thumb" data-ph="Vimeo Embed"><span class="play"></span></div>
+        <div class="card-meta">
+          <p class="card-tag">Brand Film</p>
+          <h3 class="card-title">작품 제목이 들어갑니다</h3>
+          <p class="card-note">클라이언트명 · 2024</p>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ BRANDS ══════════ -->
+<section class="sect brands" id="brands">
+  <div class="wrap">
+    <div class="rise">
+      <p class="eyebrow">Brands</p>
+      <h2 class="sect-title">세 개의 이름</h2>
+      <p class="sect-lead">
+        색, 디자인, 상영은 각자의 이름으로 운영합니다. 맡기는 일이 분명해야 하는 영역이기 때문입니다.
+      </p>
+    </div>
+
+    <div class="brand-grid">
+      <a class="brand-card rise" href="color.html">
+        <div class="brand-vis cr"><span class="brand-wordmark">COLOR REVERB</span></div>
+        <div class="brand-body">
+          <p class="brand-role">Digital Intermediate</p>
+          <h3 class="brand-kr">컬러리버브</h3>
+          <p class="brand-desc">
+            DI·컬러그레이딩 전담. ARRIRAW부터 최종 마스터까지,
+            촬영이 담아온 정보를 끝까지 밀어붙입니다.
+          </p>
+          <span class="brand-go grad-text">작업물 보기 ↗</span>
+        </div>
+      </a>
+
+      <a class="brand-card rise" href="design.html">
+        <div class="brand-vis nc"><span class="brand-wordmark">NIGHT CLOUD</span></div>
+        <div class="brand-body">
+          <p class="brand-role">Graphic Design</p>
+          <h3 class="brand-kr">밤구름디자인</h3>
+          <p class="brand-desc">
+            키비주얼과 포스터, 영상 그래픽.
+            자체 출판사를 통해 책까지 만듭니다.
+          </p>
+          <span class="brand-go grad-text">작업물 보기 ↗</span>
+        </div>
+      </a>
+
+      <a class="brand-card rise" href="blackmaria.html">
+        <div class="brand-vis bm"><span class="brand-wordmark">BLACK MARIA</span></div>
+        <div class="brand-body">
+          <p class="brand-role">Private Cinema</p>
+          <h3 class="brand-kr">블랙마리아</h3>
+          <p class="brand-desc">
+            300인치 대화면과 돌비 애트모스, 기본 8명·최대 15명.
+            만든 영상이 실제로 걸리는 자리입니다.
+          </p>
+          <span class="brand-go grad-text">공간 보기 ↗</span>
+        </div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ CONTACT ══════════ -->
+<section class="sect" id="contact">
+  <div class="wrap">
+    <div class="contact-grid">
+      <div class="rise">
+        <p class="eyebrow">Contact</p>
+        <h2 class="sect-title">작업 문의</h2>
+        <p class="sect-lead" style="margin-bottom:32px">
+          프로젝트 규모와 일정, 원하시는 결과물을 알려주시면 가장 알맞은 방식을 제안드리겠습니다.
+        </p>
+
+        <div class="field">
+          <label for="f-name">이름 / 회사</label>
+          <input id="f-name" name="name" type="text" placeholder="맹그라미">
+        </div>
+        <div class="field">
+          <label for="f-mail">이메일</label>
+          <input id="f-mail" name="email" type="email" placeholder="hello@example.com">
+        </div>
+        <div class="field">
+          <label for="f-type">문의 분야</label>
+          <select id="f-type" name="type">
+            <option>DI · 컬러그레이딩</option>
+            <option>DIT · 데이터 매니지먼트</option>
+            <option>광고 · 홍보영상 제작</option>
+            <option>블랙마리아 대관</option>
+            <option>기타</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-msg">내용</label>
+          <textarea id="f-msg" name="message" placeholder="프로젝트 소개, 일정, 예산 범위 등"></textarea>
+        </div>
+        <button type="button" class="btn btn-fill" style="cursor:pointer">문의 보내기</button>
+        <p class="form-note">※ 폼 전송 연결(Formspree 등)은 배포 단계에서 붙입니다.</p>
+      </div>
+
+      <dl class="reach rise">
+        <div><dt>Email</dt><dd><a href="mailto:wlsdnr601@mgrm.kr">wlsdnr601@mgrm.kr</a></dd></div>
+        <div><dt>Tel</dt><dd>054-853-6231<span>Mobile 010-9982-6230</span></dd></div>
+        <div><dt>DI Center</dt><dd>서울 금천구 문성로 22-3<span>103호</span></dd></div>
+        <div><dt>Studio</dt><dd>경상북도 안동시<span>기획 · 제작 · 블랙마리아</span></dd></div>
+        <div><dt>Instagram</dt><dd><a href="https://instagram.com/Colorist_ali" target="_blank" rel="noopener">@Colorist_ali ↗</a></dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ FOOTER ══════════ -->
+<footer>
+  <div class="wrap foot">
+    <a href="#top" class="logo">맹그라미 <em>MEDIA CONTENTS GROUP</em></a>
+    <div class="foot-links">
+      <a href="color.html">컬러리버브</a>
+      <a href="design.html">밤구름디자인</a>
+      <a href="blackmaria.html">블랙마리아</a>
+      <a href="#contact">Contact</a>
+    </div>
+    <small>© 2026 맹그라미 MGRM. All rights reserved.</small>
+  </div>
+</footer>
+
+<script>
+/* nav state ------------------------------------------------ */
+const hd = document.getElementById('hd');
+const colorSec = document.getElementById('brands');
+const links = [...document.querySelectorAll('.nav a')];
+
+function onScroll(){
+  hd.classList.toggle('scrolled', window.scrollY > 10);
+  const r = colorSec.getBoundingClientRect();
+  hd.classList.toggle('on-dark', r.top <= 68 && r.bottom > 68);
+}
+window.addEventListener('scroll', onScroll, {passive:true});
+onScroll();
+
+/* active link --------------------------------------------- */
+const secs = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+secs.forEach(s => new IntersectionObserver(es => {
+  es.forEach(e => {
+    if(e.isIntersecting){
+      links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id));
+    }
+  });
+}, {rootMargin:'-45% 0px -50% 0px'}).observe(s));
+
+/* mobile menu --------------------------------------------- */
+const burger = document.getElementById('burger'), nav = document.getElementById('nav');
+burger.addEventListener('click', () => {
+  const open = nav.classList.toggle('open');
+  burger.setAttribute('aria-expanded', open);
+});
+links.forEach(a => a.addEventListener('click', () => {
+  nav.classList.remove('open');
+  burger.setAttribute('aria-expanded', false);
+}));
+
+/* reveal --------------------------------------------------- */
+const io = new IntersectionObserver(es => {
+  es.forEach(e => { if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+}, {threshold:.12});
+document.querySelectorAll('.rise').forEach((el,i) => {
+  el.style.transitionDelay = (i % 3) * 70 + 'ms';
+  io.observe(el);
+});
+
+</script>
+</body>
+</html>
