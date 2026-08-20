@@ -155,6 +155,8 @@ header.on-dark .burger span{background:var(--dark-ink)}
 /* ============================================================
    HERO
    ============================================================ */
+.herobg{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;z-index:0}
+.hero-inner{position:relative;z-index:1}
 .hero{
   min-height:100svh;display:flex;flex-direction:column;justify-content:center;
   padding-top:68px;position:relative;overflow:hidden;
@@ -491,6 +493,7 @@ footer{background:var(--dark);color:var(--dark-soft);padding-block:44px}
 
 <!-- ══════════ HERO ══════════ -->
 <section class="hero" id="top">
+  <canvas class="herobg" aria-hidden="true"></canvas>
   <div class="hero-inner">
     <h1 class="claim">
       <span>We <b>Make</b> It.</span>
@@ -904,6 +907,54 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeYt(); });
       }
     }
   });
+})();
+</script>
+
+<script>
+/* 히어로 배경 — bleed */
+(function(){
+  const cv=document.querySelector('.herobg');
+  if(!cv||!cv.getContext) return;
+  const ctx=cv.getContext('2d'); if(!ctx) return;
+  const A=[232,68,120], B=[123,94,167], DARK=false;
+  const reduce=!!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+  let W=0,H=0,t=0,raf=null;
+  function resize(){
+    const D=Math.min(devicePixelRatio||1,2);
+    W=cv.clientWidth;H=cv.clientHeight;
+    cv.width=W*D;cv.height=H*D;ctx.setTransform(D,0,0,D,0,0);
+  }
+  addEventListener('resize',resize);
+
+  const blobs=Array.from({length:6},(_,i)=>({
+    x:Math.random(),y:Math.random(),r:.30+Math.random()*.32,
+    sx:(Math.random()-.5)*.00015,sy:(Math.random()-.5)*.00011,
+    p:Math.random()*Math.PI*2,c:i%2?B:A}));
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    ctx.globalCompositeOperation=DARK?'lighter':'multiply';
+    const S=Math.max(W,H);
+    blobs.forEach(b=>{
+      const x=(b.x+Math.sin(t*.00021+b.p)*.06)*W;
+      const y=(b.y+Math.cos(t*.00017+b.p)*.05)*H;
+      const r=b.r*S*(1+Math.sin(t*.0003+b.p)*.07);
+      const g=ctx.createRadialGradient(x,y,0,x,y,r);
+      g.addColorStop(0,`rgba(${b.c[0]},${b.c[1]},${b.c[2]},.20)`);
+      g.addColorStop(.5,`rgba(${b.c[0]},${b.c[1]},${b.c[2]},.075)`);
+      g.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();
+      b.x+=b.sx;b.y+=b.sy;
+      if(b.x<-.3||b.x>1.3)b.sx*=-1;
+      if(b.y<-.3||b.y>1.3)b.sy*=-1;
+    });
+    ctx.globalCompositeOperation='source-over';
+  }
+  function loop(){t+=16;draw();raf=requestAnimationFrame(loop);}
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden)cancelAnimationFrame(raf);else if(!reduce)loop();
+  });
+  resize();
+  if(reduce){t=4000;draw();}else loop();
 })();
 </script>
 </body>

@@ -100,6 +100,8 @@ header.scrolled{border-bottom-color:var(--line)}
 }
 
 /* ── HERO ── */
+.herobg{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;z-index:0}
+.hero-inner{position:relative;z-index:1}
 .hero{
   min-height:100svh;display:flex;align-items:center;padding-top:68px;
   position:relative;overflow:hidden;
@@ -300,6 +302,7 @@ footer{padding-block:40px;border-top:1px solid var(--line)}
 
 <!-- ══ HERO ══ -->
 <section class="hero" id="top">
+  <canvas class="herobg" aria-hidden="true"></canvas>
   <div class="hero-inner">
     <p class="unit">맹그라미 미디어 콘텐츠 그룹 · DI 부문</p>
     <p class="kicker tagline">Adding <b>Color</b> to Emotion.</p>
@@ -573,6 +576,71 @@ document.querySelectorAll('[data-ba]').forEach(ba=>{
   });
   set(50);
 });
+</script>
+
+<script>
+/* 히어로 배경 — scope */
+(function(){
+  const cv=document.querySelector('.herobg');
+  if(!cv||!cv.getContext) return;
+  const ctx=cv.getContext('2d'); if(!ctx) return;
+  const A=[232,68,120], B=[123,94,167], DARK=true;
+  const reduce=!!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+  let W=0,H=0,t=0,raf=null;
+  function resize(){
+    const D=Math.min(devicePixelRatio||1,2);
+    W=cv.clientWidth;H=cv.clientHeight;
+    cv.width=W*D;cv.height=H*D;ctx.setTransform(D,0,0,D,0,0);
+  }
+  addEventListener('resize',resize);
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    const cx=W*.74,cy=H*.46,R=Math.min(W,H)*.30;
+    ctx.lineWidth=1;
+    ctx.strokeStyle=DARK?'rgba(240,240,245,.055)':'rgba(16,16,20,.055)';
+    [1,.66,.33].forEach(k=>{ctx.beginPath();ctx.arc(cx,cy,R*k,0,7);ctx.stroke();});
+    for(let i=0;i<6;i++){
+      const a=i*Math.PI/3+.18;
+      ctx.beginPath();
+      ctx.moveTo(cx+Math.cos(a)*R*.2,cy+Math.sin(a)*R*.2);
+      ctx.lineTo(cx+Math.cos(a)*R,cy+Math.sin(a)*R);
+      ctx.stroke();
+    }
+    ctx.lineWidth=1.6;
+    for(let k=0;k<3;k++){
+      ctx.beginPath();
+      for(let i=0;i<=140;i++){
+        const u=i/140,a=u*Math.PI*2+t*.00012+k*2.1;
+        const rr=R*(.42+.34*Math.sin(a*3+t*.00028+k)+.06*Math.sin(a*7-t*.0002));
+        const x=cx+Math.cos(a)*rr,y=cy+Math.sin(a)*rr;
+        i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+      }
+      const c=k%2?B:A;
+      ctx.strokeStyle=`rgba(${c[0]},${c[1]},${c[2]},${DARK?.20:.13})`;
+      ctx.stroke();
+    }
+    ctx.lineWidth=1.2;
+    for(let k=0;k<3;k++){
+      ctx.beginPath();
+      const base=H*(.80+k*.045);
+      for(let x=0;x<=W;x+=6){
+        const u=x/W;
+        const y=base-(Math.sin(u*9+t*.0004+k)*.5+.5)*H*.05-Math.sin(u*23-t*.0006+k*2)*H*.012;
+        x?ctx.lineTo(x,y):ctx.moveTo(x,y);
+      }
+      const c=k===1?A:B;
+      ctx.strokeStyle=`rgba(${c[0]},${c[1]},${c[2]},${DARK?.16:.10})`;
+      ctx.stroke();
+    }
+  }
+  function loop(){t+=16;draw();raf=requestAnimationFrame(loop);}
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden)cancelAnimationFrame(raf);else if(!reduce)loop();
+  });
+  resize();
+  if(reduce){t=4000;draw();}else loop();
+})();
 </script>
 </body>
 </html>
