@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="favicon.png">
 <title>블랙마리아 BLACK MARIA | 프라이빗 시네마</title>
 <meta name="description" content="블랙마리아는 300인치 대화면과 돌비 애트모스를 갖춘 프라이빗 시네마입니다. 시간 단위 대관.">
 
@@ -69,13 +71,22 @@ header{
 header.scrolled{border-bottom-color:var(--line)}
 .bar{display:flex;align-items:center;justify-content:space-between;height:68px;gap:16px}
 .brand{font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:9px}
+.logo-mark{height:19px;width:auto;align-self:center;margin-right:9px}
+@media(max-width:560px){.logo-mark{height:16px}}
 .brand em{font-style:normal;font-size:10px;font-weight:600;letter-spacing:.2em;color:var(--ink-faint)}
 .nav{display:flex;align-items:center;gap:clamp(16px,2.4vw,34px)}
 .nav a{font-family:var(--display);font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);padding-block:6px;transition:color .3s}
 .nav a:hover{color:var(--ink)}
+.nav a.active{color:var(--ink);font-weight:700}
+.nav a.active::after{content:'';display:block;height:2px;margin-top:5px;background:var(--ci)}
+.nav a.nav-cta{padding:7px 15px;border:1px solid currentColor;border-radius:999px;font-weight:600}
+.nav a.nav-cta:hover{background:var(--ci);color:#fff;border-color:transparent}
+
 .nav a.home{color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:8px 15px;font-size:11px}
 .nav a.home:hover{border-color:var(--ci-a)}
-@media(max-width:760px){.nav a:not(.home){display:none}}
+@media(max-width:760px){.nav{gap:14px;flex-wrap:wrap;justify-content:flex-end}
+  .nav a{font-size:12.5px}
+  .nav a.nav-cta{display:none}}
 
 /* ── HERO : projection beam ── */
 .hero{min-height:100svh;display:flex;align-items:center;padding-top:68px;position:relative;overflow:hidden}
@@ -200,15 +211,13 @@ footer{padding-block:40px;border-top:1px solid var(--line)}
 
 <header id="hd">
   <div class="wrap bar">
-    <a href="#top" class="brand">블랙마리아 <em>BLACK MARIA</em></a>
+    <a href="#top" class="brand"><img src="logo.png" alt="" class="logo-mark">블랙마리아 <em>BLACK MARIA</em></a>
     <nav class="nav">
-      <a href="#concept">Concept</a>
-      <a href="#space">Space</a>
-      <a href="#spec">Spec</a>
-      <a href="#use">Use</a>
-      <a href="#contact">Contact</a>
-      <a href="color.html">컬러리버브</a>
-      <a href="index.html" class="home">← 맹그라미</a>
+      <a href="index.html">맹그라미</a>
+      <a href="color.html">DI</a>
+      <a href="design.html">Design</a>
+      <a href="#top" class="active" aria-current="page">Blackmaria</a>
+      <a href="#contact" class="nav-cta">Contact</a>
     </nav>
   </div>
 </header>
@@ -393,7 +402,7 @@ footer{padding-block:40px;border-top:1px solid var(--line)}
 
 <footer>
   <div class="wrap foot">
-    <a href="#top" class="brand">블랙마리아 <em>BLACK MARIA</em></a>
+    <a href="#top" class="brand"><img src="logo.png" alt="" class="logo-mark">블랙마리아 <em>BLACK MARIA</em></a>
     <a href="index.html" class="back">← 맹그라미 MGRM</a>
     <small>© 2026 맹그라미 MGRM. All rights reserved.</small>
   </div>
