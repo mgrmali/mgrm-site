@@ -79,6 +79,15 @@ video{width:100%;height:auto;display:block;background:#000}
 .item__tc{font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--accent);letter-spacing:.06em}
 .item__txt{margin:5px 0 0;font-size:14px;color:var(--muted-2);white-space:pre-wrap;word-break:break-word}
 .item__by{margin:6px 0 0;font-size:11.5px;color:var(--muted)}
+.item__act{display:flex;gap:6px;margin-top:9px}
+.item__act button{font-family:var(--display);font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;padding:5px 10px;border-radius:999px;border:1px solid var(--line);
+  background:transparent;color:var(--muted);cursor:pointer;transition:.18s}
+.item__act button:hover{color:var(--text);border-color:var(--accent)}
+.item__act .del:hover{color:var(--accent)}
+.item__edit textarea{width:100%;min-height:64px;resize:vertical;background:var(--panel-2);
+  border:1px solid var(--accent);border-radius:8px;color:var(--text);padding:9px 10px;
+  font-family:inherit;font-size:14px;line-height:1.55;margin-top:6px}
 .empty{color:var(--muted);font-size:13.5px;text-align:center;padding:26px 10px;line-height:1.7}
 .compose{border-top:1px solid var(--line);padding:14px}
 .compose textarea{width:100%;min-height:74px;resize:vertical;background:var(--panel);
@@ -153,7 +162,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent)}
   <aside class="side">
     <div class="side__head">
       <h2>코멘트</h2>
-      <p>재생 중 시점이 자동으로 기록됩니다.</p>
+      <p>재생 중 시점이 자동으로 기록됩니다. 이름을 적어두시면 본인 코멘트를 수정·삭제할 수 있습니다.</p>
     </div>
 
     <div class="list" id="list">
@@ -258,7 +267,7 @@ async function enter(pw){
     $('#mTitle').textContent = r.title;
     $('#mVer').textContent = r.ver || '';
     comments = (r.comments || []).map(c => ({
-      sec: Number(c.sec) || 0, tc: c.tc, txt: c.txt, who: c.who
+      id: c.id || '', sec: Number(c.sec) || 0, tc: c.tc, txt: c.txt, who: c.who
     }));
     render();
     v.src = r.src;
@@ -285,6 +294,7 @@ document.querySelectorAll('[data-seek]').forEach(b => {
   });
 });
 $('#markBtn').addEventListener('click', () => { v.pause(); $('#txt').focus(); });
+$('#who').addEventListener('input', () => render());
 
 /* 코멘트 목록 */
 function render(){
@@ -294,6 +304,8 @@ function render(){
     return;
   }
   box.textContent = '';
+  const me = $('#who').value.trim();
+
   comments.slice().sort((a, b) => a.sec - b.sec).forEach(c => {
     const d = document.createElement('div'); d.className = 'item';
     const tc = document.createElement('div'); tc.className = 'item__tc'; tc.textContent = c.tc;
@@ -301,8 +313,70 @@ function render(){
     const by = document.createElement('p');   by.className = 'item__by';  by.textContent = c.who || '이름 없음';
     d.append(tc, tx, by);
     d.addEventListener('click', () => { v.currentTime = c.sec; v.pause(); });
+
+    /* 본인이 남긴 코멘트만 수정·삭제 */
+    if (c.id && me && c.who && me === c.who) {
+      const act = document.createElement('div'); act.className = 'item__act';
+
+      const eBtn = document.createElement('button');
+      eBtn.textContent = '수정';
+      eBtn.addEventListener('click', ev => { ev.stopPropagation(); editItem(d, c, tx, act); });
+
+      const dBtn = document.createElement('button');
+      dBtn.className = 'del'; dBtn.textContent = '삭제';
+      dBtn.addEventListener('click', async ev => {
+        ev.stopPropagation();
+        if (!confirm('이 코멘트를 삭제할까요?')) return;
+        const ok = await post({ '_폼종류':'리뷰코멘트', '작업':'삭제',
+          '코멘트ID': c.id, '프로젝트키': key, '프로젝트': P.title });
+        if (ok) {
+          comments = comments.filter(x => x.id !== c.id);
+          render();
+          $('#status').className = 'status';
+          $('#status').textContent = '삭제되었습니다.';
+        }
+      });
+
+      act.append(eBtn, dBtn);
+      d.appendChild(act);
+    }
+
     box.appendChild(d);
   });
+}
+
+/* 인라인 수정 */
+function editItem(box, c, txEl, actEl) {
+  if (box.querySelector('textarea')) return;
+  const wrap = document.createElement('div'); wrap.className = 'item__edit';
+  const ta = document.createElement('textarea'); ta.value = c.txt;
+  const row = document.createElement('div'); row.className = 'item__act';
+
+  const save = document.createElement('button'); save.textContent = '저장';
+  const cancel = document.createElement('button'); cancel.textContent = '취소';
+
+  save.addEventListener('click', async ev => {
+    ev.stopPropagation();
+    const nv = ta.value.trim();
+    if (!nv) return;
+    const ok = await post({ '_폼종류':'리뷰코멘트', '작업':'수정',
+      '코멘트ID': c.id, '내용': nv, '프로젝트키': key, '프로젝트': P.title });
+    if (ok) {
+      c.txt = nv;
+      render();
+      $('#status').className = 'status';
+      $('#status').textContent = '수정되었습니다.';
+    }
+  });
+  cancel.addEventListener('click', ev => { ev.stopPropagation(); render(); });
+
+  row.append(save, cancel);
+  wrap.append(ta, row);
+  wrap.addEventListener('click', ev => ev.stopPropagation());
+  txEl.style.display = 'none';
+  actEl.style.display = 'none';
+  box.appendChild(wrap);
+  ta.focus();
 }
 
 /* 코멘트 전송 */
@@ -332,8 +406,10 @@ $('#send').addEventListener('click', async () => {
   $('#status').className = 'status';
   $('#status').textContent = '보내는 중…';
 
+  const id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
   const ok = await post({
-    '_폼종류':'리뷰코멘트',
+    '_폼종류':'리뷰코멘트', '작업':'등록', '코멘트ID': id,
     '프로젝트키': key,
     '프로젝트': P.title, '버전': P.ver || '',
     '타임코드': tc, '초': sec.toFixed(2),
@@ -342,7 +418,7 @@ $('#send').addEventListener('click', async () => {
 
   $('#send').disabled = false;
   if(ok){
-    comments.push({sec, tc, txt, who});
+    comments.push({id, sec, tc, txt, who});
     $('#txt').value = '';
     $('#status').textContent = '전달되었습니다.';
     render();
@@ -361,7 +437,8 @@ $('#approve').addEventListener('click', async () => {
   }
   if(!confirm('이 버전을 그대로 승인하시겠습니까?')) return;
   const ok = await post({
-    '_폼종류':'리뷰코멘트',
+    '_폼종류':'리뷰코멘트', '작업':'등록',
+    '코멘트ID': 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
     '프로젝트키': key,
     '프로젝트': P.title, '버전': P.ver || '',
     '타임코드':'—', '초':'',
