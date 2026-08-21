@@ -177,12 +177,17 @@ header.scrolled{border-bottom-color:var(--line)}
 
 /* ── BEFORE / AFTER ── */
 .ba{
-  position:relative;border-radius:16px;overflow:hidden;aspect-ratio:21/9;
+  position:relative;border-radius:16px;overflow:hidden;aspect-ratio:2.35/1;
   border:1px solid var(--line);cursor:ew-resize;user-select:none;touch-action:none;background:#1B1B21;
 }
 @media(max-width:700px){.ba{aspect-ratio:4/3}}
-.ba-layer{position:absolute;inset:0}
-.ba-before{background:linear-gradient(150deg,#3A3A42,#55555F 45%,#42424C);filter:saturate(.26) contrast(.8) brightness(.92)}
+/* 실제 스틸을 쓰는 비교는 원본 화면비를 유지해 잘리지 않게 */
+.ba[data-img]:not([style*="aspect"]){aspect-ratio:2.35/1}
+@media(max-width:700px){.ba[data-img]:not([style*="aspect"]){aspect-ratio:2.35/1}}
+.ba[data-img] .ba-layer{background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#0B0B0E}
+.ba-layer{position:absolute;inset:0;background-size:cover;background-position:center}
+.ba-before{background:linear-gradient(150deg,#3A3A42,#55555F 45%,#42424C)}
+.ba[data-img] .ba-before{filter:none}
 .ba-after{
   background:
     radial-gradient(120% 90% at 22% 18%, rgba(232,68,120,.44), transparent 58%),
@@ -221,6 +226,7 @@ header.scrolled{border-bottom-color:var(--line)}
   padding:0 16px 14px 0;border-bottom:1px solid var(--line);
 }
 .works td{padding:18px 16px 18px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.works .m,.works .y{vertical-align:bottom}
 .works tbody tr{transition:background .25s}
 .works tbody tr:hover{background:var(--bg-alt)}
 .works .t{font-weight:800;font-size:15.5px}
@@ -325,8 +331,8 @@ footer{padding-block:40px;border-top:1px solid var(--line)}
   <div class="wrap rise">
     <p>색은 마지막에 오지만,<br><span class="grad">가장 오래 남습니다.</span></p>
     <p class="sig">
-      관객은 조명 설계도, 렌즈 선택도 기억하지 못합니다.
-      다만 그 장면이 어떤 온도였는지는 남습니다.
+      관객은 조명 설계도, 렌즈 선택도 알지 못합니다.
+      다만 그 장면이 어떤 감정이었는지는 알고 있습니다.
       색은 이야기를 설명하지 않고, 이야기가 끝난 자리에 남습니다.
     </p>
   </div>
@@ -344,36 +350,36 @@ footer{padding-block:40px;border-top:1px solid var(--line)}
   <div class="wrap">
     <div class="rise">
       <p class="eyebrow">Look</p>
-      <h2 class="sect-title">같은 화면, 다른 온도</h2>
-      <p class="lead">왼쪽은 카메라가 본 것, 오른쪽은 관객이 볼 것. 핸들을 끌어보세요.</p>
+      <h2 class="sect-title">색이 없으면 감정도 없습니다</h2>
+      <p class="lead">촬영 원본은 판단을 미뤄둔 상태입니다. 이야기가 요구하는 색을 여기서 정합니다. 핸들을 끌어 확인해보세요.</p>
     </div>
 
     <div class="ba-list">
       <div class="rise">
-        <div class="ba" data-ba role="slider" tabindex="0" aria-label="그레이딩 전후 비교 1" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
-          <div class="ba-layer ba-before"></div>
-          <div class="ba-layer ba-after"></div>
+        <div class="ba" data-ba data-img role="slider" tabindex="0" aria-label="유의서점 그레이딩 전후 비교" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+          <div class="ba-layer ba-before" style="background-image:url('img/uibook-before.jpg')"></div>
+          <div class="ba-layer ba-after" style="background-image:url('img/uibook-after.jpg')"></div>
           <span class="ba-tag l">카메라가 본 것</span>
           <span class="ba-tag r">관객이 볼 것</span>
           <div class="ba-handle"><span class="ba-knob"></span></div>
         </div>
         <div class="ba-cap">
-          <span><b>작품명이 들어갑니다</b> · 감독 000</span>
-          <span>ARRI ALEXA 35 · LogC4 / AWG4</span>
+          <span><b>유의서점</b> · 감독 이범규 · 촬영감독 조영대</span>
+          <span>Blackmagic PYXIS 6K · BRAW</span>
         </div>
       </div>
 
       <div class="rise">
-        <div class="ba" data-ba role="slider" tabindex="0" aria-label="그레이딩 전후 비교 2" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
-          <div class="ba-layer ba-before"></div>
-          <div class="ba-layer ba-after"></div>
+        <div class="ba" data-ba data-img style="aspect-ratio:16/9" role="slider" tabindex="0" aria-label="럭키7 그레이딩 전후 비교" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+          <div class="ba-layer ba-before" style="background-image:url('img/lucky7-before.jpg')"></div>
+          <div class="ba-layer ba-after" style="background-image:url('img/lucky7-after.jpg')"></div>
           <span class="ba-tag l">카메라가 본 것</span>
           <span class="ba-tag r">관객이 볼 것</span>
           <div class="ba-handle"><span class="ba-knob"></span></div>
         </div>
         <div class="ba-cap">
-          <span><b>작품명이 들어갑니다</b> · 감독 000</span>
-          <span>ARRIRAW · ASC CDL</span>
+          <span><b>럭키7</b> · 감독 이범규</span>
+          <span>SONY FX6 · RAW</span>
         </div>
       </div>
     </div>
@@ -397,39 +403,53 @@ footer{padding-block:40px;border-top:1px solid var(--line)}
       </thead>
       <tbody>
         <tr>
-          <td class="t"><span class="role">Color Grading</span><br>작품명이 들어갑니다</td>
-          <td class="m">감독명</td>
-          <td class="m">촬영감독명</td>
+          <td class="t"><span class="role">Color Grading</span><br>뱀, 꽃</td>
+          <td class="m">김영준</td>
+          <td class="m">—</td>
+          <td class="m">S-Log3 / S-Gamut3.Cine</td>
+          <td class="y">2026</td>
+        </tr>
+        <tr>
+          <td class="t"><span class="role">Color Grading</span><br>유의서점</td>
+          <td class="m">이범규</td>
+          <td class="m">조영대</td>
+          <td class="m">BRAW</td>
+          <td class="y">2026</td>
+        </tr>
+        <tr>
+          <td class="t"><span class="role">Color Grading</span><br>나는 엄마</td>
+          <td class="m">이범규</td>
+          <td class="m">조영대</td>
+          <td class="m">S-Log3 / S-Gamut3.Cine</td>
+          <td class="y">2026</td>
+        </tr>
+        <tr>
+          <td class="t"><span class="role">Color Grading</span><br>러브러브체인지</td>
+          <td class="m">이범규</td>
+          <td class="m">—</td>
+          <td class="m">S-Log3 / S-Gamut3.Cine</td>
+          <td class="y">2026</td>
+        </tr>
+        <tr>
+          <td class="t"><span class="role">DIT</span><br>SK-II</td>
+          <td class="m">Paola Kudacki</td>
+          <td class="m">Tristan Sheridan</td>
           <td class="m">ARRIRAW</td>
           <td class="y">2026</td>
         </tr>
         <tr>
-          <td class="t"><span class="role">DI · DIT</span><br>작품명이 들어갑니다</td>
-          <td class="m">감독명</td>
-          <td class="m">촬영감독명</td>
+          <td class="t"><span class="role">DIT</span><br>ADER error</td>
+          <td class="m">Santiago Sierra Soler</td>
+          <td class="m">Gaul Porat</td>
+          <td class="m">ARRIRAW</td>
+          <td class="y">2026</td>
+        </tr>
+        <tr>
+          <td class="t"><span class="role">DIT</span><br>풀카운트</td>
+          <td class="m">함준호</td>
+          <td class="m">빈태환</td>
           <td class="m">ProRes 4444</td>
-          <td class="y">2026</td>
-        </tr>
-        <tr>
-          <td class="t"><span class="role">Color Grading</span><br>작품명이 들어갑니다</td>
-          <td class="m">감독명</td>
-          <td class="m">촬영감독명</td>
-          <td class="m">LogC4</td>
-          <td class="y">2025</td>
-        </tr>
-        <tr>
-          <td class="t"><span class="role">On-set Look</span><br>작품명이 들어갑니다</td>
-          <td class="m">감독명</td>
-          <td class="m">촬영감독명</td>
-          <td class="m">ASC CDL</td>
-          <td class="y">2025</td>
-        </tr>
-        <tr>
-          <td class="t"><span class="role">Color Grading</span><br>작품명이 들어갑니다</td>
-          <td class="m">감독명</td>
-          <td class="m">촬영감독명</td>
-          <td class="m">ARRIRAW</td>
-          <td class="y">2024</td>
+          <td class="y">2027 예정</td>
         </tr>
       </tbody>
     </table>
