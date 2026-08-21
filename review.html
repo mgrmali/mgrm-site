@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/png" href="favicon.png">
+<title>리뷰 — 컬러리버브 Color Reverb</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+/* ═══════════════════════════════════════════
+   설정은 파일 아래 CONFIG / PROJECTS 두 곳만
+   ═══════════════════════════════════════════ */
+:root{
+  color-scheme:dark;
+  --ink:#0A0A0C;         /* 색 판단을 위한 중립 검정 */
+  --panel:#141419;
+  --panel-2:#1C1C23;
+  --line:#2A2A33;
+  --text:#F2F0F5;
+  --muted:#9B96A6;
+  --muted-2:#C9C4D4;
+  --accent:#F2749E;
+  --ci:linear-gradient(100deg,#E84278,#A63285 52%,#482583);
+  --display:'Montserrat',sans-serif;
+  --sans:'Pretendard Variable',Pretendard,-apple-system,"Apple SD Gothic Neo",sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ink);color:var(--text);font-family:var(--sans);
+  font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+
+/* 헤더 */
+.head{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:14px clamp(16px,3vw,28px);border-bottom:1px solid var(--line)}
+.head__brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+.head__brand img{height:16px;width:auto;display:block}
+.head__brand span{font-family:var(--display);font-size:11px;font-weight:700;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.head__meta{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--muted);text-align:right}
+.head__meta b{color:var(--text);font-weight:600}
+
+/* 레이아웃 */
+.wrap{display:grid;grid-template-columns:1fr 340px;gap:0;min-height:calc(100vh - 52px)}
+@media(max-width:960px){.wrap{grid-template-columns:1fr}}
+
+/* 플레이어 */
+.stage{padding:clamp(14px,2.5vw,28px);display:flex;flex-direction:column;gap:14px;min-width:0}
+.player{position:relative;background:#000;border-radius:10px;overflow:hidden;
+  box-shadow:0 20px 60px -30px rgba(0,0,0,.9)}
+video{width:100%;height:auto;display:block;background:#000}
+.tcbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.tc{font-family:var(--mono);font-size:clamp(15px,2.4vw,20px);font-weight:600;letter-spacing:.06em}
+.tc small{color:var(--muted);font-size:11px;letter-spacing:.1em;margin-left:8px}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font-family:var(--display);font-size:11.5px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;padding:10px 16px;border-radius:999px;
+  border:1px solid var(--line);background:transparent;color:var(--muted-2);cursor:pointer;transition:.2s}
+.btn:hover{color:var(--text);border-color:var(--accent)}
+.btn-fill{background:var(--ci);border-color:transparent;color:#fff}
+.btn-fill:hover{filter:brightness(1.1)}
+.note{font-size:13.5px;color:var(--muted);margin:0}
+
+/* 코멘트 패널 */
+.side{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+@media(max-width:960px){.side{border-left:0;border-top:1px solid var(--line)}}
+.side__head{padding:16px 18px 12px;border-bottom:1px solid var(--line)}
+.side__head h2{margin:0;font-size:14px;font-weight:700;letter-spacing:-.01em}
+.side__head p{margin:5px 0 0;font-size:13px;color:var(--muted)}
+.list{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:120px}
+.item{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:11px 13px;cursor:pointer;transition:.18s}
+.item:hover{border-color:var(--accent);background:var(--panel-2)}
+.item__tc{font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--accent);letter-spacing:.06em}
+.item__txt{margin:5px 0 0;font-size:14px;color:var(--muted-2);white-space:pre-wrap;word-break:break-word}
+.item__by{margin:6px 0 0;font-size:11.5px;color:var(--muted)}
+.empty{color:var(--muted);font-size:13.5px;text-align:center;padding:26px 10px;line-height:1.7}
+.compose{border-top:1px solid var(--line);padding:14px}
+.compose textarea{width:100%;min-height:74px;resize:vertical;background:var(--panel);
+  border:1px solid var(--line);border-radius:9px;color:var(--text);padding:11px 12px;
+  font-family:inherit;font-size:14.5px;line-height:1.55}
+.compose input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:9px;
+  color:var(--text);padding:10px 12px;font-family:inherit;font-size:14px;margin-bottom:8px}
+textarea:focus,input:focus{outline:none;border-color:var(--accent)}
+::placeholder{color:#6E6A79}
+.compose__row{display:flex;align-items:center;gap:9px;margin-top:9px}
+.compose__tc{font-family:var(--mono);font-size:12px;color:var(--accent);flex:none}
+.compose .btn{flex:1;justify-content:center}
+.status{margin:9px 0 0;font-size:13px;color:var(--muted);min-height:18px}
+.status.err{color:var(--accent)}
+
+/* 잠금 화면 */
+.gate{position:fixed;inset:0;z-index:50;background:var(--ink);display:grid;place-items:center;padding:24px}
+.gate.off{display:none}
+.gate__box{width:100%;max-width:380px;text-align:center}
+.gate__box img{height:22px;margin-bottom:26px}
+.gate__box h1{font-size:21px;font-weight:700;margin:0 0 8px;letter-spacing:-.02em}
+.gate__box p{color:var(--muted);font-size:14.5px;margin:0 0 22px}
+.gate__box input{width:100%;text-align:center;letter-spacing:.2em;font-family:var(--mono)}
+.gate__box .btn{width:100%;margin-top:10px;padding:13px}
+</style>
+</head>
+<body>
+
+<!-- 잠금 -->
+<div class="gate" id="gate">
+  <div class="gate__box">
+    <img src="logo.png" alt="맹그라미">
+    <h1 id="gateTitle">리뷰 링크</h1>
+    <p id="gateDesc">전달받은 비밀번호를 입력해주세요.</p>
+    <input type="password" id="pw" placeholder="••••••" autocomplete="off">
+    <button class="btn btn-fill" id="unlock">열기</button>
+    <p class="status" id="gateStatus"></p>
+  </div>
+</div>
+
+<header class="head">
+  <a class="head__brand" href="https://mgrm.kr/color.html">
+    <img src="logo.png" alt="">
+    <span>Color Reverb · Review</span>
+  </a>
+  <div class="head__meta">
+    <b id="mTitle">—</b><br><span id="mVer">—</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <section class="stage">
+    <div class="player">
+      <video id="v" controls controlsList="nodownload noplaybackrate" disablePictureInPicture playsinline preload="metadata"></video>
+    </div>
+
+    <div class="tcbar">
+      <div class="tc" id="tc">00:00:00:00 <small id="fpsLabel">24 FPS</small></div>
+      <div class="tools">
+        <button class="btn" data-seek="-1">◀ 1프레임</button>
+        <button class="btn" data-seek="1">1프레임 ▶</button>
+        <button class="btn" id="markBtn">이 시점에 코멘트</button>
+      </div>
+    </div>
+
+    <p class="note">
+      리뷰용 압축본입니다. 최종 마스터와 미세한 차이가 있을 수 있습니다.
+      가능하면 조명을 낮춘 환경에서, 밝기를 조정하지 않은 화면으로 봐주세요.
+    </p>
+  </section>
+
+  <aside class="side">
+    <div class="side__head">
+      <h2>코멘트</h2>
+      <p>재생 중 시점이 자동으로 기록됩니다.</p>
+    </div>
+
+    <div class="list" id="list">
+      <p class="empty">아직 남긴 코멘트가 없습니다.<br>수정이 필요한 지점에서 남겨주세요.</p>
+    </div>
+
+    <div class="compose">
+      <input type="text" id="who" placeholder="이름 (예: 이범규 감독)">
+      <textarea id="txt" placeholder="예: 인물 얼굴이 조금 붉습니다"></textarea>
+      <div class="compose__row">
+        <span class="compose__tc" id="cTc">00:00:00:00</span>
+        <button class="btn btn-fill" id="send">보내기</button>
+      </div>
+      <button class="btn" id="approve" style="width:100%;margin-top:8px">이대로 승인</button>
+      <p class="status" id="status"></p>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════
+   1) 수신 주소 — 문진표와 같은 앱스스크립트
+   ═══════════════════════════════════════════ */
+const CONFIG = {
+  endpoint: "https://script.google.com/macros/s/AKfycbxMgNVVuNMrzjTKSyXSd_lG4YI2BcBD0QI7-rh25Jv0J1xZr2qEB7PTS9CEzkes7bAF5g/exec"
+};
+
+/* ═══════════════════════════════════════════
+   2) 프로젝트 목록
+      새 리뷰를 열 때 여기에 한 줄 추가하고
+      이 파일을 다시 올리면 됩니다.
+
+      키       : 주소의 ?p= 뒤에 붙는 값
+      title    : 작품명
+      ver      : 버전 표기
+      src      : NAS 영상 주소
+      pw       : 비밀번호 (없애려면 "")
+      until    : 만료일 (없애려면 "")
+      fps      : 타임코드 계산용
+   ═══════════════════════════════════════════ */
+const PROJECTS = {
+  "test": {
+    title: "테스트",
+    ver:   "v1",
+    src:   "https://mgrm.myqnapcloud.com:8081/review/e0213.MP4",
+    pw:    "1234",
+    until: "",
+    fps:   24
+  }
+  /* 예시 —
+  ,"uibook": {
+    title: "유의서점",
+    ver:   "v2",
+    src:   "https://mgrm.myqnapcloud.com:8081/review/uibook_v2_a7f3c9.mp4",
+    pw:    "8412",
+    until: "2026-09-30",
+    fps:   24
+  }
+  */
+};
+
+/* ─────────────────────────────────────────── */
+
+const $ = s => document.querySelector(s);
+const key = new URLSearchParams(location.search).get('p') || '';
+const P = PROJECTS[key];
+const v = $('#v');
+let FPS = 24;
+let comments = [];
+
+/* 프로젝트 확인 */
+if(!P){
+  $('#gateTitle').textContent = '링크를 확인해주세요';
+  $('#gateDesc').textContent = '유효하지 않은 주소입니다. 전달받은 링크를 다시 확인해주세요.';
+  $('#pw').style.display = 'none';
+  $('#unlock').style.display = 'none';
+}else{
+  FPS = P.fps || 24;
+  $('#fpsLabel').textContent = FPS + ' FPS';
+  $('#mTitle').textContent = P.title;
+  $('#mVer').textContent = P.ver || '';
+  document.title = P.title + ' — 컬러리버브 리뷰';
+  $('#gateTitle').textContent = P.title;
+
+  /* 만료 확인 */
+  if(P.until && new Date(P.until + 'T23:59:59') < new Date()){
+    $('#gateDesc').textContent = '이 리뷰 링크는 ' + P.until + ' 로 만료되었습니다. 재발급이 필요하시면 연락 주세요.';
+    $('#pw').style.display = 'none';
+    $('#unlock').style.display = 'none';
+  }else if(!P.pw){
+    open_();
+  }
+}
+
+function open_(){
+  $('#gate').classList.add('off');
+  v.src = P.src;
+}
+
+$('#unlock').addEventListener('click', () => {
+  if($('#pw').value === P.pw){ open_(); }
+  else{
+    $('#gateStatus').className = 'status err';
+    $('#gateStatus').textContent = '비밀번호가 맞지 않습니다.';
+  }
+});
+$('#pw').addEventListener('keydown', e => { if(e.key === 'Enter') $('#unlock').click(); });
+
+/* 타임코드 */
+function toTC(sec){
+  const f = Math.floor((sec % 1) * FPS);
+  const s = Math.floor(sec) % 60;
+  const m = Math.floor(sec / 60) % 60;
+  const h = Math.floor(sec / 3600);
+  const p = n => String(n).padStart(2,'0');
+  return `${p(h)}:${p(m)}:${p(s)}:${p(f)}`;
+}
+v.addEventListener('timeupdate', () => {
+  const t = toTC(v.currentTime);
+  $('#tc').innerHTML = t + ' <small>' + FPS + ' FPS</small>';
+  $('#cTc').textContent = t;
+});
+
+/* 프레임 이동 */
+document.querySelectorAll('[data-seek]').forEach(b => {
+  b.addEventListener('click', () => {
+    v.pause();
+    v.currentTime = Math.max(0, v.currentTime + (+b.dataset.seek) / FPS);
+  });
+});
+
+/* 코멘트 작성 */
+$('#markBtn').addEventListener('click', () => { v.pause(); $('#txt').focus(); });
+
+function render(){
+  const box = $('#list');
+  if(!comments.length){
+    box.innerHTML = '<p class="empty">아직 남긴 코멘트가 없습니다.<br>수정이 필요한 지점에서 남겨주세요.</p>';
+    return;
+  }
+  box.textContent = '';
+  comments.slice().sort((a,b) => a.sec - b.sec).forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'item';
+    const tc = document.createElement('div'); tc.className = 'item__tc'; tc.textContent = c.tc;
+    const tx = document.createElement('p');   tx.className = 'item__txt'; tx.textContent = c.txt;
+    const by = document.createElement('p');   by.className = 'item__by';  by.textContent = c.who || '이름 없음';
+    d.append(tc, tx, by);
+    d.addEventListener('click', () => { v.currentTime = c.sec; v.pause(); });
+    box.appendChild(d);
+  });
+}
+
+async function post(payload){
+  const opts = {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(payload)
+  };
+  try{ await fetch(CONFIG.endpoint, opts); return true; }
+  catch(e){
+    try{ await fetch(CONFIG.endpoint, {...opts, mode:'no-cors'}); return true; }
+    catch(e2){ return false; }
+  }
+}
+
+$('#send').addEventListener('click', async () => {
+  const txt = $('#txt').value.trim();
+  const who = $('#who').value.trim();
+  if(!txt){
+    $('#status').className = 'status err';
+    $('#status').textContent = '내용을 적어주세요.';
+    return;
+  }
+  const sec = v.currentTime, tc = toTC(sec);
+  $('#send').disabled = true;
+  $('#status').className = 'status';
+  $('#status').textContent = '보내는 중…';
+
+  const ok = await post({
+    '_폼종류':'리뷰코멘트',
+    '프로젝트': P.title, '버전': P.ver || '',
+    '타임코드': tc, '초': sec.toFixed(2),
+    '작성자': who, '내용': txt
+  });
+
+  $('#send').disabled = false;
+  if(ok){
+    comments.push({sec, tc, txt, who});
+    $('#txt').value = '';
+    $('#status').textContent = '전달되었습니다.';
+    render();
+  }else{
+    $('#status').className = 'status err';
+    $('#status').textContent = '전송에 실패했습니다. wlsdnr601@mgrm.kr 로 보내주세요.';
+  }
+});
+
+$('#approve').addEventListener('click', async () => {
+  const who = $('#who').value.trim();
+  if(!who){
+    $('#status').className = 'status err';
+    $('#status').textContent = '승인하시려면 이름을 적어주세요.';
+    return;
+  }
+  if(!confirm('이 버전을 그대로 승인하시겠습니까?')) return;
+  const ok = await post({
+    '_폼종류':'리뷰코멘트',
+    '프로젝트': P.title, '버전': P.ver || '',
+    '타임코드':'—', '초':'',
+    '작성자': who, '내용':'[승인] 이 버전으로 확정합니다.'
+  });
+  $('#status').className = 'status';
+  $('#status').textContent = ok ? '승인이 전달되었습니다. 감사합니다.' : '전송에 실패했습니다.';
+});
+
+/* 다운로드 유도 차단 (완벽한 보호는 아닙니다) */
+v.addEventListener('contextmenu', e => e.preventDefault());
+</script>
+</body>
+</html>
