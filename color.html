@@ -289,6 +289,44 @@ footer{padding-block:40px;border-top:1px solid var(--line)}
   text-transform:uppercase;color:var(--ink-soft);
 }
 .foot a.back:hover{color:var(--ink)}
+
+/* ── GEAR (Setup 내부) ── */
+.gear{list-style:none;display:grid;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:26px}
+.gear li{background:var(--bg);padding:13px 18px;font-size:14.5px;font-weight:700}
+.gear li span{display:block;font-size:12px;font-weight:400;color:var(--ink-soft);margin-top:3px}
+
+/* ── CREDENTIALS ── */
+.creds{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;list-style:none;margin-top:44px}
+@media(max-width:900px){.creds{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.creds{grid-template-columns:1fr}}
+.cred{background:var(--bg-card);border:1px solid var(--line);border-radius:14px;
+  overflow:hidden;display:flex;flex-direction:column}
+.cred-shot{display:block;width:100%;padding:0;border:0;background:#000;cursor:zoom-in}
+.cred-shot img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;object-position:center top;
+  opacity:.78;transition:opacity .4s ease,transform .4s ease}
+.cred-shot:hover img,.cred-shot:focus-visible img{opacity:1;transform:scale(1.03)}
+.cred-shot:focus-visible{outline:2px solid var(--ci-a);outline-offset:-2px}
+.cred-body{padding:20px 22px 24px}
+.cred-body h4{font-family:var(--display);font-size:15px;font-weight:700;line-height:1.45}
+.cred-body p{font-size:12.5px;color:var(--ink-soft);line-height:1.65;margin-top:9px}
+.cred-body time{display:block;font-family:var(--display);font-size:11.5px;font-weight:600;
+  letter-spacing:.1em;color:var(--ci-a);margin-top:13px}
+.cred-note{margin-top:26px;font-size:12.5px;color:var(--ink-faint)}
+
+/* ── LIGHTBOX ── */
+.lightbox{position:fixed;inset:0;z-index:9999;background:rgba(4,4,6,.94);
+  display:none;align-items:center;justify-content:center;padding:clamp(16px,4vw,56px);cursor:zoom-out}
+.lightbox.open{display:flex}
+.lightbox img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;
+  box-shadow:0 30px 90px rgba(0,0,0,.65)}
+.lightbox .x{position:absolute;top:16px;right:20px;background:none;border:0;cursor:pointer;
+  color:var(--ink-soft);font-size:30px;line-height:1;padding:10px}
+.lightbox .x:hover{color:var(--ink)}
+@media(prefers-reduced-motion:reduce){
+  .cred-shot img{transition:none}
+  .cred-shot:hover img{transform:none}
+}
 </style>
 </head>
 <body>
@@ -500,24 +538,86 @@ footer{padding-block:40px;border-top:1px solid var(--line)}
 
     <div class="rise">
       <div class="spec-group">
-        <h4>Camera / Format</h4>
-        <ul class="chips">
-          <li>ARRI ALEXA 35</li><li>ARRIRAW</li><li>ProRes 4444</li><li>LogC4</li><li>AWG4</li>
+        <h4>Monitoring</h4>
+        <ul class="gear">
+          <li>ASUS ProArt PA32UCG <span>HDR 레퍼런스</span></li>
+          <li>EIZO ColorEdge CG2700X <span>SDR 레퍼런스</span></li>
+          <li>LG OLED C2 55" <span>마스터링 확인</span></li>
+          <li>정기 캘리브레이션 <span>프로브 실측</span></li>
         </ul>
       </div>
       <div class="spec-group">
-        <h4>Color Pipeline</h4>
-        <ul class="chips">
-          <li>ASC CDL</li><li>Show LUT</li><li>On-set Look</li><li>Shot Matching</li>
+        <h4>Grading Suite</h4>
+        <ul class="gear">
+          <li>DaVinci Resolve Studio <span>Mini Panel</span></li>
+          <li>DeckLink 8K Pro G2 <span>레퍼런스 출력</span></li>
+          <li>i9-14900KF · RTX 4090 · 96GB</li>
         </ul>
       </div>
       <div class="spec-group">
-        <h4>Delivery</h4>
+        <h4>On-set</h4>
+        <ul class="gear">
+          <li>UltraStudio 4K Mini <span>현장 라이브 그레이딩</span></li>
+          <li>Livegrade Pro <span>ASC CDL · Show LUT</span></li>
+          <li>Codex Compact Drive Dock <span>ARRIRAW 인제스트</span></li>
+        </ul>
+      </div>
+      <div class="spec-group">
+        <h4>대응 규격</h4>
         <ul class="chips">
-          <li>Rec.709</li><li>Broadcast QC</li><li>Master Export</li>
+          <li>ARRIRAW</li><li>ProRes 4444</li><li>BRAW</li><li>LogC4 / AWG4</li>
+          <li>S-Log3 / S-Gamut3.Cine</li><li>Rec.709</li><li>Broadcast QC</li>
         </ul>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ══ CREDENTIALS ══ -->
+<section class="sect" id="credentials">
+  <div class="wrap">
+    <div class="rise">
+      <p class="eyebrow">Credentials</p>
+      <h2 class="sect-title">배운 자리</h2>
+      <p class="lead">감으로만 하지 않기 위해, 기준이 있는 곳에서 배웠습니다.</p>
+    </div>
+
+    <ul class="creds">
+      <li class="cred rise">
+        <button class="cred-shot" type="button" data-full="cert-ica.jpg">
+          <img src="cert-ica.jpg" alt="ICA Color Technology 201 · DaVinci Resolve 201 수료증" loading="lazy">
+        </button>
+        <div class="cred-body">
+          <h4>Color Technology 201<br>DaVinci Resolve 201</h4>
+          <p>International Colorist Academy<br>Blackmagic Design 공인 트레이닝 센터</p>
+          <time>2024.02</time>
+        </div>
+      </li>
+
+      <li class="cred rise">
+        <button class="cred-shot" type="button" data-full="cert-bmd.jpg">
+          <img src="cert-bmd.jpg" alt="Blackmagic Design DaVinci Resolve 19 수료증" loading="lazy">
+        </button>
+        <div class="cred-body">
+          <h4>The Beginner's Guide to<br>DaVinci Resolve 19</h4>
+          <p>Blackmagic Design</p>
+          <time>2025.04</time>
+        </div>
+      </li>
+
+      <li class="cred rise">
+        <button class="cred-shot" type="button" data-full="cert-dolby.jpg">
+          <img src="cert-dolby.jpg" alt="Dolby Vision Essentials Training 수료증" loading="lazy">
+        </button>
+        <div class="cred-body">
+          <h4>Dolby Vision<br>Essentials Training</h4>
+          <p>Dolby Institute</p>
+          <time>2025.09</time>
+        </div>
+      </li>
+    </ul>
+
+    <p class="cred-note">이미지를 누르면 원본 크기로 볼 수 있습니다.</p>
   </div>
 </section>
 
@@ -660,6 +760,28 @@ document.querySelectorAll('[data-ba]').forEach(ba=>{
   });
   resize();
   if(reduce){t=4000;draw();}else loop();
+})();
+</script>
+<div class="lightbox" id="lb" role="dialog" aria-modal="true" aria-label="수료증 원본 보기">
+  <button class="x" type="button" aria-label="닫기">&times;</button>
+  <img src="" alt="">
+</div>
+
+<script>
+(function(){
+  var lb=document.getElementById('lb'); if(!lb) return;
+  var img=lb.querySelector('img'), last=null;
+  document.querySelectorAll('.cred-shot').forEach(function(b){
+    b.addEventListener('click',function(){
+      last=b; img.src=b.dataset.full; img.alt=b.querySelector('img').alt;
+      lb.classList.add('open'); lb.querySelector('.x').focus();
+    });
+  });
+  function close(){lb.classList.remove('open'); img.src=''; if(last) last.focus();}
+  lb.addEventListener('click',close);
+  addEventListener('keydown',function(e){
+    if(e.key==='Escape'&&lb.classList.contains('open')) close();
+  });
 })();
 </script>
 </body>
