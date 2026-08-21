@@ -175,92 +175,31 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent)}
 
 <script>
 /* ═══════════════════════════════════════════
-   1) 수신 주소 — 문진표와 같은 앱스스크립트
+   설정은 이 한 줄뿐입니다.
+   프로젝트는 구글 시트 '리뷰프로젝트' 탭에서 관리합니다.
    ═══════════════════════════════════════════ */
-const CONFIG = {
-  endpoint: "https://script.google.com/macros/s/AKfycbxMgNVVuNMrzjTKSyXSd_lG4YI2BcBD0QI7-rh25Jv0J1xZr2qEB7PTS9CEzkes7bAF5g/exec"
-};
-
-/* ═══════════════════════════════════════════
-   2) 프로젝트 목록
-      새 리뷰를 열 때 여기에 한 줄 추가하고
-      이 파일을 다시 올리면 됩니다.
-
-      키       : 주소의 ?p= 뒤에 붙는 값
-      title    : 작품명
-      ver      : 버전 표기
-      src      : NAS 영상 주소
-      pw       : 비밀번호 (없애려면 "")
-      until    : 만료일 (없애려면 "")
-      fps      : 타임코드 계산용
-   ═══════════════════════════════════════════ */
-const PROJECTS = {
-  "test": {
-    title: "테스트",
-    ver:   "v1",
-    src:   "https://mgrm.myqnapcloud.com:8081/review/e0213.MP4",
-    pw:    "1234",
-    until: "",
-    fps:   24
-  }
-  /* 예시 —
-  ,"uibook": {
-    title: "유의서점",
-    ver:   "v2",
-    src:   "https://mgrm.myqnapcloud.com:8081/review/uibook_v2_a7f3c9.mp4",
-    pw:    "8412",
-    until: "2026-09-30",
-    fps:   24
-  }
-  */
-};
-
-/* ─────────────────────────────────────────── */
+const ENDPOINT = "https://script.google.com/macros/s/AKfycbxMgNVVuNMrzjTKSyXSd_lG4YI2BcBD0QI7-rh25Jv0J1xZr2qEB7PTS9CEzkes7bAF5g/exec";
 
 const $ = s => document.querySelector(s);
 const key = new URLSearchParams(location.search).get('p') || '';
-const P = PROJECTS[key];
 const v = $('#v');
-let FPS = 24;
-let comments = [];
+let FPS = 24, P = null, comments = [];
 
-/* 프로젝트 확인 */
-if(!P){
-  $('#gateTitle').textContent = '링크를 확인해주세요';
-  $('#gateDesc').textContent = '유효하지 않은 주소입니다. 전달받은 링크를 다시 확인해주세요.';
-  $('#pw').style.display = 'none';
-  $('#unlock').style.display = 'none';
-}else{
-  FPS = P.fps || 24;
-  $('#fpsLabel').textContent = FPS + ' FPS';
-  $('#mTitle').textContent = P.title;
-  $('#mVer').textContent = P.ver || '';
-  document.title = P.title + ' — 컬러리버브 리뷰';
-  $('#gateTitle').textContent = P.title;
-
-  /* 만료 확인 */
-  if(P.until && new Date(P.until + 'T23:59:59') < new Date()){
-    $('#gateDesc').textContent = '이 리뷰 링크는 ' + P.until + ' 로 만료되었습니다. 재발급이 필요하시면 연락 주세요.';
-    $('#pw').style.display = 'none';
-    $('#unlock').style.display = 'none';
-  }else if(!P.pw){
-    open_();
-  }
+/* 앱스스크립트 호출 (JSONP — 도메인이 달라도 안전하게 동작) */
+function ask(params){
+  return new Promise((resolve, reject) => {
+    const cb = 'cb_' + Math.random().toString(36).slice(2);
+    const t = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 15000);
+    function cleanup(){ clearTimeout(t); delete window[cb]; sc.remove(); }
+    window[cb] = data => { cleanup(); resolve(data); };
+    const q = Object.entries(params).map(([k, val]) =>
+      encodeURIComponent(k) + '=' + encodeURIComponent(val)).join('&');
+    const sc = document.createElement('script');
+    sc.src = ENDPOINT + '?' + q + '&callback=' + cb;
+    sc.onerror = () => { cleanup(); reject(new Error('network')); };
+    document.body.appendChild(sc);
+  });
 }
-
-function open_(){
-  $('#gate').classList.add('off');
-  v.src = P.src;
-}
-
-$('#unlock').addEventListener('click', () => {
-  if($('#pw').value === P.pw){ open_(); }
-  else{
-    $('#gateStatus').className = 'status err';
-    $('#gateStatus').textContent = '비밀번호가 맞지 않습니다.';
-  }
-});
-$('#pw').addEventListener('keydown', e => { if(e.key === 'Enter') $('#unlock').click(); });
 
 /* 타임코드 */
 function toTC(sec){
@@ -268,26 +207,86 @@ function toTC(sec){
   const s = Math.floor(sec) % 60;
   const m = Math.floor(sec / 60) % 60;
   const h = Math.floor(sec / 3600);
-  const p = n => String(n).padStart(2,'0');
+  const p = n => String(n).padStart(2, '0');
   return `${p(h)}:${p(m)}:${p(s)}:${p(f)}`;
 }
+
+/* 첫 진입 — 제목만 먼저 받아온다 */
+(async function init(){
+  if(!key){ lock('링크를 확인해주세요', '유효하지 않은 주소입니다.'); return; }
+  try{
+    const r = await ask({ mode: 'meta', p: key });
+    if(!r.ok){
+      lock(r.title || '열 수 없는 링크',
+        r.error === 'expired' ? '이 리뷰 링크는 만료되었습니다. 재발급이 필요하시면 연락 주세요.'
+        : r.error === 'off'   ? '이 리뷰 링크는 현재 닫혀 있습니다.'
+        : '유효하지 않은 주소입니다. 전달받은 링크를 다시 확인해주세요.');
+      return;
+    }
+    $('#gateTitle').textContent = r.title;
+    $('#mTitle').textContent = r.title;
+    $('#mVer').textContent = r.ver || '';
+    document.title = r.title + ' — 컬러리버브 리뷰';
+    if(!r.need) enter('');            // 비밀번호가 없는 프로젝트
+  }catch(e){
+    lock('연결할 수 없습니다', '잠시 후 다시 시도해주세요.');
+  }
+})();
+
+function lock(title, desc){
+  $('#gateTitle').textContent = title;
+  $('#gateDesc').textContent = desc;
+  $('#pw').style.display = 'none';
+  $('#unlock').style.display = 'none';
+}
+
+/* 비밀번호 확인 후 영상 주소를 받아온다 */
+async function enter(pw){
+  $('#gateStatus').className = 'status';
+  $('#gateStatus').textContent = '확인 중…';
+  try{
+    const r = await ask({ mode: 'open', p: key, pw: pw });
+    if(!r.ok){
+      $('#gateStatus').className = 'status err';
+      $('#gateStatus').textContent = r.error === 'pw'
+        ? '비밀번호가 맞지 않습니다.' : '열 수 없습니다.';
+      return;
+    }
+    P = r;
+    FPS = Number(r.fps) || 24;
+    $('#fpsLabel').textContent = FPS + ' FPS';
+    $('#mTitle').textContent = r.title;
+    $('#mVer').textContent = r.ver || '';
+    comments = (r.comments || []).map(c => ({
+      sec: Number(c.sec) || 0, tc: c.tc, txt: c.txt, who: c.who
+    }));
+    render();
+    v.src = r.src;
+    $('#gate').classList.add('off');
+  }catch(e){
+    $('#gateStatus').className = 'status err';
+    $('#gateStatus').textContent = '연결에 실패했습니다. 잠시 후 다시 시도해주세요.';
+  }
+}
+
+$('#unlock').addEventListener('click', () => enter($('#pw').value));
+$('#pw').addEventListener('keydown', e => { if(e.key === 'Enter') $('#unlock').click(); });
+
+/* 재생 */
 v.addEventListener('timeupdate', () => {
   const t = toTC(v.currentTime);
   $('#tc').innerHTML = t + ' <small>' + FPS + ' FPS</small>';
   $('#cTc').textContent = t;
 });
-
-/* 프레임 이동 */
 document.querySelectorAll('[data-seek]').forEach(b => {
   b.addEventListener('click', () => {
     v.pause();
     v.currentTime = Math.max(0, v.currentTime + (+b.dataset.seek) / FPS);
   });
 });
-
-/* 코멘트 작성 */
 $('#markBtn').addEventListener('click', () => { v.pause(); $('#txt').focus(); });
 
+/* 코멘트 목록 */
 function render(){
   const box = $('#list');
   if(!comments.length){
@@ -295,9 +294,8 @@ function render(){
     return;
   }
   box.textContent = '';
-  comments.slice().sort((a,b) => a.sec - b.sec).forEach(c => {
-    const d = document.createElement('div');
-    d.className = 'item';
+  comments.slice().sort((a, b) => a.sec - b.sec).forEach(c => {
+    const d = document.createElement('div'); d.className = 'item';
     const tc = document.createElement('div'); tc.className = 'item__tc'; tc.textContent = c.tc;
     const tx = document.createElement('p');   tx.className = 'item__txt'; tx.textContent = c.txt;
     const by = document.createElement('p');   by.className = 'item__by';  by.textContent = c.who || '이름 없음';
@@ -307,15 +305,16 @@ function render(){
   });
 }
 
+/* 코멘트 전송 */
 async function post(payload){
   const opts = {
     method:'POST',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify(payload)
   };
-  try{ await fetch(CONFIG.endpoint, opts); return true; }
+  try{ await fetch(ENDPOINT, opts); return true; }
   catch(e){
-    try{ await fetch(CONFIG.endpoint, {...opts, mode:'no-cors'}); return true; }
+    try{ await fetch(ENDPOINT, {...opts, mode:'no-cors'}); return true; }
     catch(e2){ return false; }
   }
 }
@@ -335,6 +334,7 @@ $('#send').addEventListener('click', async () => {
 
   const ok = await post({
     '_폼종류':'리뷰코멘트',
+    '프로젝트키': key,
     '프로젝트': P.title, '버전': P.ver || '',
     '타임코드': tc, '초': sec.toFixed(2),
     '작성자': who, '내용': txt
@@ -362,6 +362,7 @@ $('#approve').addEventListener('click', async () => {
   if(!confirm('이 버전을 그대로 승인하시겠습니까?')) return;
   const ok = await post({
     '_폼종류':'리뷰코멘트',
+    '프로젝트키': key,
     '프로젝트': P.title, '버전': P.ver || '',
     '타임코드':'—', '초':'',
     '작성자': who, '내용':'[승인] 이 버전으로 확정합니다.'
@@ -370,7 +371,6 @@ $('#approve').addEventListener('click', async () => {
   $('#status').textContent = ok ? '승인이 전달되었습니다. 감사합니다.' : '전송에 실패했습니다.';
 });
 
-/* 다운로드 유도 차단 (완벽한 보호는 아닙니다) */
 v.addEventListener('contextmenu', e => e.preventDefault());
 </script>
 </body>
