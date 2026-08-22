@@ -159,15 +159,20 @@ header.scrolled{border-bottom-color:var(--line)}
 .btn-line:hover{border-color:var(--ink);transform:translateY(-2px)}
 
 /* ── STATEMENT ── */
-.statement{background:var(--bg-alt);border-block:1px solid var(--line)}
+.statement{
+  background:var(--bg-alt);border-block:1px solid var(--line);
+  padding-block:clamp(100px,15vw,200px);
+}
 .statement p{
   font-family:var(--display);font-weight:600;
-  font-size:clamp(20px,3vw,36px);line-height:1.4;letter-spacing:-.02em;
-  max-width:22ch;
+  font-size:clamp(30px,5.6vw,64px);line-height:1.24;letter-spacing:-.028em;
+  max-width:16ch;
 }
 .statement .sig{
-  margin-top:28px;font-family:var(--body);font-size:14px;color:var(--ink-soft);font-weight:400;
+  margin-top:clamp(34px,4.4vw,54px);font-family:var(--body);font-weight:400;
+  font-size:clamp(14.5px,1.6vw,17px);line-height:1.95;color:var(--ink-soft);max-width:44ch;
 }
+.statement .rise:nth-child(2){transition-delay:180ms}
 
 /* ── REEL ── */
 .reel-frame{
@@ -390,12 +395,11 @@ footer{padding-block:40px;border-top:1px solid var(--line)}
 
 <!-- ══ STATEMENT ══ -->
 <section class="sect statement">
-  <div class="wrap rise">
-    <p>색은 마지막에 오지만,<br><span class="grad">가장 오래 남습니다.</span></p>
-    <p class="sig">
+  <div class="wrap">
+    <p class="rise">색은 마지막에 오지만,<br><span class="grad">가장 오래 남습니다.</span></p>
+    <p class="sig rise">
       관객은 조명 설계도, 렌즈 선택도 알지 못합니다.
       다만 그 장면이 어떤 감정이었는지는 알고 있습니다.
-      색은 이야기를 설명하지 않고, 이야기가 끝난 자리에 남습니다.
     </p>
   </div>
 </section>
