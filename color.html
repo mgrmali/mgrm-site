@@ -14,6 +14,13 @@
 <link href="https://cdn.jsdelivr.net/gh/moonspam/NanumSquare@2.0/nanumsquare.css" rel="stylesheet">
 
 <style>
+/* Ephesis — 메인 페이지와 동일한 자체 호스팅 */
+@font-face{
+  font-family:'Ephesis';
+  src:url('ephesis-latin.woff2') format('woff2');
+  font-weight:400;font-style:normal;font-display:block;
+}
+
 :root{
   --bg:        #08080B;
   --bg-alt:    #101015;
@@ -128,8 +135,16 @@ header.scrolled{border-bottom-color:var(--line)}
   color:var(--ink-soft);margin-bottom:22px;
 }
 .hero h1{
-  font-family:var(--display);font-weight:800;
-  font-size:clamp(38px,9.4vw,134px);line-height:.93;letter-spacing:-.04em;
+  font-family:var(--display);font-weight:500;
+  font-size:clamp(38px,9.4vw,134px);line-height:.93;letter-spacing:-.025em;
+}
+.hero h1 .script{
+  display:block;
+  font-family:'Ephesis',cursive;font-weight:400;
+  font-size:1.34em;line-height:.86;letter-spacing:0;
+  padding:.08em .06em;margin:-.08em -.04em;
+  background:linear-gradient(100deg,#F0568A 0%,#C24A9C 52%,#8A62C4 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
 }
 .hero h1 .l2{display:block;padding-left:.05em}
 .hero-desc{margin-top:clamp(26px,3vw,38px);max-width:30ch;color:var(--ink-soft);font-size:clamp(15px,1.9vw,21px);letter-spacing:-.01em}
@@ -351,7 +366,7 @@ footer{padding-block:40px;border-top:1px solid var(--line)}
     <p class="unit">맹그라미 미디어 콘텐츠 그룹 · DI 부문</p>
     <p class="kicker tagline">Adding <b>Color</b> to Emotion.</p>
     <h1>
-      <span class="grad">Color</span>
+      <span class="script">Color</span>
       <span class="l2">Reverb</span>
     </h1>
     <p class="hero-desc">

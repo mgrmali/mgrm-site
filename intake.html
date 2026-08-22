@@ -862,28 +862,62 @@ form.addEventListener('submit', async e=>{
     body: JSON.stringify(payload)
   };
 
+  /* 서버가 실제로 처리했음을 확인한 경우에만 완료 화면 */
   function succeed(no){
     window.__sent = true;
-    if(no) document.getElementById('ticket').textContent = '접수번호 ' + no;
+    document.getElementById('ticket').textContent = no ? '접수번호 ' + no : '';
     form.style.display = 'none';
     document.getElementById('done').classList.add('on');
     window.scrollTo({top:0, behavior:'smooth'});
   }
 
+  /* 작성 내용을 화면에 펼쳐 두고 메시지를 띄우는 공통 처리 */
+  function showFallback(cls, msg){
+    document.getElementById('summary').value = buildText();
+    document.getElementById('summaryBox').classList.add('on');
+    btn.disabled = false;
+    statusEl.className = 'status ' + cls;
+    statusEl.textContent = msg;
+    document.getElementById('summaryBox').scrollIntoView({block:'center', behavior:'smooth'});
+  }
+
+  /* 응답이 오지 않아 접수 여부를 확신할 수 없는 상태.
+     성공으로 단정하지 않고, 중복 접수 가능성을 함께 안내합니다. */
+  function uncertain(){
+    showFallback('err',
+      '전송은 시도했지만 접수 확인을 받지 못했습니다. 접수가 되었을 수도 있으니, ' +
+      '아래 내용을 복사해 wlsdnr601@mgrm.kr 로 보내주시면 확실하게 처리해 드리겠습니다.');
+  }
+
+  /* 응답 없이 무한 대기하지 않도록 20초 제한 */
+  const ac = new AbortController();
+  const timer = setTimeout(()=>ac.abort(), 20000);
+
   try{
-    const res = await fetch(CONFIG.endpoint, opts);
+    const res = await fetch(CONFIG.endpoint, {...opts, signal: ac.signal});
+    clearTimeout(timer);
+
+    if(!res.ok){
+      showFallback('err',
+        '접수 서버가 오류를 반환했습니다(' + res.status + '). ' +
+        '아래 내용을 복사해 wlsdnr601@mgrm.kr 로 보내주세요.');
+      return;
+    }
+
+    /* HTTP 200 = 앱스스크립트가 실제로 실행되고 응답했다는 확인 */
     let no = '';
     try{ no = (await res.json()).no || ''; }catch(_){}
     succeed(no);
   }catch(err){
-    /* 응답을 읽지 못하는 환경(구형 브라우저·차단)에서는 한 번 더 시도 */
+    clearTimeout(timer);
+    /* 네트워크 차단·CORS 등으로 응답을 읽지 못한 경우.
+       no-cors 는 서버가 실패해도 항상 성공으로 보이므로 완료 처리하지 않습니다. */
     try{
       await fetch(CONFIG.endpoint, {...opts, mode:'no-cors'});
-      succeed('');
+      uncertain();
     }catch(err2){
-      btn.disabled = false;
-      statusEl.className = 'status err';
-      statusEl.textContent = '전송에 실패했습니다. 아래 "작성 내용 텍스트로 복사"를 눌러 메일로 보내주세요.';
+      showFallback('err',
+        '전송에 실패했습니다. 아래 내용을 복사해 wlsdnr601@mgrm.kr 로 보내주세요.');
     }
   }
 });
