@@ -139,28 +139,62 @@ const WCT = {
 
 function trunc(v, u) { return Math.floor(v / u) * u; }
 
+/* 소득구분
+   biz   사업소득 3.3%  — 계속·반복적 인적용역 (프리랜서)
+   other 기타소득 8.8%  — 일시적 인적용역 (단기 알바, 강연 등)     */
+const INCOME_TYPES = {
+  biz:   { label: '사업소득 3.3%', code: 'A25', short: '프리랜서' },
+  other: { label: '기타소득 8.8%', code: 'A40', short: '일반·학생' },
+};
+
 /** 사업소득 3.3% — 소득세 1,000원 미만이면 소액부징수(징수 X, 신고 O) */
-function calcTax(gross, unit = 10) {
+function calcBizTax(gross, unit = 10) {
   gross = Math.round(Number(gross) || 0);
   if (gross <= 0) return null;
   const it = trunc(gross * 0.03, unit);
-  if (it < 1000) return { gross, incomeTax: 0, localTax: 0, net: gross, isSmall: true };
+  if (it < 1000) {
+    return { type: 'biz', gross, base: gross, incomeTax: 0, localTax: 0,
+             net: gross, exempt: '소액부징수' };
+  }
   const lt = trunc(it * 0.1, unit);
-  return { gross, incomeTax: it, localTax: lt, net: gross - it - lt, isSmall: false };
+  return { type: 'biz', gross, base: gross, incomeTax: it, localTax: lt,
+           net: gross - it - lt, exempt: '' };
+}
+
+/** 기타소득 8.8% — 필요경비 60% 차감 후 20%.
+    기타소득금액(=지급액의 40%)이 5만원 이하면 과세최저한으로 비과세.
+    즉 지급액 125,000원 이하는 세금이 0원입니다. */
+function calcOtherTax(gross, unit = 10, expenseRate = 0.6) {
+  gross = Math.round(Number(gross) || 0);
+  if (gross <= 0) return null;
+  const base = Math.round(gross * (1 - expenseRate));
+  if (base <= 50000) {
+    return { type: 'other', gross, base, incomeTax: 0, localTax: 0,
+             net: gross, exempt: '과세최저한' };
+  }
+  const it = trunc(base * 0.2, unit);
+  const lt = trunc(it * 0.1, unit);
+  return { type: 'other', gross, base, incomeTax: it, localTax: lt,
+           net: gross - it - lt, exempt: '' };
+}
+
+/** 소득구분에 맞는 계산기를 고른다 */
+function calcTax(gross, unit = 10, type = 'biz') {
+  return type === 'other' ? calcOtherTax(gross, unit) : calcBizTax(gross, unit);
 }
 
 /** 실지급액에서 세전 금액 역산 */
-function calcFromNet(net) {
+function calcFromNet(net, type = 'biz') {
   net = Math.round(Number(net) || 0);
-  const g0 = Math.round(net / 0.967);
-  for (let d = 0; d < 400; d++) {
+  const g0 = Math.round(net / (type === 'other' ? 0.912 : 0.967));
+  for (let d = 0; d < 600; d++) {
     for (const g of (d ? [g0 + d, g0 - d] : [g0])) {
       if (g <= 0) continue;
-      const r = calcTax(g);
+      const r = calcTax(g, 10, type);
       if (r && r.net === net) return r;
     }
   }
-  return calcTax(g0);
+  return calcTax(g0, 10, type);
 }
 
 /** 부가세 — 공급가액 기준 10% */
@@ -213,16 +247,26 @@ function dday(date) {
   };
 }
 
-/** 원천세 집계 — '지급일'이 속한 달 기준 (귀속월 아님) */
+/** 원천세 집계 — '지급일'이 속한 달 기준 (귀속월 아님)
+    사업소득(A25)과 기타소득(A40)은 신고서에서 칸이 다르므로 나눠서 낸다 */
 function whtAggregate(payYm) {
-  const list = (WCT.data.payments || []).filter(
+  const all = (WCT.data.payments || []).filter(
     (p) => (p.payDate || '').slice(0, 7) === payYm && p.status !== '예정');
+  const part = (type) => {
+    const list = all.filter((p) => (p.incomeType || 'biz') === type);
+    return { list, count: new Set(list.map((p) => p.personId)).size,
+      gross: list.reduce((a, p) => a + p.gross, 0),
+      tax: list.reduce((a, p) => a + p.incomeTax, 0),
+      local: list.reduce((a, p) => a + p.localTax, 0) };
+  };
+  const biz = part('biz'), other = part('other');
   return {
-    list, count: new Set(list.map((p) => p.personId)).size,
-    gross: list.reduce((a, p) => a + p.gross, 0),
-    tax: list.reduce((a, p) => a + p.incomeTax, 0),
-    local: list.reduce((a, p) => a + p.localTax, 0),
-    accrual: [...new Set(list.map((p) => p.ym))].sort(),
+    list: all, biz, other,
+    count: new Set(all.map((p) => p.personId)).size,
+    gross: biz.gross + other.gross,
+    tax: biz.tax + other.tax,
+    local: biz.local + other.local,
+    accrual: [...new Set(all.map((p) => p.ym))].sort(),
   };
 }
 

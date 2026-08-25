@@ -51,7 +51,7 @@
     <div class="card">
       <h2>프리랜서 (원천징수 대상)</h2>
       <table><thead><tr>
-        <th>성명</th><th>역할</th><th>은행</th><th>계좌</th><th>업종</th><th>동의일</th></tr></thead>
+        <th>성명</th><th>구분</th><th>역할</th><th>은행</th><th>계좌</th><th>업종</th><th>동의일</th></tr></thead>
         <tbody id="perTb"></tbody></table>
     </div>
     <div class="card">
@@ -124,6 +124,9 @@
         <tr><td>사업소득 (프리랜서 3.3%)</td><td class="dim">A25</td>
           <td class="n" id="whtBizCount">0</td><td class="n" id="whtBizGross">0</td>
           <td class="n" id="whtBizTax">0</td></tr>
+        <tr><td>기타소득 (일반·학생 8.8%)</td><td class="dim">A40</td>
+          <td class="n" id="whtOthCount">0</td><td class="n" id="whtOthGross">0</td>
+          <td class="n" id="whtOthTax">0</td></tr>
         <tr><td>근로소득 (대표 보수·급여)</td><td class="dim">A01</td>
           <td><input id="whtWageCount" class="n" inputmode="numeric" placeholder="0"></td>
           <td><input id="whtWageGross" class="n" inputmode="numeric" placeholder="0"></td>
@@ -251,10 +254,11 @@ function renderInbox() {
 function renderPeople() {
   $('perTb').innerHTML = WCT.data.people.map((p) => `<tr>
     <td>${p.name}${p.active ? '' : ' <span class="dim">(비활성)</span>'}</td>
+    <td><span class="pill">${(p.incomeType || 'biz') === 'other' ? '8.8%' : '3.3%'}</span></td>
     <td>${p.role || '-'}</td><td>${p.bank || '-'}</td>
     <td class="dim">${p.accMask || '-'}</td><td>${p.industry}</td>
     <td class="dim">${p.consentDate || '-'}</td></tr>`).join('')
-    || '<tr><td colspan="6" class="dim">등록된 인력이 없습니다.</td></tr>';
+    || '<tr><td colspan="7" class="dim">등록된 인력이 없습니다.</td></tr>';
 
   $('venTb').innerHTML = WCT.data.vendors.map((v) => `<tr>
     <td>${v.company}</td><td>${v.bizNo}</td><td>${v.ceo}</td>
@@ -264,7 +268,8 @@ function renderPeople() {
 
 function renderPay() {
   $('payPerson').innerHTML = WCT.data.people.filter((p) => p.active)
-    .map((p) => `<option value="${p.id}">${p.name} (${p.role || '-'})</option>`).join('');
+    .map((p) => `<option value="${p.id}">${p.name} · ${
+      (p.incomeType || 'biz') === 'other' ? '8.8%' : '3.3%'} (${p.role || '-'})</option>`).join('');
   $('rcpPerson').innerHTML = WCT.data.people
     .map((p) => `<option value="${p.id}">${p.name}</option>`).join('');
   $('payProject').innerHTML = '<option value="">(없음)</option>' +
@@ -328,9 +333,12 @@ function whtCalc() {
   const a = whtAggregate(ym);
   const saved = (WCT.data.wht || []).find((w) => w.payYm === ym);
 
-  $('whtBizCount').textContent = a.count;
-  $('whtBizGross').textContent = won(a.gross);
-  $('whtBizTax').textContent = won(a.tax);
+  $('whtBizCount').textContent = a.biz.count;
+  $('whtBizGross').textContent = won(a.biz.gross);
+  $('whtBizTax').textContent = won(a.biz.tax);
+  $('whtOthCount').textContent = a.other.count;
+  $('whtOthGross').textContent = won(a.other.gross);
+  $('whtOthTax').textContent = won(a.other.tax);
 
   if (saved && !$('whtWageGross').dataset.touched) {
     $('whtWageCount').value = saved.wageCount || '';
@@ -366,7 +374,8 @@ window.openSub = async (fileId, kind) => {
     const env = (await WCT.api('envelope', { fileId })).envelope;
     const p = await WCT.open(env);
     CUR = { payload: p, fileId };
-    $('dlgTitle').textContent = kind === '사업자' ? '사업자 제출' : '프리랜서 제출';
+    $('dlgTitle').textContent = kind === '사업자' ? '사업자 제출'
+      : (p.kind === 'other' ? '일반·학생 제출 (기타소득 8.8%)' : '프리랜서 제출 (사업소득 3.3%)');
     $('dlgBody').innerHTML = kind === '사업자' ? `
       <div><b>상호</b>${p.company_name || ''}</div>
       <div><b>사업자번호</b>${p.biz_no || ''}</div>
@@ -427,13 +436,13 @@ $('dlgRegister').onclick = async () => {
         holder: p.account_holder, accMask: maskAcc(p.account), envelope: env });
     } else {
       // 세무에 필요한 항목만 남긴 새 봉투 — 사진은 담지 않는다
-      const env = await WCT.seal({ kind: 'freelancer', name: p.name, rrn: p.rrn,
+      const env = await WCT.seal({ kind: p.kind, name: p.name, rrn: p.rrn,
         address: p.address, phone: p.phone, bank_name: p.bank_name,
         account: p.account, account_holder: p.account_holder });
       await WCT.api('person.add', { name: p.name, role: p.role, bank: p.bank_name,
         holder: p.account_holder, accMask: maskAcc(p.account),
         industry: '940909', consentDate: new Date().toISOString().slice(0, 10),
-        envelope: env });
+        incomeType: p.kind === 'other' ? 'other' : 'biz', envelope: env });
     }
     await WCT.api('dropFile', { fileId: CUR.fileId });
     m.className = 'msg ok'; m.textContent = '등록했습니다. 원본 제출물은 삭제했습니다.';
@@ -486,7 +495,8 @@ window.openSub = async (fileId, kind) => {
     const env = (await WCT.api('envelope', { fileId })).envelope;
     const p = await WCT.open(env);
     CUR = { payload: p, fileId };
-    $('dlgTitle').textContent = kind === '사업자' ? '사업자 제출' : '프리랜서 제출';
+    $('dlgTitle').textContent = kind === '사업자' ? '사업자 제출'
+      : (p.kind === 'other' ? '일반·학생 제출 (기타소득 8.8%)' : '프리랜서 제출 (사업소득 3.3%)');
     $('dlgBody').innerHTML = kind === '사업자' ? `
       <div><b>상호</b>${p.company_name || ''}</div>
       <div><b>사업자번호</b>${p.biz_no || ''}</div>
@@ -547,13 +557,13 @@ $('dlgRegister').onclick = async () => {
         holder: p.account_holder, accMask: maskAcc(p.account), envelope: env });
     } else {
       // 세무에 필요한 항목만 남긴 새 봉투 — 사진은 담지 않는다
-      const env = await WCT.seal({ kind: 'freelancer', name: p.name, rrn: p.rrn,
+      const env = await WCT.seal({ kind: p.kind, name: p.name, rrn: p.rrn,
         address: p.address, phone: p.phone, bank_name: p.bank_name,
         account: p.account, account_holder: p.account_holder });
       await WCT.api('person.add', { name: p.name, role: p.role, bank: p.bank_name,
         holder: p.account_holder, accMask: maskAcc(p.account),
         industry: '940909', consentDate: new Date().toISOString().slice(0, 10),
-        envelope: env });
+        incomeType: p.kind === 'other' ? 'other' : 'biz', envelope: env });
     }
     await WCT.api('dropFile', { fileId: CUR.fileId });
     m.className = 'msg ok'; m.textContent = '등록했습니다. 원본 제출물은 삭제했습니다.';
@@ -568,14 +578,23 @@ function recalc() {
   const raw = $('payAmt').value.replace(/[^\d]/g, '');
   const box = $('payCalc');
   if (!raw) { box.textContent = '금액을 입력하세요.'; box.dataset.ok = ''; return; }
-  const r = $('payMode').value === 'gross' ? calcTax(+raw) : calcFromNet(+raw);
+  const person = WCT.data.people.find((p) => p.id === +$('payPerson').value);
+  const type = (person && person.incomeType) || 'biz';
+  const r = $('payMode').value === 'gross' ? calcTax(+raw, 10, type) : calcFromNet(+raw, type);
   if (!r) { box.textContent = '금액을 확인하세요.'; box.dataset.ok = ''; return; }
-  box.innerHTML = `지급액 <b>${won(r.gross)}</b>원 · 소득세 ${won(r.incomeTax)}원 ·
-    지방소득세 ${won(r.localTax)}원 → 실지급 <b>${won(r.net)}</b>원` +
-    (r.isSmall ? '<br><span style="color:var(--warn)">소액부징수 — 징수는 없지만 신고는 필요합니다.</span>' : '');
+  const label = INCOME_TYPES[type].label;
+  box.innerHTML = `<b>${label}</b> · 지급액 <b>${won(r.gross)}</b>원` +
+    (type === 'other' ? ` (소득금액 ${won(r.base)}원)` : '') +
+    `<br>소득세 ${won(r.incomeTax)}원 · 지방소득세 ${won(r.localTax)}원 →
+     실지급 <b>${won(r.net)}</b>원` +
+    (r.exempt === '소액부징수'
+      ? '<br><span style="color:var(--warn)">소액부징수 — 징수는 없지만 신고는 필요합니다.</span>' : '') +
+    (r.exempt === '과세최저한'
+      ? '<br><span style="color:var(--warn)">과세최저한 — 12만 5천원 이하라 세금이 없습니다. 신고는 필요합니다.</span>' : '');
   box.dataset.ok = JSON.stringify(r);
 }
-['payAmt', 'payMode'].forEach((id) => $(id).addEventListener('input', recalc));
+['payAmt', 'payMode', 'payPerson'].forEach((id) => $(id).addEventListener('input', recalc));
+$('payPerson').addEventListener('change', recalc);
 $('payFilter').addEventListener('change', renderPay);
 
 $('addPay').onclick = async () => {
@@ -588,7 +607,8 @@ $('addPay').onclick = async () => {
   await WCT.api('payment.add', { personId: person.id, name: person.name,
     payDate: $('payDate').value, ym: $('payYm').value, project: $('payProject').value,
     role: $('payRole').value || person.role, gross: t.gross, incomeTax: t.incomeTax,
-    localTax: t.localTax, net: t.net, isSmall: t.isSmall, memo: $('payMemo').value });
+    localTax: t.localTax, net: t.net, isSmall: !!t.exempt, memo: $('payMemo').value,
+    incomeType: t.type, base: t.base });
   $('payAmt').value = ''; $('payMemo').value = ''; recalc();
   await refreshAll(true);
 };
@@ -641,9 +661,12 @@ function whtCalc() {
   const a = whtAggregate(ym);
   const saved = (WCT.data.wht || []).find((w) => w.payYm === ym);
 
-  $('whtBizCount').textContent = a.count;
-  $('whtBizGross').textContent = won(a.gross);
-  $('whtBizTax').textContent = won(a.tax);
+  $('whtBizCount').textContent = a.biz.count;
+  $('whtBizGross').textContent = won(a.biz.gross);
+  $('whtBizTax').textContent = won(a.biz.tax);
+  $('whtOthCount').textContent = a.other.count;
+  $('whtOthGross').textContent = won(a.other.gross);
+  $('whtOthTax').textContent = won(a.other.tax);
 
   if (saved && !$('whtWageGross').dataset.touched) {
     $('whtWageCount').value = saved.wageCount || '';
@@ -679,7 +702,8 @@ $('whtDetail').onclick = () => {
   $('whtOut').textContent = [
     `■ ${ym} 지급분 · ${a.count}명 · ${a.list.length}건`, '',
     ...a.list.sort((x, y) => x.payDate.localeCompare(y.payDate)).map((p) =>
-      `${p.payDate}  ${p.name.padEnd(6)}  귀속 ${p.ym}  ` +
+      `${p.payDate}  ${((p.incomeType || 'biz') === 'other' ? '[8.8]' : '[3.3]')} ` +
+      `${p.name.padEnd(6)}  귀속 ${p.ym}  ` +
       `지급 ${won(p.gross).padStart(11)}원  소득세 ${won(p.incomeTax).padStart(8)}원  ` +
       `지방세 ${won(p.localTax).padStart(7)}원`),
     '', `합계  지급 ${won(a.gross)}원 · 소득세 ${won(a.tax)}원 · 지방세 ${won(a.local)}원`,
@@ -695,10 +719,12 @@ $('whtGuide').onclick = () => {
     `━━━ ① 홈택스 (소득세) ━━━`,
     `  1. 홈택스 로그인 → 세금신고 → 원천세 신고 → 정기신고`,
     `  2. 기본정보  귀속연월 ${a.accrual[0] || ym} / 지급연월 ${ym} / 매월`,
-    `  3. 소득종류 선택: 사업소득${wt ? ' + 근로소득' : ''}`,
-    `  4. 사업소득 [A25]  인원 ${a.count}  총지급액 ${won(a.gross)}  소득세 ${won(a.tax)}`,
-    wt ? `  5. 근로소득 [A01]  인원 ${num('whtWageCount')}  총지급액 ${won(num('whtWageGross'))}  소득세 ${won(wt)}` : '',
-    `  ${wt ? 6 : 5}. 신고서 제출 → 납부할 세액 ${won(a.tax + wt)}원 납부`,
+    `  3. 소득종류 선택: ${[a.biz.gross ? '사업소득' : '', a.other.gross ? '기타소득' : '',
+        wt ? '근로소득' : ''].filter(Boolean).join(' + ') || '사업소득'}`,
+    a.biz.gross ? `  · 사업소득 [A25]  인원 ${a.biz.count}  총지급액 ${won(a.biz.gross)}  소득세 ${won(a.biz.tax)}` : '',
+    a.other.gross ? `  · 기타소득 [A40]  인원 ${a.other.count}  총지급액 ${won(a.other.gross)}  소득세 ${won(a.other.tax)}` : '',
+    wt ? `  · 근로소득 [A01]  인원 ${num('whtWageCount')}  총지급액 ${won(num('whtWageGross'))}  소득세 ${won(wt)}` : '',
+    `  4. 신고서 제출 → 납부할 세액 ${won(a.tax + wt)}원 납부`,
     ``,
     `━━━ ② 위택스 (지방소득세) ━━━`,
     `  홈택스 제출 후 뜨는 [지방소득세 신고 이동] 버튼을 쓰면 자료가 넘어갑니다.`,
@@ -724,7 +750,8 @@ $('whtSave').onclick = async () => {
     `※ 실제 신고·납부를 마친 뒤에 누르세요.`)) return;
   try {
     await WCT.api('wht.save', { payYm: ym, accrualYm: a.accrual[0] || ym,
-      bizCount: a.count, bizGross: a.gross, bizTax: a.tax,
+      bizCount: a.biz.count, bizGross: a.biz.gross, bizTax: a.biz.tax,
+      otherCount: a.other.count, otherGross: a.other.gross, otherTax: a.other.tax,
       wageCount: num('whtWageCount'), wageGross: num('whtWageGross'), wageTax: wt,
       totalTax: a.tax + wt, localTax: a.local + Math.floor(wt * 0.1 / 10) * 10,
       hometax: today, wetax: today });
@@ -736,12 +763,14 @@ $('whtSave').onclick = async () => {
 
 
 // ═══════════════ 신고
-async function buildRows(ym) {
-  const list = WCT.data.payments.filter((p) => p.ym === ym && p.status !== '예정');
+async function buildRows(ym, type) {
+  const list = WCT.data.payments.filter((p) => p.ym === ym && p.status !== '예정'
+    && (!type || (p.incomeType || 'biz') === type));
   const byId = {};
   list.forEach((p) => {
     byId[p.personId] = byId[p.personId] ||
-      { personId: p.personId, name: p.name, gross: 0, incomeTax: 0, localTax: 0 };
+      { personId: p.personId, name: p.name, gross: 0, incomeTax: 0, localTax: 0,
+        incomeType: p.incomeType || 'biz' };
     byId[p.personId].gross += p.gross;
     byId[p.personId].incomeTax += p.incomeTax;
     byId[p.personId].localTax += p.localTax;
@@ -759,6 +788,8 @@ async function buildRows(ym) {
     const d = String(rrn).replace(/\D/g, '');
     out.push(Object.assign(r, { rrn: d.length === 13 ? `${d.slice(0,6)}-${d.slice(6)}` : '',
       industry: person ? person.industry : '940909',
+      rate: r.incomeType === 'other' ? 20 : 3,
+      base: r.incomeType === 'other' ? Math.round(r.gross * 0.4) : r.gross,
       year: ym.split('-')[0], month: String(+ym.split('-')[1]) }));
   }
   return out.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
@@ -768,40 +799,79 @@ $('repCheck').onclick = async () => {
   const ym = $('repYm').value;
   if (!ym) return;
   $('repOut').textContent = '집계 중…';
-  const rows = await buildRows(ym);
-  if (!rows.length) return void ($('repOut').textContent = `${ym} 귀속 신고 대상이 없습니다.`);
-  const dl = deadline(ym).toISOString().slice(0, 10);
+
+  const groups = [];
+  for (const type of ['biz', 'other']) {
+    const rows = await buildRows(ym, type);
+    if (rows.length) groups.push({ type, rows });
+  }
+  if (!groups.length) {
+    $('repOut').textContent = `${ym} 귀속 신고 대상이 없습니다.`;
+    return;
+  }
+
+  const dl = stmtDeadline(ym).toISOString().slice(0, 10);
+  const out = [`■ ${ym} 귀속 · 제출기한 ${dl}`];
+  if (groups.length > 1) {
+    out.push('■ 사업소득과 기타소득은 서식이 달라 엑셀이 2개로 나옵니다.');
+  }
+
   const problems = [];
-  rows.forEach((r) => {
-    if (r.rrn.replace(/\D/g, '').length !== 13) problems.push(`${r.name} — 주민등록번호 확인 필요`);
-    if (String(r.industry).length !== 6) problems.push(`${r.name} — 업종코드가 6자리가 아닙니다`);
-    if (r.gross <= 0) problems.push(`${r.name} — 지급액이 0원 이하`);
+  groups.forEach((g) => {
+    const t = INCOME_TYPES[g.type];
+    out.push('', `━━ ${t.label} (${t.code}) · ${g.rows.length}명 ━━`,
+      `   지급 ${won(g.rows.reduce((a, r) => a + r.gross, 0))}원 · ` +
+      `소득세 ${won(g.rows.reduce((a, r) => a + r.incomeTax, 0))}원 · ` +
+      `지방세 ${won(g.rows.reduce((a, r) => a + r.localTax, 0))}원`);
+    g.rows.forEach((r, i) => {
+      out.push(`  ${String(i + 1).padStart(2)}. ${r.name}  ${maskRrn(r.rrn)}  ` +
+        (g.type === 'other' ? `소득금액 ${won(r.base).padStart(10)}원  ` : `업종 ${r.industry}  `) +
+        `지급 ${won(r.gross).padStart(11)}원  소득세 ${won(r.incomeTax)}원`);
+      if (r.rrn.replace(/\D/g, '').length !== 13) problems.push(`${r.name} — 주민등록번호 확인 필요`);
+      if (g.type === 'biz' && String(r.industry).length !== 6) {
+        problems.push(`${r.name} — 업종코드가 6자리가 아닙니다`);
+      }
+      if (r.gross <= 0) problems.push(`${r.name} — 지급액이 0원 이하`);
+    });
   });
-  $('repOut').textContent = [
-    `■ ${ym} 귀속 · 제출기한 ${dl}`,
-    `■ ${rows.length}명 · 지급 합계 ${won(rows.reduce((a, r) => a + r.gross, 0))}원`,
-    `■ 소득세 ${won(rows.reduce((a, r) => a + r.incomeTax, 0))}원 · ` +
-    `지방소득세 ${won(rows.reduce((a, r) => a + r.localTax, 0))}원`, '',
-    ...rows.map((r, i) => `${String(i + 1).padStart(2)}. ${r.name}  ${maskRrn(r.rrn)}  ` +
-      `업종 ${r.industry}  지급 ${won(r.gross).padStart(11)}원  소득세 ${won(r.incomeTax)}원`),
-    '', problems.length ? '⚠ 확인 필요\n' + problems.map((p) => '   - ' + p).join('\n')
-      : '✅ 형식 검증을 통과했습니다.',
-  ].join('\n');
+
+  out.push('', problems.length
+    ? '⚠ 확인 필요\n' + problems.map((p) => '   - ' + p).join('\n')
+    : '✅ 형식 검증을 통과했습니다.');
+  $('repOut').textContent = out.join('\n');
 };
 
 $('repMake').onclick = async () => {
   const ym = $('repYm').value;
-  const rows = await buildRows(ym);
-  if (!rows.length) return alert('신고 대상이 없습니다.');
-  const aoa = [['일련번호', '소득자성명', '주민등록번호', '귀속연도', '귀속월',
-    '업종구분', '지급액', '세율', '소득세', '지방소득세']];
-  rows.forEach((r, i) => aoa.push([i + 1, r.name, r.rrn, r.year, r.month,
-    r.industry, r.gross, 3, r.incomeTax, r.localTax]));
-  aoa.push(['', '합계', '', '', '', '', rows.reduce((a, r) => a + r.gross, 0), '',
-    rows.reduce((a, r) => a + r.incomeTax, 0), rows.reduce((a, r) => a + r.localTax, 0)]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), ym);
-  XLSX.writeFile(wb, `간이지급명세서_${ym}.xlsx`);
+  let made = 0;
+  for (const type of ['biz', 'other']) {
+    const rows = await buildRows(ym, type);
+    if (!rows.length) continue;
+    const isOther = type === 'other';
+    const head = isOther
+      ? ['일련번호', '소득자성명', '주민등록번호', '귀속연도', '귀속월',
+         '지급액', '필요경비', '기타소득금액', '세율', '소득세', '지방소득세']
+      : ['일련번호', '소득자성명', '주민등록번호', '귀속연도', '귀속월',
+         '업종구분', '지급액', '세율', '소득세', '지방소득세'];
+    const aoa = [head];
+    rows.forEach((r, i) => aoa.push(isOther
+      ? [i + 1, r.name, r.rrn, r.year, r.month, r.gross, r.gross - r.base, r.base,
+         20, r.incomeTax, r.localTax]
+      : [i + 1, r.name, r.rrn, r.year, r.month, r.industry, r.gross, 3,
+         r.incomeTax, r.localTax]));
+    const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
+    aoa.push(isOther
+      ? ['', '합계', '', '', '', sum('gross'), sum('gross') - sum('base'), sum('base'),
+         '', sum('incomeTax'), sum('localTax')]
+      : ['', '합계', '', '', '', '', sum('gross'), '', sum('incomeTax'), sum('localTax')]);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), ym);
+    XLSX.writeFile(wb, `간이지급명세서_${isOther ? '기타소득' : '사업소득'}_${ym}.xlsx`);
+    made++;
+  }
+  if (!made) alert('신고 대상이 없습니다.');
+  else if (made > 1) alert('사업소득·기타소득 두 개의 파일을 만들었습니다.\n홈택스에서 각각 따로 제출하세요.');
 };
 
 $('repDone').onclick = async () => {

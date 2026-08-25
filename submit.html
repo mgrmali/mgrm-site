@@ -29,6 +29,9 @@
   input:focus,select:focus,textarea:focus{border-color:var(--accent)}
   .hint{font-size:12px;color:var(--dim);margin-top:5px}
   .choice{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+  .choice.c3{grid-template-columns:repeat(3,1fr)}
+  .choice.c3 button{padding:16px 6px;font-size:13.5px}
+  .choice.c3 button small{font-size:10.5px;line-height:1.35}
   .choice button{padding:20px 12px;background:#0d0f14;border:1px solid var(--line);
     border-radius:12px;color:var(--fg);font-size:15px;font-family:inherit;cursor:pointer;
     text-align:center;line-height:1.4}
@@ -107,14 +110,19 @@
 
     <div class="card">
       <h2>구분 선택</h2>
-      <div class="choice">
+      <div class="choice c3">
         <button type="button" id="btnFree" aria-pressed="false">
-          프리랜서 <small>3.3% 원천징수</small>
+          프리랜서 <small>3.3%<br>계속·반복 용역</small>
+        </button>
+        <button type="button" id="btnOther" aria-pressed="false">
+          일반 · 학생 <small>8.8%<br>일시적 용역</small>
         </button>
         <button type="button" id="btnBiz" aria-pressed="false">
-          사업자 <small>세금계산서 발행</small>
+          사업자 <small>세금계산서<br>발행</small>
         </button>
       </div>
+      <div class="hint" id="kindHint" style="margin-top:10px">
+        어느 쪽인지 모르시면 담당자에게 물어보세요.</div>
     </div>
 
     <!-- 프리랜서 -->
@@ -314,15 +322,25 @@ function invalid(m) {
 
 // ---------- 구분 선택 ----------
 $('btnFree').onclick = () => setKind('freelancer');
+$('btnOther').onclick = () => setKind('other');
 $('btnBiz').onclick = () => setKind('business');
+
+const HINTS = {
+  freelancer: '촬영·편집 등 용역을 계속적으로 제공하는 경우입니다. 지급액의 3.3%를 원천징수합니다.',
+  other: '일시적으로 참여한 경우입니다. 지급액의 8.8%를 원천징수하며, 12만 5천원 이하는 세금이 없습니다.',
+  business: '사업자등록이 있어 세금계산서를 발행하는 경우입니다. 원천징수하지 않습니다.',
+};
 
 function setKind(k) {
   kind = k;
   $('btnFree').setAttribute('aria-pressed', k === 'freelancer');
+  $('btnOther').setAttribute('aria-pressed', k === 'other');
   $('btnBiz').setAttribute('aria-pressed', k === 'business');
-  $('formFree').classList.toggle('hidden', k !== 'freelancer');
+  // 프리랜서와 일반·학생은 받는 항목이 같습니다
+  $('formFree').classList.toggle('hidden', k === 'business');
   $('formBiz').classList.toggle('hidden', k !== 'business');
   $('agreeBox').classList.remove('hidden');
+  $('kindHint').textContent = HINTS[k] || '';
   check();
 }
 
@@ -424,7 +442,7 @@ $('agree').onchange = check;
 document.querySelectorAll('input,select').forEach((el) => el.addEventListener('input', check));
 
 function collect() {
-  if (kind === 'freelancer') {
+  if (kind !== 'business') {
     return {
       kind, name: $('f_name').value.trim(), rrn: $('f_rrn').value.trim(),
       phone: $('f_phone').value.trim(), address: $('f_addr').value.trim(),
@@ -446,7 +464,7 @@ function collect() {
 
 function check() {
   let ok = !!kind && $('agree').checked;
-  if (ok && kind === 'freelancer') {
+  if (ok && kind !== 'business') {
     const d = collect();
     ok = d.name && rrnValid(d.rrn) && d.phone && d.address &&
          d.account && d.account_holder &&
