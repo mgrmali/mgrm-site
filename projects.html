@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>프로젝트 · 맹그라미</title>
+<link rel="stylesheet" href="wct-style.css">
+<style>
+  .board{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:start}
+  @media(max-width:980px){.board{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:600px){.board{grid-template-columns:1fr}}
+
+  .col{background:#131620;border:1px solid var(--line);border-radius:13px;padding:12px;
+    min-height:180px;transition:border-color .15s,background .15s}
+  .col.over{border-color:var(--accent);background:#1a1a14}
+  .col .ch{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:0 4px}
+  .col .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .col .cn{font-weight:700;font-size:13.5px;flex:1}
+  .col .cc{color:var(--dim);font-size:12px}
+
+  .pc{background:var(--card);border:1px solid var(--line);border-radius:11px;
+    padding:13px;margin-bottom:9px;cursor:grab;transition:border-color .15s,transform .1s}
+  .pc:hover{border-color:var(--accent)}
+  .pc:active{cursor:grabbing}
+  .pc.drag{opacity:.4}
+  .pc .nm{font-weight:700;font-size:14px;margin-bottom:3px;word-break:break-all}
+  .pc .cl{color:var(--dim);font-size:11.5px}
+  .pc .mt{display:flex;gap:6px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  .pc .amt{font-size:11.5px;color:var(--dim);margin-top:6px}
+
+  .prog{height:5px;background:#0d0f14;border-radius:4px;overflow:hidden;margin-top:10px}
+  .prog i{display:block;height:100%;background:var(--accent);transition:width .3s}
+  .prog.full i{background:var(--ok)}
+
+  .chip{padding:2px 8px;border-radius:20px;font-size:10.5px;border:1px solid var(--line);
+    color:var(--dim)}
+  .chip.due{color:var(--warn);border-color:var(--warn)}
+  .chip.over{color:var(--bad);border-color:var(--bad)}
+  .chip.ok{color:var(--ok);border-color:var(--ok)}
+
+  .task{display:flex;align-items:flex-start;gap:9px;padding:8px 0;
+    border-bottom:1px solid var(--line)}
+  .task:last-child{border-bottom:0}
+  .task input[type=checkbox]{width:17px;height:17px;flex:none;margin-top:2px;
+    accent-color:var(--accent);cursor:pointer}
+  .task .tx{flex:1;font-size:13px;line-height:1.5}
+  .task.on .tx{color:var(--dim);text-decoration:line-through}
+  .task .x{background:none;border:0;color:#4a5160;cursor:pointer;font-size:15px;padding:0 4px}
+  .task .x:hover{color:var(--bad)}
+
+  .stagehd{display:flex;align-items:center;gap:8px;margin:18px 0 6px;font-size:12.5px;
+    color:var(--accent);font-weight:700}
+  .stagehd .ln{flex:1;height:1px;background:var(--line)}
+  .kpi{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px}
+  .kpi div span{display:block;color:var(--dim);font-size:11.5px}
+  .kpi div b{font-size:19px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kpi" id="kpi"></div>
+
+  <div class="bar">
+    <button class="b" id="newBtn">＋ 새 프로젝트</button>
+    <input id="q" placeholder="프로젝트·클라이언트 검색" style="max-width:240px">
+    <label style="margin:0;display:flex;align-items:center;gap:7px;color:var(--fg);font-size:13px">
+      <input type="checkbox" id="showDone" style="width:auto"> 완료 포함
+    </label>
+    <span style="flex:1"></span>
+    <span class="dim" style="font-size:12px">카드를 끌어서 단계를 옮길 수 있습니다</span>
+  </div>
+
+  <div class="board" id="board"></div>
+</div>
+
+<!-- 프로젝트 상세 -->
+<dialog id="dlg">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <div style="flex:1">
+      <h2 id="dTitle" style="margin-bottom:4px">프로젝트</h2>
+      <div class="dim" id="dSub" style="font-size:12.5px"></div>
+    </div>
+    <button class="g sm" onclick="$('dlg').close()">닫기</button>
+  </div>
+
+  <div class="row r3" style="margin-top:16px">
+    <div><label>단계</label><select id="dStage"></select></div>
+    <div><label>마감일</label><input type="date" id="dDue"></div>
+    <div><label>계약금액</label><input id="dAmount" inputmode="numeric"></div>
+  </div>
+  <div class="row r2">
+    <div><label>클라이언트</label><input id="dClient"></div>
+    <div><label>담당</label><input id="dOwner"></div>
+  </div>
+  <label>메모</label>
+  <textarea id="dMemo" style="min-height:70px"></textarea>
+
+  <div id="dCost" class="note" style="margin-top:14px"></div>
+
+  <div id="dTasks"></div>
+
+  <div class="bar" style="margin-top:16px">
+    <input id="newTask" placeholder="작업 추가 후 Enter" style="flex:1;min-width:180px">
+    <select id="newTaskStage" style="width:120px"></select>
+  </div>
+
+  <div class="bar" style="margin-top:6px">
+    <button class="b" id="dSave">저장</button>
+    <span style="flex:1"></span>
+    <button class="g" id="dDelete">프로젝트 삭제</button>
+  </div>
+  <div class="msg hide" id="dMsg"></div>
+</dialog>
+
+<!-- 새 프로젝트 -->
+<dialog id="newDlg">
+  <h2>새 프로젝트</h2>
+  <div class="row r2">
+    <div><label>프로젝트명 *</label><input id="nName" placeholder="예: 이안 더 써밋 동래"></div>
+    <div><label>클라이언트</label><input id="nClient"></div>
+  </div>
+  <div class="row r3">
+    <div><label>시작일</label><input type="date" id="nStart"></div>
+    <div><label>마감일</label><input type="date" id="nDue"></div>
+    <div><label>계약금액</label><input id="nAmount" inputmode="numeric" placeholder="0"></div>
+  </div>
+  <label style="display:flex;align-items:center;gap:8px;color:var(--fg);margin-top:14px">
+    <input type="checkbox" id="nTemplate" checked style="width:auto">
+    단계별 기본 작업 자동 생성
+  </label>
+  <div class="note" style="margin-top:8px" id="nTplPreview"></div>
+  <div class="bar" style="margin-top:14px">
+    <button class="b" id="nSave">만들기</button>
+    <button class="g" onclick="$('newDlg').close()">취소</button>
+  </div>
+  <div class="msg hide" id="nMsg"></div>
+</dialog>
+
+<script src="wct-core.js"></script>
+<script>
+const STAGES = [
+  { key: '프리',    color: '#5b8dd6', desc: '기획 · 준비' },
+  { key: '프로덕션', color: '#c8a84b', desc: '촬영' },
+  { key: '포스트',   color: '#a06bd0', desc: '편집 · DI · 납품 준비' },
+  { key: '완료',    color: '#4ea87a', desc: '납품 완료' },
+];
+
+// 영상 제작 실무 기준 기본 작업
+const TEMPLATE = {
+  '프리': ['기획 · 시나리오', '콘티 · 스토리보드', '견적 · 계약', '로케이션 헌팅',
+          '캐스팅', '스태프 섭외', '촬영 스케줄 확정', '장비 리스트 · 렌탈'],
+  '프로덕션': ['장비 점검', '촬영 D-1 준비', '본 촬영', 'DIT 백업 · 검수', '데이터 인계'],
+  '포스트': ['가편집', '1차 시사', '수정 반영', 'DI · 색보정', '사운드 믹싱',
+           'CG · 그래픽', '최종 시사', '마스터 출력', '납품'],
+};
+
+let CUR = null;
+
+(async function init() {
+  if (!await WCT.requireAuth()) return;
+  mountHeader('프로젝트');
+
+  STAGES.forEach((s) => {
+    $('dStage').innerHTML += `<option value="${s.key}">${s.key}</option>`;
+    if (s.key !== '완료') $('newTaskStage').innerHTML += `<option value="${s.key}">${s.key}</option>`;
+  });
+
+  $('nTplPreview').innerHTML = Object.entries(TEMPLATE)
+    .map(([k, v]) => `<b>${k}</b> ${v.length}개 — ${esc(v.slice(0, 3).join(', '))} …`).join('<br>');
+
+  $('q').addEventListener('input', render);
+  $('showDone').addEventListener('change', render);
+  $('newBtn').onclick = () => {
+    $('nStart').value = today();
+    $('nMsg').className = 'msg hide';
+    $('newDlg').showModal();
+  };
+  $('newTask').addEventListener('keydown', (e) => { if (e.key === 'Enter') addTask(); });
+
+  await WCT.load(true);
+  render();
+})();
+
+const tasksOf = (pid) => (WCT.data.tasks || []).filter((t) => t.projectId === pid);
+
+function progress(pid) {
+  const t = tasksOf(pid);
+  return { total: t.length, done: t.filter((x) => x.done).length,
+           pct: t.length ? Math.round(t.filter((x) => x.done).length / t.length * 100) : 0 };
+}
+
+/** 프로젝트에 물린 인건비 — 원천징수 지급 기록에서 끌어온다 */
+function laborOf(name) {
+  const list = (WCT.data.payments || []).filter((p) => p.project === name);
+  return { count: list.length, gross: list.reduce((a, p) => a + p.gross, 0) };
+}
+
+function dueChip(due) {
+  if (!due) return '';
+  const d = dday(new Date(due + 'T00:00:00'));
+  const cls = d.left < 0 ? 'over' : d.left <= 7 ? 'due' : '';
+  return `<span class="chip ${cls}">${esc(due.slice(5))} · ${d.text}</span>`;
+}
+
+function render() {
+  const q = $('q').value.trim().toLowerCase();
+  let list = (WCT.data.projects || []).filter((p) => p.active !== false);
+  if (!$('showDone').checked) list = list.filter((p) => p.stage !== '완료');
+  if (q) list = list.filter((p) =>
+    (p.name + ' ' + p.client).toLowerCase().includes(q));
+
+  // KPI
+  const active = list.filter((p) => p.stage !== '완료');
+  const soon = active.filter((p) => p.due &&
+    dday(new Date(p.due + 'T00:00:00')).left <= 7);
+  const amount = active.reduce((a, p) => a + (p.amount || 0), 0);
+  $('kpi').innerHTML = `
+    <div><span>진행 중</span><b>${active.length}건</b></div>
+    <div><span>이번 주 마감</span><b style="${soon.length ? 'color:var(--warn)' : ''}">${soon.length}건</b></div>
+    <div><span>진행 중 계약금액</span><b>${won(amount)}원</b></div>`;
+
+  $('board').innerHTML = STAGES.map((s) => {
+    const items = list.filter((p) => (p.stage || '프리') === s.key)
+      .sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
+    return `<div class="col" data-stage="${s.key}">
+      <div class="ch">
+        <span class="dot" style="background:${s.color}"></span>
+        <span class="cn">${s.key}</span>
+        <span class="cc">${items.length}</span>
+      </div>
+      ${items.map((p) => card(p)).join('')}
+      ${items.length ? '' : '<div class="dim" style="font-size:12px;padding:14px 4px">비어 있음</div>'}
+    </div>`;
+  }).join('');
+
+  bindDnD();
+}
+
+function card(p) {
+  const pr = progress(p.id);
+  const lb = laborOf(p.name);
+  return `<div class="pc" draggable="true" data-id="${p.id}" onclick="openProject(${p.id})">
+    <div class="nm">${esc(p.name)}</div>
+    <div class="cl">${esc(p.client || '클라이언트 미지정')}</div>
+    ${pr.total ? `<div class="prog ${pr.pct === 100 ? 'full' : ''}"><i style="width:${pr.pct}%"></i></div>` : ''}
+    <div class="mt">
+      ${pr.total ? `<span class="chip ${pr.pct === 100 ? 'ok' : ''}">${pr.done}/${pr.total}</span>` : ''}
+      ${dueChip(p.due)}
+      ${p.owner ? `<span class="chip">${esc(p.owner)}</span>` : ''}
+    </div>
+    ${(p.amount || lb.gross) ? `<div class="amt">
+      ${p.amount ? `계약 ${won(p.amount)}원` : ''}${p.amount && lb.gross ? ' · ' : ''}
+      ${lb.gross ? `인건비 ${won(lb.gross)}원` : ''}</div>` : ''}
+  </div>`;
+}
+
+// ─────────── 드래그 앤 드롭
+function bindDnD() {
+  let dragId = null;
+  document.querySelectorAll('.pc').forEach((el) => {
+    el.addEventListener('dragstart', (e) => {
+      dragId = Number(el.dataset.id);
+      el.classList.add('drag');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragend', () => el.classList.remove('drag'));
+  });
+  document.querySelectorAll('.col').forEach((col) => {
+    col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('over'); });
+    col.addEventListener('dragleave', () => col.classList.remove('over'));
+    col.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      col.classList.remove('over');
+      if (!dragId) return;
+      const stage = col.dataset.stage;
+      const p = WCT.data.projects.find((x) => x.id === dragId);
+      if (!p || p.stage === stage) return;
+      p.stage = stage;         // 화면 먼저 반영
+      render();
+      try { await WCT.api('project.update', { id: dragId, stage }); }
+      catch (err) { alert(err.message); await WCT.load(true); render(); }
+    });
+  });
+}
+
+// ─────────── 상세
+window.openProject = (id) => {
+  const p = WCT.data.projects.find((x) => x.id === id);
+  if (!p) return;
+  CUR = p;
+  $('dTitle').textContent = p.name;
+  $('dSub').textContent = `${p.client || '클라이언트 미지정'}${p.start ? ' · 시작 ' + p.start : ''}`;
+  $('dStage').value = p.stage || '프리';
+  $('dDue').value = p.due || '';
+  $('dAmount').value = p.amount || '';
+  $('dClient').value = p.client || '';
+  $('dOwner').value = p.owner || '';
+  $('dMemo').value = p.memo || '';
+  $('dMsg').className = 'msg hide';
+
+  const lb = laborOf(p.name);
+  const pr = progress(p.id);
+  $('dCost').innerHTML = `
+    진행률 <b>${pr.done}/${pr.total}</b> (${pr.pct}%) ·
+    계약 <b>${won(p.amount || 0)}</b>원 ·
+    인건비 <b>${won(lb.gross)}</b>원 (${lb.count}건)
+    ${p.amount ? ` · 인건비 비중 ${Math.round(lb.gross / p.amount * 100)}%` : ''}
+    <br><span style="font-size:11.5px">인건비는 원천징수 &gt; 지급 탭에서 이 프로젝트로 등록한 금액입니다.</span>`;
+
+  renderTasks();
+  $('dlg').showModal();
+};
+
+function renderTasks() {
+  const all = tasksOf(CUR.id);
+  $('dTasks').innerHTML = ['프리', '프로덕션', '포스트'].map((st) => {
+    const list = all.filter((t) => t.stage === st).sort((a, b) => a.order - b.order || a.id - b.id);
+    if (!list.length) return '';
+    const done = list.filter((t) => t.done).length;
+    return `<div class="stagehd">${st} <span class="ln"></span>
+      <span class="dim" style="font-weight:400">${done}/${list.length}</span></div>` +
+      list.map((t) => `<div class="task ${t.done ? 'on' : ''}">
+        <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleTask(${t.id}, this.checked)">
+        <span class="tx">${esc(t.title)}</span>
+        <button class="x" onclick="delTask(${t.id})">×</button>
+      </div>`).join('');
+  }).join('') || '<div class="dim" style="margin-top:16px;font-size:12.5px">작업이 없습니다. 아래에서 추가하세요.</div>';
+}
+
+window.toggleTask = async (id, done) => {
+  const t = WCT.data.tasks.find((x) => x.id === id);
+  if (t) t.done = done;
+  renderTasks(); render();
+  try { await WCT.api('task.set', { id, done }); }
+  catch (e) { alert(e.message); await WCT.load(true); renderTasks(); render(); }
+};
+
+window.delTask = async (id) => {
+  if (!confirm('이 작업을 삭제할까요?')) return;
+  await WCT.api('task.delete', { id });
+  await WCT.load(true); renderTasks(); render();
+};
+
+async function addTask() {
+  const title = $('newTask').value.trim();
+  if (!title || !CUR) return;
+  const stage = $('newTaskStage').value;
+  $('newTask').value = '';
+  try {
+    await WCT.api('task.add', { projectId: CUR.id, stage, title, order: 999 });
+    await WCT.load(true); renderTasks(); render();
+  } catch (e) { alert(e.message); }
+}
+
+$('dSave').onclick = async () => {
+  const m = $('dMsg');
+  const btn = $('dSave');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    await WCT.api('project.update', {
+      id: CUR.id, name: CUR.name, client: $('dClient').value.trim(),
+      stage: $('dStage').value, due: $('dDue').value,
+      amount: Number(String($('dAmount').value).replace(/[^\d]/g, '')) || 0,
+      owner: $('dOwner').value.trim(), memo: $('dMemo').value,
+    });
+    await WCT.load(true); render();
+    m.className = 'msg ok'; m.textContent = '저장했습니다.';
+    setTimeout(() => $('dlg').close(), 700);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '저장'; }
+};
+
+$('dDelete').onclick = async () => {
+  const lb = laborOf(CUR.name);
+  if (lb.count && !confirm(
+    `이 프로젝트로 등록된 지급 기록이 ${lb.count}건 있습니다.\n` +
+    `지급 기록은 남지만 프로젝트 연결이 끊깁니다.\n\n계속할까요?`)) return;
+  if (!confirm('프로젝트와 작업이 모두 삭제됩니다. 되돌릴 수 없습니다.')) return;
+  await WCT.api('project.delete', { id: CUR.id });
+  await WCT.load(true); render();
+  $('dlg').close();
+};
+
+// ─────────── 새 프로젝트
+$('nSave').onclick = async () => {
+  const name = $('nName').value.trim();
+  const m = $('nMsg');
+  if (!name) { m.className = 'msg bad'; m.textContent = '프로젝트명을 입력하세요.'; return; }
+  const btn = $('nSave');
+  btn.disabled = true; btn.textContent = '만드는 중…';
+  try {
+    const tasks = $('nTemplate').checked
+      ? Object.entries(TEMPLATE).flatMap(([stage, arr]) => arr.map((title) => ({ stage, title })))
+      : [];
+    await WCT.api('project.add', {
+      name, client: $('nClient').value.trim(), stage: '프리',
+      start: $('nStart').value, due: $('nDue').value,
+      amount: Number(String($('nAmount').value).replace(/[^\d]/g, '')) || 0,
+      tasks,
+    });
+    ['nName', 'nClient', 'nDue', 'nAmount'].forEach((i) => ($(i).value = ''));
+    await WCT.load(true); render();
+    $('newDlg').close();
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '만들기'; }
+};
+</script>
+</body>
+</html>

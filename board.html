@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>게시판 · 맹그라미</title>
+<link rel="stylesheet" href="wct-style.css">
+<style>
+  .cats{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .cats button{padding:8px 14px;background:var(--card);border:1px solid var(--line);
+    border-radius:20px;color:var(--dim);font-size:12.5px;font-family:inherit;cursor:pointer}
+  .cats button.on{border-color:var(--accent);color:var(--accent);background:#1e1a10}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;margin-bottom:10px}
+  .item.pin{border-left:3px solid var(--accent)}
+  .item:target{border-color:var(--accent)}
+  .item .hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .item .tt{font-weight:700;font-size:15px;flex:1;min-width:0}
+  .item .meta{color:var(--dim);font-size:11.5px;margin-top:3px}
+  .item .bd{margin-top:11px;white-space:pre-wrap;line-height:1.75;font-size:13.5px;
+    color:#d3d8e0;word-break:break-word}
+  .item .acts{margin-top:12px;display:flex;gap:6px}
+  .tag{padding:2px 9px;border-radius:20px;font-size:11px;border:1px solid var(--line);
+    color:var(--dim);flex:none}
+  .tag.공지{color:var(--bad);border-color:var(--bad)}
+  .tag.세무{color:var(--warn);border-color:var(--warn)}
+  .tag.장비{color:var(--info);border-color:var(--info)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="card">
+    <h2>새 글</h2>
+    <div class="row r3">
+      <div>
+        <label>분류</label>
+        <select id="cat">
+          <option>일반</option><option>공지</option><option>세무</option>
+          <option>프로젝트</option><option>장비</option><option>거래처</option>
+        </select>
+      </div>
+      <div style="grid-column:span 2">
+        <label>제목</label>
+        <input id="title" placeholder="한 줄로 요약">
+      </div>
+    </div>
+    <label>내용</label>
+    <textarea id="body" placeholder="줄바꿈 그대로 저장됩니다."></textarea>
+    <div class="bar" style="margin:14px 0 0">
+      <label style="margin:0;display:flex;align-items:center;gap:7px;color:var(--fg)">
+        <input type="checkbox" id="pinned" style="width:auto"> 상단 고정
+      </label>
+      <span style="flex:1"></span>
+      <input id="author" style="width:130px" placeholder="작성자">
+      <button class="b" id="save">등록</button>
+    </div>
+    <div class="msg hide" id="msg"></div>
+  </div>
+
+  <div class="cats" id="cats"></div>
+  <div class="bar">
+    <input id="q" placeholder="제목·내용 검색" style="max-width:280px">
+    <span class="dim" id="count"></span>
+  </div>
+  <div id="list"><div class="dim">불러오는 중…</div></div>
+</div>
+
+<script src="wct-core.js"></script>
+<script>
+const CATS = ['전체', '일반', '공지', '세무', '프로젝트', '장비', '거래처'];
+let curCat = '전체';
+
+(async function init() {
+  if (!await WCT.requireAuth()) return;
+  mountHeader('게시판');
+
+  CATS.forEach((c, i) => {
+    const b = document.createElement('button');
+    b.textContent = c;
+    if (i === 0) b.className = 'on';
+    b.onclick = () => {
+      curCat = c;
+      document.querySelectorAll('#cats button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      render();
+    };
+    $('cats').appendChild(b);
+  });
+
+  $('author').value = localStorage.getItem('wct_author') || '';
+  $('q').addEventListener('input', render);
+
+  await WCT.load(true);
+  render();
+  if (location.hash) {
+    const el = document.querySelector(location.hash);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+})();
+
+function render() {
+  const q = $('q').value.trim().toLowerCase();
+  let posts = (WCT.data.board || []).slice();
+  if (curCat !== '전체') posts = posts.filter((p) => p.cat === curCat);
+  if (q) posts = posts.filter((p) =>
+    (p.title + ' ' + p.body).toLowerCase().includes(q));
+  posts.sort((a, b) => (b.pinned - a.pinned) || (b.id - a.id));
+
+  $('count').textContent = `${posts.length}건`;
+  $('list').innerHTML = posts.length ? posts.map((p) => `
+    <div class="item ${p.pinned ? 'pin' : ''}" id="p${p.id}">
+      <div class="hd">
+        <span class="tag ${esc(p.cat)}">${esc(p.cat)}</span>
+        <span class="tt">${p.pinned ? '📌 ' : ''}${esc(p.title)}</span>
+      </div>
+      <div class="meta">${esc(p.author || '-')} · ${esc(p.createdAt)}</div>
+      ${p.body ? `<div class="bd">${esc(p.body)}</div>` : ''}
+      <div class="acts">
+        <button class="g sm" onclick="togglePin(${p.id}, ${!p.pinned})">${
+          p.pinned ? '고정 해제' : '상단 고정'}</button>
+        <button class="g sm" onclick="del(${p.id})">삭제</button>
+      </div>
+    </div>`).join('')
+    : '<div class="card dim" style="text-align:center;padding:40px">글이 없습니다.</div>';
+}
+
+$('save').onclick = async () => {
+  const title = $('title').value.trim();
+  const m = $('msg');
+  if (!title) { m.className = 'msg bad'; m.textContent = '제목을 입력하세요.'; return; }
+  const btn = $('save');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    localStorage.setItem('wct_author', $('author').value.trim());
+    await WCT.api('board.add', {
+      cat: $('cat').value, title, body: $('body').value,
+      author: $('author').value.trim(), pinned: $('pinned').checked,
+    });
+    $('title').value = ''; $('body').value = ''; $('pinned').checked = false;
+    m.className = 'msg ok'; m.textContent = '등록했습니다.';
+    await WCT.load(true);
+    render();
+    setTimeout(() => { m.className = 'msg hide'; }, 2000);
+  } catch (e) {
+    m.className = 'msg bad'; m.textContent = e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '등록';
+  }
+};
+
+window.del = async (id) => {
+  if (!confirm('이 글을 삭제할까요? 되돌릴 수 없습니다.')) return;
+  await WCT.api('board.delete', { id });
+  await WCT.load(true);
+  render();
+};
+
+window.togglePin = async (id, pinned) => {
+  await WCT.api('board.pin', { id, pinned });
+  await WCT.load(true);
+  render();
+};
+</script>
+</body>
+</html>
