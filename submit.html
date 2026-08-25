@@ -523,7 +523,7 @@ $('submitBtn').onclick = async () => {
     const r = await fetch(GAS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ token, envelope }),
+      body: JSON.stringify({ action: 'submit', token, envelope }),
     });
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || '제출에 실패했습니다.');
