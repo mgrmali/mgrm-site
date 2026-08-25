@@ -124,12 +124,68 @@ const WCT = {
     return false;
   },
 
+  /** 인력 봉투를 열어 계좌·주민번호 등 원본을 꺼낸다.
+      한 번 연 것은 탭이 살아 있는 동안 재사용한다(매번 서버를 두드리지 않도록). */
+  _cache: {},
+  async reveal(person) {
+    if (!person || !person.envFileId) throw new Error('저장된 정보가 없습니다.');
+    if (WCT._cache[person.envFileId]) return WCT._cache[person.envFileId];
+    const env = (await WCT.api('envelope', { fileId: person.envFileId })).envelope;
+    const data = await WCT.open(env);
+    WCT._cache[person.envFileId] = data;
+    return data;
+  },
+
   async load(force = false) {
     if (!WCT.data || force) WCT.data = await WCT.api('bootstrap');
     WCT.touch();
     return WCT.data;
   },
 };
+
+/** 클립보드 복사 — https 가 아닌 환경까지 대비한 폴백 포함 */
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch {}
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+
+/** 화면 하단에 잠깐 뜨는 알림 */
+function toast(text, bad = false) {
+  let el = document.getElementById('__toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = '__toast';
+    el.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);' +
+      'padding:12px 20px;border-radius:10px;font-size:13px;z-index:999;' +
+      'box-shadow:0 6px 24px rgba(0,0,0,.5);transition:opacity .25s;pointer-events:none';
+    document.body.appendChild(el);
+  }
+  el.style.background = bad ? '#2a1614' : '#132318';
+  el.style.border = '1px solid ' + (bad ? '#e2564a' : '#4ea87a');
+  el.style.color = bad ? '#f0a89f' : '#9fd9bb';
+  el.textContent = text;
+  el.style.opacity = '1';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { el.style.opacity = '0'; }, 1800);
+}
+
+/** 계좌를 은행·번호·예금주까지 붙여 한 줄로 */
+function accountLine(bank, account, holder) {
+  return [bank, account, holder ? `(${holder})` : ''].filter(Boolean).join(' ');
+}
 
 // 활동 감지 — 마우스/키보드가 움직이면 잠금 시계를 되돌린다
 ['click', 'keydown', 'scroll'].forEach((e) =>
@@ -223,8 +279,13 @@ const maskAcc = (v) => {
 
 /* ══════════════ 날짜 · 기한 ══════════════ */
 
-const today = () => new Date().toISOString().slice(0, 10);
-const thisYm = () => new Date().toISOString().slice(0, 7);
+/* 날짜는 반드시 '한국 시간 기준'으로 뽑습니다.
+   toISOString() 은 UTC라서 오전 9시 이전에 쓰면 하루 전날이 나옵니다.
+   (매월 1일 아침이면 귀속월까지 지난달로 잡히는 사고가 납니다) */
+const _pad = (n) => String(n).padStart(2, '0');
+const ymd = (d) => `${d.getFullYear()}-${_pad(d.getMonth() + 1)}-${_pad(d.getDate())}`;
+const today = () => ymd(new Date());
+const thisYm = () => today().slice(0, 7);
 
 /** 원천세: 지급월의 다음 달 10일 */
 function whtDeadline(payYm) {
@@ -232,10 +293,13 @@ function whtDeadline(payYm) {
   return new Date(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 10);
 }
 
-/** 간이지급명세서: 귀속월의 다음 달 말일 */
+/** 간이지급명세서: 귀속월의 '다음 달 말일'
+    new Date(y, monthIndex, 0) 은 monthIndex 직전 달의 말일을 준다.
+    m 이 1~12 이므로 다음 달 말일은 monthIndex = m + 1 이다.
+    (예: 2026-08 귀속 → new Date(2026, 9, 0) = 2026-09-30) */
 function stmtDeadline(ym) {
   const [y, m] = ym.split('-').map(Number);
-  return new Date(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 0);
+  return m === 12 ? new Date(y + 1, 1, 0) : new Date(y, m + 1, 0);
 }
 
 function dday(date) {

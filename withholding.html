@@ -51,7 +51,8 @@
     <div class="card">
       <h2>프리랜서 (원천징수 대상)</h2>
       <table><thead><tr>
-        <th>성명</th><th>구분</th><th>역할</th><th>은행</th><th>계좌</th><th>업종</th><th>동의일</th></tr></thead>
+        <th>성명</th><th>구분</th><th>주민등록번호</th><th>역할</th><th>은행</th>
+        <th>계좌</th><th>업종</th><th>동의일</th></tr></thead>
         <tbody id="perTb"></tbody></table>
     </div>
     <div class="card">
@@ -80,7 +81,7 @@
           </select></div>
       </div>
       <div class="row r2" style="margin-top:4px">
-        <div><label>금액</label><input id="payAmt" inputmode="numeric" placeholder="1000000"></div>
+        <div><label>금액</label><input id="payAmt" inputmode="numeric" placeholder="예) 1000000"></div>
         <div><label>메모</label><input id="payMemo"></div>
       </div>
       <div id="payCalc" class="note" style="margin-top:14px">금액을 입력하세요.</div>
@@ -94,6 +95,7 @@
       <div class="bar">
         <h2 style="margin:0;flex:1">지급 내역</h2>
         <select id="payFilter" style="width:150px"></select>
+        <button class="g" id="btnTransfer">이체 목록</button>
         <button class="g" id="dlLedger">지급대장 받기</button>
       </div>
       <table><thead><tr>
@@ -189,6 +191,24 @@
   </section>
 </div>
 
+<dialog id="trDlg">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <div style="flex:1">
+      <h2 style="margin-bottom:4px">이체 목록</h2>
+      <div class="dim" id="trSub" style="font-size:12.5px"></div>
+    </div>
+    <button class="g sm" onclick="$('trDlg').close()">닫기</button>
+  </div>
+  <div class="note" style="margin-top:14px">
+    계좌는 이 화면에서만 잠깐 풀어서 보여줍니다. 시트에는 암호화된 채로 남아 있습니다.
+  </div>
+  <div id="trBody"><span class="dim">불러오는 중…</span></div>
+  <div class="bar" style="margin-top:14px">
+    <button class="g" id="trCopyAll">전체 복사 (엑셀 붙여넣기용)</button>
+    <span class="dim" id="trSum" style="flex:1;text-align:right"></span>
+  </div>
+</dialog>
+
 <dialog id="dlg">
   <h2 id="dlgTitle">제출 내용</h2>
   <div id="dlgBody" class="kv"></div>
@@ -255,10 +275,16 @@ function renderPeople() {
   $('perTb').innerHTML = WCT.data.people.map((p) => `<tr>
     <td>${p.name}${p.active ? '' : ' <span class="dim">(비활성)</span>'}</td>
     <td><span class="pill">${(p.incomeType || 'biz') === 'other' ? '8.8%' : '3.3%'}</span></td>
+    <td class="dim"><span id="rrn${p.id}">••••••-•••••••</span>
+      ${p.envFileId ? `<button class="g sm" style="margin-left:6px;padding:3px 8px"
+        onclick="showRrn(${p.id}, this)">보기</button>` : ''}</td>
     <td>${p.role || '-'}</td><td>${p.bank || '-'}</td>
-    <td class="dim">${p.accMask || '-'}</td><td>${p.industry}</td>
+    <td class="dim">${p.accMask || '-'}
+      ${p.envFileId ? `<button class="g sm" style="margin-left:6px;padding:3px 8px"
+        onclick="copyAccount(${p.id})">복사</button>` : ''}</td>
+    <td>${p.industry}</td>
     <td class="dim">${p.consentDate || '-'}</td></tr>`).join('')
-    || '<tr><td colspan="7" class="dim">등록된 인력이 없습니다.</td></tr>';
+    || '<tr><td colspan="8" class="dim">등록된 인력이 없습니다.</td></tr>';
 
   $('venTb').innerHTML = WCT.data.vendors.map((v) => `<tr>
     <td>${v.company}</td><td>${v.bizNo}</td><td>${v.ceo}</td>
@@ -299,10 +325,10 @@ function renderPay() {
 function renderWht() {
   const months = [...new Set(WCT.data.payments
     .map((p) => (p.payDate || '').slice(0, 7)).filter(Boolean))].sort().reverse();
-  const now = new Date().toISOString().slice(0, 7);
+  const now = thisYm();
   if (!months.includes(now)) months.unshift(now);
   const prev = new Date(); prev.setMonth(prev.getMonth() - 1);
-  const prevYm = prev.toISOString().slice(0, 7);
+  const prevYm = ymd(prev).slice(0, 7);
   if (!months.includes(prevYm)) months.splice(1, 0, prevYm);
 
   const keep = $('whtYm').value;
@@ -357,7 +383,7 @@ function whtCalc() {
   const left = Math.ceil((dl - new Date()) / 86400000);
   const col = left < 0 ? 'var(--bad)' : left <= 3 ? 'var(--warn)' : 'var(--dim)';
   $('whtDue').innerHTML = `<span style="color:${col}">신고·납부 기한 ` +
-    `${dl.toISOString().slice(0, 10)} · ${left < 0 ? `${-left}일 지남` : `D-${left}`}</span>` +
+    `${ymd(dl)} · ${left < 0 ? `${-left}일 지남` : `D-${left}`}</span>` +
     (a.accrual.length ? ` <span class="dim">· 귀속 ${a.accrual.join(', ')}</span>` : '');
 }
 
@@ -441,7 +467,7 @@ $('dlgRegister').onclick = async () => {
         account: p.account, account_holder: p.account_holder });
       await WCT.api('person.add', { name: p.name, role: p.role, bank: p.bank_name,
         holder: p.account_holder, accMask: maskAcc(p.account),
-        industry: '940909', consentDate: new Date().toISOString().slice(0, 10),
+        industry: '940909', consentDate: today(),
         incomeType: p.kind === 'other' ? 'other' : 'biz', envelope: env });
     }
     await WCT.api('dropFile', { fileId: CUR.fileId });
@@ -460,7 +486,8 @@ $('mkInvite').onclick = async () => {
     .replace(/[+/=]/g, '').slice(0, 22);
   const days = Number($('invDays').value) || 7;
   const exp = new Date(Date.now() + days * 86400000);
-  const expStr = exp.toISOString().slice(0, 19).replace('T', ' ');
+  const expStr = `${ymd(exp)} ${String(exp.getHours()).padStart(2,'0')}:` +
+    `${String(exp.getMinutes()).padStart(2,'0')}:00`;
   try {
     await WCT.api('invite.create', { token, label, role: $('invRole').value.trim(), expires: expStr });
     const link = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}submit.html?t=${token}`;
@@ -562,7 +589,7 @@ $('dlgRegister').onclick = async () => {
         account: p.account, account_holder: p.account_holder });
       await WCT.api('person.add', { name: p.name, role: p.role, bank: p.bank_name,
         holder: p.account_holder, accMask: maskAcc(p.account),
-        industry: '940909', consentDate: new Date().toISOString().slice(0, 10),
+        industry: '940909', consentDate: today(),
         incomeType: p.kind === 'other' ? 'other' : 'biz', envelope: env });
     }
     await WCT.api('dropFile', { fileId: CUR.fileId });
@@ -599,18 +626,30 @@ $('payFilter').addEventListener('change', renderPay);
 
 $('addPay').onclick = async () => {
   const r = $('payCalc').dataset.ok;
-  if (!r || !$('payPerson').value || !$('payDate').value || !$('payYm').value) {
-    return alert('소득자·지급일·귀속월·금액을 모두 입력하세요.');
-  }
+  // 무엇이 비었는지 딱 집어서 알려주고 그 칸으로 커서를 옮긴다
+  if (!$('payPerson').value) { toast('소득자를 선택하세요.', true); return $('payPerson').focus(); }
+  if (!$('payDate').value) { toast('지급일을 입력하세요.', true); return $('payDate').focus(); }
+  if (!$('payYm').value) { toast('귀속월을 입력하세요.', true); return $('payYm').focus(); }
+  if (!r) { toast('금액을 입력하세요.', true); return $('payAmt').focus(); }
   const t = JSON.parse(r);
   const person = WCT.data.people.find((p) => p.id === +$('payPerson').value);
+  const btn = $('addPay');
+  btn.disabled = true; btn.textContent = '등록 중…';
+  try {
   await WCT.api('payment.add', { personId: person.id, name: person.name,
     payDate: $('payDate').value, ym: $('payYm').value, project: $('payProject').value,
     role: $('payRole').value || person.role, gross: t.gross, incomeTax: t.incomeTax,
     localTax: t.localTax, net: t.net, isSmall: !!t.exempt, memo: $('payMemo').value,
     incomeType: t.type, base: t.base });
+  } catch (e) {
+    toast(e.message, true);
+    btn.disabled = false; btn.textContent = '지급 등록';
+    return;
+  }
+  btn.disabled = false; btn.textContent = '지급 등록';
   $('payAmt').value = ''; $('payMemo').value = ''; recalc();
   await refreshAll(true);
+  toast(`${person.name} · ${won(t.gross)}원 등록되었습니다.`);
 };
 
 window.delPay = async (id) => {
@@ -633,10 +672,10 @@ $('newProject').onclick = async () => {
 function renderWht() {
   const months = [...new Set(WCT.data.payments
     .map((p) => (p.payDate || '').slice(0, 7)).filter(Boolean))].sort().reverse();
-  const now = new Date().toISOString().slice(0, 7);
+  const now = thisYm();
   if (!months.includes(now)) months.unshift(now);
   const prev = new Date(); prev.setMonth(prev.getMonth() - 1);
-  const prevYm = prev.toISOString().slice(0, 7);
+  const prevYm = ymd(prev).slice(0, 7);
   if (!months.includes(prevYm)) months.splice(1, 0, prevYm);
 
   const keep = $('whtYm').value;
@@ -685,7 +724,7 @@ function whtCalc() {
   const left = Math.ceil((dl - new Date()) / 86400000);
   const col = left < 0 ? 'var(--bad)' : left <= 3 ? 'var(--warn)' : 'var(--dim)';
   $('whtDue').innerHTML = `<span style="color:${col}">신고·납부 기한 ` +
-    `${dl.toISOString().slice(0, 10)} · ${left < 0 ? `${-left}일 지남` : `D-${left}`}</span>` +
+    `${ymd(dl)} · ${left < 0 ? `${-left}일 지남` : `D-${left}`}</span>` +
     (a.accrual.length ? ` <span class="dim">· 귀속 ${a.accrual.join(', ')}</span>` : '');
 }
 
@@ -732,7 +771,7 @@ $('whtGuide').onclick = () => {
     `  납부액 ${won(a.local + Math.floor(wt * 0.1 / 10) * 10)}원`,
     ``,
     `━━━ 확인 ━━━`,
-    `  · 기한: ${whtDeadline(ym).toISOString().slice(0, 10)} (다음 달 10일)`,
+    `  · 기한: ${ymd(whtDeadline(ym))} (다음 달 10일)`,
     `  · 홈택스만 하고 위택스를 빼먹는 사고가 가장 흔합니다. 둘 다 하세요.`,
     `  · 이번 달 말일에는 간이지급명세서가 따로 있습니다 (월별 신고 탭)`,
   ].filter(Boolean).join('\n');
@@ -744,7 +783,7 @@ $('whtSave').onclick = async () => {
   const num = (id) => Number(String($(id).value).replace(/[^\d]/g, '')) || 0;
   const wt = num('whtWageTax');
   const m = $('whtMsg');
-  const today = new Date().toISOString().slice(0, 10);
+  const today = today();
   if (!confirm(`${ym} 지급분을 신고 완료로 기록할까요?\n\n` +
     `홈택스 ${won(a.tax + wt)}원 / 위택스 ${won(a.local + Math.floor(wt * 0.1 / 10) * 10)}원\n\n` +
     `※ 실제 신고·납부를 마친 뒤에 누르세요.`)) return;
@@ -810,7 +849,7 @@ $('repCheck').onclick = async () => {
     return;
   }
 
-  const dl = stmtDeadline(ym).toISOString().slice(0, 10);
+  const dl = ymd(stmtDeadline(ym));
   const out = [`■ ${ym} 귀속 · 제출기한 ${dl}`];
   if (groups.length > 1) {
     out.push('■ 사업소득과 기타소득은 서식이 달라 엑셀이 2개로 나옵니다.');
@@ -938,6 +977,151 @@ $('rcpMake').onclick = async () => {
   w.document.close();
 };
 
+
+
+// ═══════════════ 계좌 복사 · 이체 목록
+window.copyAccount = async (personId) => {
+  const p = WCT.data.people.find((x) => x.id === personId);
+  if (!p) return;
+  try {
+    const d = await WCT.reveal(p);
+    const line = d.account || '';
+    if (!line) return toast('저장된 계좌가 없습니다.', true);
+    const okc = await copyText(line);
+    toast(okc ? `${p.name} · ${accountLine(d.bank_name, d.account, d.account_holder)} 복사됨`
+              : '복사에 실패했습니다.', !okc);
+  } catch (e) { toast(e.message, true); }
+};
+
+$('btnTransfer').onclick = async () => {
+  const f = $('payFilter').value;
+  const list = WCT.data.payments
+    .filter((p) => (!f || p.ym === f) && p.status !== '예정')
+    .sort((a, b) => (a.payDate || '').localeCompare(b.payDate || ''));
+  $('trSub').textContent = (f || '전체 기간') + ` · ${list.length}건`;
+  $('trBody').innerHTML = '<span class="dim">계좌를 여는 중…</span>';
+  $('trSum').textContent = '';
+  $('trDlg').showModal();
+
+  if (!list.length) {
+    $('trBody').innerHTML = '<div class="dim">지급 내역이 없습니다.</div>';
+    return;
+  }
+
+  // 같은 사람에게 여러 건이면 합쳐서 한 번만 이체하도록 묶는다
+  const byPerson = {};
+  list.forEach((p) => {
+    byPerson[p.personId] = byPerson[p.personId] ||
+      { name: p.name, personId: p.personId, net: 0, count: 0 };
+    byPerson[p.personId].net += p.net;
+    byPerson[p.personId].count++;
+  });
+
+  const rows = [];
+  for (const r of Object.values(byPerson)) {
+    const person = WCT.data.people.find((x) => x.id === r.personId);
+    let bank = '', acc = '', holder = '';
+    try {
+      const d = await WCT.reveal(person);
+      bank = d.bank_name || ''; acc = d.account || ''; holder = d.account_holder || '';
+    } catch (e) { acc = '(열지 못함)'; }
+    rows.push(Object.assign(r, { bank, acc, holder }));
+  }
+  rows.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  window.__trRows = rows;
+
+  $('trBody').innerHTML = '<table style="margin-top:12px"><thead><tr>' +
+    '<th>성명</th><th>은행</th><th>계좌번호</th><th>예금주</th>' +
+    '<th class="n">실지급액</th><th></th></tr></thead><tbody>' +
+    rows.map((r, i) => `<tr>
+      <td>${esc(r.name)}${r.count > 1 ? ` <span class="dim">(${r.count}건)</span>` : ''}</td>
+      <td>${esc(r.bank)}</td>
+      <td style="font-variant-numeric:tabular-nums">${esc(r.acc)}</td>
+      <td>${esc(r.holder)}${r.holder && r.holder !== r.name
+        ? ' <span class="pill bad">예금주 불일치</span>' : ''}</td>
+      <td class="n">${won(r.net)}</td>
+      <td style="text-align:right"><button class="g sm" onclick="copyRow(${i})">복사</button></td>
+    </tr>`).join('') + '</tbody></table>';
+
+  $('trSum').textContent = `합계 ${won(rows.reduce((a, r) => a + r.net, 0))}원`;
+};
+
+window.copyRow = async (i) => {
+  const r = window.__trRows[i];
+  const okc = await copyText(r.acc);
+  toast(okc ? `${r.name} 계좌 복사됨 · ${won(r.net)}원` : '복사에 실패했습니다.', !okc);
+};
+
+$('trCopyAll').onclick = async () => {
+  const rows = window.__trRows || [];
+  if (!rows.length) return;
+  const text = ['성명\t은행\t계좌번호\t예금주\t실지급액']
+    .concat(rows.map((r) => [r.name, r.bank, r.acc, r.holder, r.net].join('\t')))
+    .join('\n');
+  const okc = await copyText(text);
+  toast(okc ? `${rows.length}건 복사됨 — 엑셀에 붙여넣으세요.` : '복사에 실패했습니다.', !okc);
+};
+
+
+// ═══════════════ 주민등록번호 — 눌러야 잠깐 보이고 15초 뒤 다시 가려집니다
+const RRN_SHOW_MS = 15000;
+const rrnTimers = {};
+
+window.showRrn = async (personId, btn) => {
+  const p = WCT.data.people.find((x) => x.id === personId);
+  const el = $('rrn' + personId);
+  if (!p || !el) return;
+
+  // 이미 보이는 상태면 바로 가린다
+  if (rrnTimers[personId]) {
+    clearTimeout(rrnTimers[personId]);
+    delete rrnTimers[personId];
+    el.textContent = '••••••-•••••••';
+    el.style.color = '';
+    btn.textContent = '보기';
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const d = await WCT.reveal(p);
+    const raw = String(d.rrn || '').replace(/\D/g, '');
+    if (raw.length !== 13) { toast('저장된 주민등록번호가 올바르지 않습니다.', true); return; }
+    const shown = `${raw.slice(0, 6)}-${raw.slice(6)}`;
+    el.textContent = shown;
+    el.style.color = 'var(--fg)';
+    btn.textContent = '가림';
+    await copyText(shown);
+    toast(`${p.name} 주민등록번호 복사됨 · ${RRN_SHOW_MS / 1000}초 뒤 가려집니다`);
+
+    rrnTimers[personId] = setTimeout(() => {
+      el.textContent = '••••••-•••••••';
+      el.style.color = '';
+      btn.textContent = '보기';
+      delete rrnTimers[personId];
+    }, RRN_SHOW_MS);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// 다른 탭으로 옮기거나 화면을 벗어나면 즉시 가린다
+function hideAllRrn() {
+  Object.keys(rrnTimers).forEach((id) => {
+    clearTimeout(rrnTimers[id]);
+    delete rrnTimers[id];
+    const el = $('rrn' + id);
+    if (el) { el.textContent = '••••••-•••••••'; el.style.color = ''; }
+  });
+  document.querySelectorAll('button').forEach((b) => {
+    if (b.textContent === '가림') b.textContent = '보기';
+  });
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) hideAllRrn(); });
+window.addEventListener('blur', hideAllRrn);
+$('tabs').addEventListener('click', hideAllRrn);
 
 </script>
 </body>
