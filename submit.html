@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>정산 정보 제출 · 맹그라미</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --line:#282d38; --fg:#e9ecf1;
+    --dim:#9aa3b2; --accent:#c8a84b; --warn:#e0a33e; --bad:#e2564a; --ok:#4ea87a;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+    line-height:1.6;padding:0 0 64px}
+  .wrap{max-width:560px;margin:0 auto;padding:28px 18px}
+  header{padding-bottom:18px;border-bottom:1px solid var(--line);margin-bottom:24px}
+  h1{font-size:20px;margin:0 0 6px;letter-spacing:-.3px}
+  .sub{color:var(--dim);font-size:13px;margin:0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:18px;margin-bottom:16px}
+  h2{font-size:15px;margin:0 0 14px;color:var(--accent);letter-spacing:-.2px}
+  label{display:block;font-size:13px;color:var(--dim);margin:14px 0 6px}
+  label.req::after{content:' *';color:var(--bad)}
+  input[type=text],input[type=tel],input[type=email],select,textarea{
+    width:100%;padding:13px 14px;background:#0d0f14;border:1px solid var(--line);
+    border-radius:10px;color:var(--fg);font-size:16px;font-family:inherit;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  .hint{font-size:12px;color:var(--dim);margin-top:5px}
+  .choice{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+  .choice button{padding:20px 12px;background:#0d0f14;border:1px solid var(--line);
+    border-radius:12px;color:var(--fg);font-size:15px;font-family:inherit;cursor:pointer;
+    text-align:center;line-height:1.4}
+  .choice button small{display:block;color:var(--dim);font-size:11px;margin-top:5px}
+  .choice button[aria-pressed=true]{border-color:var(--accent);background:#1e1a10;color:var(--accent)}
+  .drop{border:1px dashed var(--line);border-radius:12px;padding:20px;text-align:center;
+    color:var(--dim);font-size:13px;cursor:pointer;background:#0d0f14}
+  .drop.has{border-style:solid;border-color:var(--ok);color:var(--ok)}
+  .thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .thumb{position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;
+    border:1px solid var(--line)}
+  .thumb img{width:100%;height:100%;object-fit:cover}
+  .thumb button{position:absolute;top:2px;right:2px;width:20px;height:20px;border:0;
+    border-radius:50%;background:rgba(0,0,0,.72);color:#fff;font-size:13px;cursor:pointer;
+    line-height:20px;padding:0}
+  .agree{display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:13px}
+  .agree input{width:20px;height:20px;margin-top:2px;flex:none;accent-color:var(--accent)}
+  details{margin-top:10px;font-size:12px;color:var(--dim)}
+  details summary{cursor:pointer;color:var(--accent)}
+  details div{margin-top:8px;padding:12px;background:#0d0f14;border-radius:8px;
+    border:1px solid var(--line);line-height:1.7}
+  .submit{width:100%;padding:17px;background:var(--accent);border:0;border-radius:12px;
+    color:#141414;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:6px}
+  .submit:disabled{opacity:.45;cursor:not-allowed}
+  .note{display:flex;gap:9px;background:#12161c;border:1px solid var(--line);
+    border-left:3px solid var(--accent);border-radius:8px;padding:13px;
+    font-size:12.5px;color:var(--dim);margin-bottom:18px;line-height:1.65}
+  .msg{padding:14px;border-radius:10px;font-size:14px;margin-top:14px;display:none}
+  .msg.bad{display:block;background:#2a1614;border:1px solid var(--bad);color:#f0a89f}
+  .msg.ok{display:block;background:#132318;border:1px solid var(--ok);color:#9fd9bb}
+  .center{text-align:center;padding:60px 20px}
+  .center h2{font-size:19px;color:var(--fg);margin-bottom:10px}
+  .center p{color:var(--dim);font-size:14px}
+  .big{font-size:44px;margin-bottom:14px}
+  .hidden{display:none}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .foot{text-align:center;color:#5b6270;font-size:11px;margin-top:24px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 로딩 -->
+  <div id="loading" class="center">
+    <div class="big">⏳</div>
+    <p>링크를 확인하는 중입니다…</p>
+  </div>
+
+  <!-- 링크 오류 -->
+  <div id="invalid" class="center hidden">
+    <div class="big">🔒</div>
+    <h2>사용할 수 없는 링크입니다</h2>
+    <p id="invalidMsg"></p>
+    <p style="margin-top:18px">담당자에게 새 링크를 요청해 주세요.</p>
+  </div>
+
+  <!-- 완료 -->
+  <div id="done" class="center hidden">
+    <div class="big">✅</div>
+    <h2>제출이 완료되었습니다</h2>
+    <p>확인 후 정산 절차를 진행하겠습니다.<br>감사합니다.</p>
+  </div>
+
+  <!-- 본문 -->
+  <div id="main" class="hidden">
+    <header>
+      <h1>정산 정보 제출</h1>
+      <p class="sub" id="ctx">맹그라미 (맹진욱)</p>
+    </header>
+
+    <div class="note">
+      <span>🔐</span>
+      <div>입력하신 내용은 <b>이 화면에서 곧바로 암호화되어</b> 전송됩니다.
+      중간 서버와 저장소는 내용을 볼 수 없고, 담당자 PC에서만 열립니다.</div>
+    </div>
+
+    <div class="card">
+      <h2>구분 선택</h2>
+      <div class="choice">
+        <button type="button" id="btnFree" aria-pressed="false">
+          프리랜서 <small>3.3% 원천징수</small>
+        </button>
+        <button type="button" id="btnBiz" aria-pressed="false">
+          사업자 <small>세금계산서 발행</small>
+        </button>
+      </div>
+    </div>
+
+    <!-- 프리랜서 -->
+    <div id="formFree" class="hidden">
+      <div class="card">
+        <h2>기본 정보</h2>
+        <label class="req">성명</label>
+        <input type="text" id="f_name" autocomplete="name" placeholder="주민등록상 이름">
+
+        <label class="req">주민등록번호</label>
+        <input type="tel" id="f_rrn" inputmode="numeric" maxlength="14" placeholder="000000-0000000">
+        <div class="hint" id="rrnHint">소득세법상 원천징수 신고에 필요합니다.</div>
+
+        <label class="req">연락처</label>
+        <input type="tel" id="f_phone" inputmode="tel" placeholder="010-0000-0000">
+
+        <label class="req">주소</label>
+        <input type="text" id="f_addr" placeholder="도로명 주소">
+
+        <label>담당 역할</label>
+        <input type="text" id="f_role" placeholder="예: 촬영감독, 그립">
+      </div>
+
+      <div class="card">
+        <h2>입금 계좌</h2>
+        <div class="row">
+          <div>
+            <label class="req">은행</label>
+            <select id="f_bank"></select>
+          </div>
+          <div>
+            <label class="req">예금주</label>
+            <input type="text" id="f_holder" placeholder="본인 명의">
+          </div>
+        </div>
+        <label class="req">계좌번호</label>
+        <input type="tel" id="f_acc" inputmode="numeric" placeholder="'-' 포함해도 됩니다">
+      </div>
+
+      <div class="card">
+        <h2>서류 사진</h2>
+        <label class="req">통장 사본</label>
+        <div class="drop" data-for="f_bankbook">📷 촬영하거나 사진을 선택하세요</div>
+        <input type="file" id="f_bankbook" accept="image/*" multiple class="hidden">
+        <div class="thumbs" id="thumb_f_bankbook"></div>
+
+        <label class="req">신분증</label>
+        <div class="drop" data-for="f_id">📷 촬영하거나 사진을 선택하세요</div>
+        <input type="file" id="f_id" accept="image/*" multiple class="hidden">
+        <div class="thumbs" id="thumb_f_id"></div>
+        <div class="hint">글씨가 또렷하게 보이도록 밝은 곳에서 찍어주세요.</div>
+      </div>
+    </div>
+
+    <!-- 사업자 -->
+    <div id="formBiz" class="hidden">
+      <div class="card">
+        <h2>사업자 정보</h2>
+        <label class="req">상호</label>
+        <input type="text" id="b_company">
+
+        <label class="req">사업자등록번호</label>
+        <input type="tel" id="b_bizno" inputmode="numeric" maxlength="12" placeholder="000-00-00000">
+
+        <label class="req">대표자명</label>
+        <input type="text" id="b_ceo">
+
+        <div class="row">
+          <div><label>업태</label><input type="text" id="b_type"></div>
+          <div><label>종목</label><input type="text" id="b_item"></div>
+        </div>
+
+        <label class="req">사업장 주소</label>
+        <input type="text" id="b_addr">
+      </div>
+
+      <div class="card">
+        <h2>담당자 · 계산서</h2>
+        <label class="req">담당자명</label>
+        <input type="text" id="b_manager">
+
+        <label class="req">연락처</label>
+        <input type="tel" id="b_phone" inputmode="tel" placeholder="010-0000-0000">
+
+        <label class="req">계산서 수신 이메일</label>
+        <input type="email" id="b_email" inputmode="email" autocomplete="email">
+      </div>
+
+      <div class="card">
+        <h2>입금 계좌</h2>
+        <div class="row">
+          <div><label class="req">은행</label><select id="b_bank"></select></div>
+          <div><label class="req">예금주</label><input type="text" id="b_holder"></div>
+        </div>
+        <label class="req">계좌번호</label>
+        <input type="tel" id="b_acc" inputmode="numeric">
+      </div>
+
+      <div class="card">
+        <h2>서류 사진</h2>
+        <label class="req">사업자등록증</label>
+        <div class="drop" data-for="b_cert">📷 촬영하거나 사진을 선택하세요</div>
+        <input type="file" id="b_cert" accept="image/*" multiple class="hidden">
+        <div class="thumbs" id="thumb_b_cert"></div>
+
+        <label class="req">통장 사본</label>
+        <div class="drop" data-for="b_bankbook">📷 촬영하거나 사진을 선택하세요</div>
+        <input type="file" id="b_bankbook" accept="image/*" multiple class="hidden">
+        <div class="thumbs" id="thumb_b_bankbook"></div>
+      </div>
+    </div>
+
+    <!-- 동의 -->
+    <div id="agreeBox" class="card hidden">
+      <h2>개인정보 수집·이용 동의</h2>
+      <div class="agree">
+        <input type="checkbox" id="agree">
+        <label for="agree" style="margin:0;color:var(--fg)">
+          아래 내용을 확인했으며 수집·이용에 동의합니다. <span style="color:var(--bad)">*</span>
+        </label>
+      </div>
+      <details>
+        <summary>내용 보기</summary>
+        <div>
+          <b>수집 항목</b><br>
+          · 프리랜서: 성명, 주민등록번호, 주소, 연락처, 계좌정보, 통장사본, 신분증 사본<br>
+          · 사업자: 상호, 사업자등록번호, 대표자, 주소, 담당자 연락처, 이메일, 계좌정보, 사업자등록증, 통장사본<br><br>
+          <b>수집 목적</b><br>
+          용역대금 지급, 소득세법에 따른 원천징수 및 지급명세서 제출, 세금계산서 발행<br><br>
+          <b>보유 기간</b><br>
+          · 원천징수 관련 정보: 관계 법령이 정한 기간<br>
+          · 신분증·통장사본 등 이미지: 본인 확인 및 계좌 등록 완료 후 지체 없이 파기<br><br>
+          <b>동의를 거부할 권리</b><br>
+          동의를 거부할 수 있으나, 이 경우 대금 지급 절차가 진행되지 않을 수 있습니다.<br><br>
+          <b>보호 방식</b><br>
+          제출 정보는 브라우저에서 암호화되어 전송·보관되며, 담당자 외에는 복호화할 수 없습니다.
+        </div>
+      </details>
+    </div>
+
+    <button class="submit" id="submitBtn" disabled>제출하기</button>
+    <div class="msg" id="msg"></div>
+    <p class="foot">맹그라미 · 문의 054-853-6231</p>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  설정 — 배포 시 이 두 줄만 채우면 됩니다
+// ══════════════════════════════════════════════════════════
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzSRu7J20klkUFYE8lfx1qf_C6SLolq0g-p_fhHfGmQKreUSDNkbQSh8bQn63JvL3bu/exec';
+let PUBLIC_KEY_B64 = '';   // 서버에서 자동으로 받아옵니다
+
+// ══════════════════════════════════════════════════════════
+const BANKS = ['국민','신한','우리','하나','농협','기업','카카오뱅크','토스뱅크',
+  '새마을금고','우체국','SC제일','부산','대구','경남','광주','전북','수협','케이뱅크','신협','산업'];
+const MAX_EDGE = 1600, JPEG_Q = 0.72, MAX_TOTAL = 6 * 1024 * 1024;
+
+const $ = (id) => document.getElementById(id);
+const token = new URLSearchParams(location.search).get('t') || '';
+let kind = null;
+const files = {};   // inputId -> [{name, type, data}]
+
+// ---------- 링크 확인 ----------
+(async function init() {
+  BANKS.forEach((b) => {
+    ['f_bank', 'b_bank'].forEach((id) => {
+      const o = document.createElement('option');
+      o.value = o.textContent = b;
+      $(id).appendChild(o);
+    });
+  });
+
+  if (!token) return invalid('링크에 인증 정보가 없습니다.');
+  try {
+    const r = await fetch(`${GAS_URL}?action=check&t=${encodeURIComponent(token)}`);
+    const j = await r.json();
+    if (!j.ok) return invalid(j.error || '유효하지 않은 링크입니다.');
+
+    const k = await (await fetch(`${GAS_URL}?action=pubkey`)).json();
+    if (!k.ok || !k.pub) return invalid('서버 설정이 완료되지 않았습니다. 담당자에게 알려주세요.');
+    PUBLIC_KEY_B64 = k.pub;
+    $('loading').classList.add('hidden');
+    $('main').classList.remove('hidden');
+    if (j.label) $('ctx').textContent = `맹그라미 (맹진욱) · ${j.label}`;
+    if (j.role) $('f_role').value = j.role;
+  } catch (e) {
+    invalid('네트워크 연결을 확인해 주세요.');
+  }
+})();
+
+function invalid(m) {
+  $('loading').classList.add('hidden');
+  $('invalid').classList.remove('hidden');
+  $('invalidMsg').textContent = m;
+}
+
+// ---------- 구분 선택 ----------
+$('btnFree').onclick = () => setKind('freelancer');
+$('btnBiz').onclick = () => setKind('business');
+
+function setKind(k) {
+  kind = k;
+  $('btnFree').setAttribute('aria-pressed', k === 'freelancer');
+  $('btnBiz').setAttribute('aria-pressed', k === 'business');
+  $('formFree').classList.toggle('hidden', k !== 'freelancer');
+  $('formBiz').classList.toggle('hidden', k !== 'business');
+  $('agreeBox').classList.remove('hidden');
+  check();
+}
+
+// ---------- 입력 보조 ----------
+function hyphenate(el, pattern) {
+  el.addEventListener('input', () => {
+    const d = el.value.replace(/\D/g, '').slice(0, pattern.reduce((a, b) => a + b, 0));
+    let out = '', i = 0;
+    for (const len of pattern) {
+      if (i >= d.length) break;
+      if (out) out += '-';
+      out += d.slice(i, i + len);
+      i += len;
+    }
+    el.value = out;
+    check();
+  });
+}
+hyphenate($('f_rrn'), [6, 7]);
+hyphenate($('b_bizno'), [3, 2, 5]);
+hyphenate($('f_phone'), [3, 4, 4]);
+hyphenate($('b_phone'), [3, 4, 4]);
+
+// 주민번호 체크섬 — 오기입을 여기서 잡는다
+function rrnValid(v) {
+  const d = v.replace(/\D/g, '');
+  if (d.length !== 13) return false;
+  const m = +d.slice(2, 4), day = +d.slice(4, 6);
+  if (m < 1 || m > 12 || day < 1 || day > 31) return false;
+  if (!'1234'.includes(d[6])) return '567890'.includes(d[6]);
+  const w = [2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5];
+  let s = 0;
+  for (let i = 0; i < 12; i++) s += +d[i] * w[i];
+  return (11 - (s % 11)) % 10 === +d[12];
+}
+$('f_rrn').addEventListener('blur', () => {
+  const v = $('f_rrn').value;
+  const h = $('rrnHint');
+  if (!v) { h.textContent = '소득세법상 원천징수 신고에 필요합니다.'; h.style.color = ''; return; }
+  if (rrnValid(v)) { h.textContent = '✓ 형식 확인'; h.style.color = 'var(--ok)'; }
+  else { h.textContent = '번호를 다시 확인해 주세요.'; h.style.color = 'var(--bad)'; }
+});
+
+// ---------- 사진 ----------
+document.querySelectorAll('.drop').forEach((d) => {
+  d.onclick = () => $(d.dataset.for).click();
+});
+['f_bankbook', 'f_id', 'b_cert', 'b_bankbook'].forEach((id) => {
+  $(id).addEventListener('change', async (e) => {
+    files[id] = files[id] || [];
+    for (const f of e.target.files) {
+      if (files[id].length >= 3) break;
+      try { files[id].push(await shrink(f)); } catch (err) { console.error(err); }
+    }
+    e.target.value = '';
+    renderThumbs(id);
+    check();
+  });
+});
+
+function shrink(file) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale);
+      c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      res({ name: file.name, type: 'image/jpeg', data: c.toDataURL('image/jpeg', JPEG_Q) });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('이미지를 읽지 못했습니다.')); };
+    img.src = url;
+  });
+}
+
+function renderThumbs(id) {
+  const box = $('thumb_' + id);
+  box.innerHTML = '';
+  (files[id] || []).forEach((f, i) => {
+    const d = document.createElement('div');
+    d.className = 'thumb';
+    d.innerHTML = `<img src="${f.data}" alt=""><button type="button">×</button>`;
+    d.querySelector('button').onclick = () => {
+      files[id].splice(i, 1); renderThumbs(id); check();
+    };
+    box.appendChild(d);
+  });
+  const drop = document.querySelector(`.drop[data-for="${id}"]`);
+  const n = (files[id] || []).length;
+  drop.classList.toggle('has', n > 0);
+  drop.textContent = n ? `✓ ${n}장 선택됨 — 더 추가하려면 누르세요` : '📷 촬영하거나 사진을 선택하세요';
+}
+
+// ---------- 검증 ----------
+$('agree').onchange = check;
+document.querySelectorAll('input,select').forEach((el) => el.addEventListener('input', check));
+
+function collect() {
+  if (kind === 'freelancer') {
+    return {
+      kind, name: $('f_name').value.trim(), rrn: $('f_rrn').value.trim(),
+      phone: $('f_phone').value.trim(), address: $('f_addr').value.trim(),
+      role: $('f_role').value.trim(), bank_name: $('f_bank').value,
+      account: $('f_acc').value.trim(), account_holder: $('f_holder').value.trim(),
+      files: { bankbook: files.f_bankbook || [], id_card: files.f_id || [] },
+    };
+  }
+  return {
+    kind, company_name: $('b_company').value.trim(), biz_no: $('b_bizno').value.trim(),
+    ceo: $('b_ceo').value.trim(), biz_type: $('b_type').value.trim(),
+    biz_item: $('b_item').value.trim(), address: $('b_addr').value.trim(),
+    manager: $('b_manager').value.trim(), phone: $('b_phone').value.trim(),
+    email: $('b_email').value.trim(), bank_name: $('b_bank').value,
+    account: $('b_acc').value.trim(), account_holder: $('b_holder').value.trim(),
+    files: { cert: files.b_cert || [], bankbook: files.b_bankbook || [] },
+  };
+}
+
+function check() {
+  let ok = !!kind && $('agree').checked;
+  if (ok && kind === 'freelancer') {
+    const d = collect();
+    ok = d.name && rrnValid(d.rrn) && d.phone && d.address &&
+         d.account && d.account_holder &&
+         d.files.bankbook.length > 0 && d.files.id_card.length > 0;
+  } else if (ok) {
+    const d = collect();
+    ok = d.company_name && d.biz_no.replace(/\D/g, '').length === 10 && d.ceo &&
+         d.address && d.manager && d.phone && /\S+@\S+\.\S+/.test(d.email) &&
+         d.account && d.account_holder &&
+         d.files.cert.length > 0 && d.files.bankbook.length > 0;
+  }
+  $('submitBtn').disabled = !ok;
+}
+
+// ---------- 암호화 후 전송 ----------
+const b64 = (buf) => {
+  const bytes = new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(s);
+};
+
+async function seal(payload) {
+  const raw = Uint8Array.from(atob(PUBLIC_KEY_B64), (c) => c.charCodeAt(0));
+  const pub = await crypto.subtle.importKey(
+    'spki', raw, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
+  const aes = await crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 }, true, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aes,
+    new TextEncoder().encode(JSON.stringify(payload)));
+  const wk = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, pub,
+    await crypto.subtle.exportKey('raw', aes));
+  return { v: 1, kind, alg: 'RSA-OAEP-256+AES-256-GCM',
+           wk: b64(wk), iv: b64(iv), ct: b64(ct) };
+}
+
+$('submitBtn').onclick = async () => {
+  const btn = $('submitBtn'), msg = $('msg');
+  btn.disabled = true;
+  btn.textContent = '암호화하는 중…';
+  msg.className = 'msg';
+
+  try {
+    const payload = collect();
+    const size = JSON.stringify(payload).length;
+    if (size > MAX_TOTAL) {
+      throw new Error('사진 용량이 너무 큽니다. 장수를 줄이거나 다시 촬영해 주세요.');
+    }
+    const envelope = await seal(payload);
+
+    btn.textContent = '전송하는 중…';
+    // text/plain 으로 보내야 앱스스크립트에서 사전요청(preflight) 없이 받습니다.
+    const r = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ token, envelope }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || '제출에 실패했습니다.');
+
+    $('main').classList.add('hidden');
+    $('done').classList.remove('hidden');
+    window.scrollTo(0, 0);
+  } catch (e) {
+    msg.className = 'msg bad';
+    msg.textContent = e.message || '제출에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+    btn.disabled = false;
+    btn.textContent = '제출하기';
+  }
+};
+</script>
+</body>
+</html>
