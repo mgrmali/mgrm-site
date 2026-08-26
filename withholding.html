@@ -62,10 +62,17 @@
   </section>
   <section data-tab="인력" class="hide">
     <div class="card">
-      <h2>프리랜서 (원천징수 대상)</h2>
+      <div class="bar">
+        <h2 style="margin:0;flex:1">프리랜서 (원천징수 대상)</h2>
+        <button class="b" id="btnNewPerson">＋ 직접 등록</button>
+      </div>
+      <div class="note">
+        제출 링크를 쓰지 않고 직접 넣을 수 있습니다. 과거 지급분을 소급 입력할 때 쓰세요.<br>
+        주민등록번호·계좌는 여기서도 암호화되어 저장됩니다.
+      </div>
       <table><thead><tr>
         <th>성명</th><th>구분</th><th>주민등록번호</th><th>역할</th><th>은행</th>
-        <th>계좌</th><th>업종</th><th>동의일</th></tr></thead>
+        <th>계좌</th><th>업종</th><th>동의일</th><th></th></tr></thead>
         <tbody id="perTb"></tbody></table>
     </div>
     <div class="card">
@@ -204,6 +211,55 @@
   </section>
 </div>
 
+<dialog id="pDlg">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <h2 id="pTitle" style="flex:1;margin:0">인력 직접 등록</h2>
+    <button class="g sm" onclick="$('pDlg').close()">닫기</button>
+  </div>
+
+  <div class="row r2" style="margin-top:14px">
+    <div><label>성명 *</label><input id="pName" placeholder="주민등록상 이름"></div>
+    <div><label>소득구분 *</label>
+      <select id="pType">
+        <option value="biz">프리랜서 · 사업소득 3.3%</option>
+        <option value="other">일반·학생 · 기타소득 8.8%</option>
+      </select></div>
+  </div>
+
+  <label>주민등록번호 *</label>
+  <div style="display:flex;gap:8px">
+    <input id="pRrn" inputmode="numeric" maxlength="14" placeholder="000000-0000000" style="flex:1">
+    <button class="g" id="pRrnEye" style="width:70px">보기</button>
+  </div>
+  <div class="dim" id="pRrnHint" style="font-size:12px;margin-top:5px">
+    신고에 쓰이므로 정확히 입력하세요. 자동으로 형식을 검사합니다.</div>
+
+  <div class="row r2">
+    <div><label>연락처</label><input id="pPhone" inputmode="tel" placeholder="010-0000-0000"></div>
+    <div><label>역할</label><input id="pRole" placeholder="촬영감독"></div>
+  </div>
+  <label>주소</label>
+  <input id="pAddr" placeholder="도로명 주소">
+
+  <div class="row r3">
+    <div><label>은행</label><select id="pBank"></select></div>
+    <div><label>예금주</label><input id="pHolder"></div>
+    <div><label>업종코드</label><input id="pIndustry" value="940909"></div>
+  </div>
+  <label>계좌번호</label>
+  <input id="pAcc" inputmode="numeric" placeholder="'-' 포함해도 됩니다">
+
+  <label>동의일</label>
+  <input type="date" id="pConsent">
+
+  <div class="msg hide" id="pMsg"></div>
+  <div class="bar" style="margin-top:16px">
+    <button class="b" id="pSave">저장</button>
+    <span style="flex:1"></span>
+    <button class="g hide" id="pDelete">삭제</button>
+  </div>
+</dialog>
+
 <dialog id="trDlg">
   <div style="display:flex;align-items:flex-start;gap:12px">
     <div style="flex:1">
@@ -310,8 +366,10 @@ function renderPeople() {
       ${p.envFileId ? `<button class="g sm" style="margin-left:6px;padding:3px 8px"
         onclick="copyAccount(${p.id})">복사</button>` : ''}</td>
     <td>${p.industry}</td>
-    <td class="dim">${p.consentDate || '-'}</td></tr>`).join('')
-    || '<tr><td colspan="8" class="dim">등록된 인력이 없습니다.</td></tr>';
+    <td class="dim">${p.consentDate || '-'}</td>
+    <td style="text-align:right"><button class="g sm" onclick="editPerson(${p.id})">수정</button></td>
+    </tr>`).join('')
+    || '<tr><td colspan="9" class="dim">등록된 인력이 없습니다. [＋ 직접 등록] 으로 넣을 수 있습니다.</td></tr>';
 
   $('venTb').innerHTML = WCT.data.vendors.map((v) => `<tr>
     <td>${v.company}</td><td>${v.bizNo}</td><td>${v.ceo}</td>
@@ -1175,6 +1233,162 @@ $('invKind').addEventListener('change', () => {
       '링크가 새더라도 그 회차 인원까지만 들어옵니다.'
     : '한 사람이 제출하면 링크가 자동으로 닫힙니다. 개별 스태프에게 보낼 때 쓰세요.';
 });
+
+
+// ═══════════════ 인력 직접 등록 · 수정
+const BANKS = ['국민','신한','우리','하나','농협','기업','카카오뱅크','토스뱅크','새마을금고',
+  '우체국','SC제일','부산','대구','경남','광주','전북','수협','케이뱅크','신협','산업'];
+let pEditId = null;
+
+/** 주민등록번호 체크섬 — 오타를 여기서 잡습니다 */
+function rrnValid(v) {
+  const d = String(v).replace(/\D/g, '');
+  if (d.length !== 13) return false;
+  const mo = +d.slice(2, 4), day = +d.slice(4, 6);
+  if (mo < 1 || mo > 12 || day < 1 || day > 31) return false;
+  if (!'1234'.includes(d[6])) return '567890'.includes(d[6]);   // 외국인·1800년대
+  const w = [2,3,4,5,6,7,8,9,2,3,4,5];
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += +d[i] * w[i];
+  return (11 - (sum % 11)) % 10 === +d[12];
+}
+
+function hyphen(el, pat) {
+  el.addEventListener('input', () => {
+    const d = el.value.replace(/\D/g, '').slice(0, pat.reduce((a, b) => a + b, 0));
+    let out = '', i = 0;
+    for (const len of pat) {
+      if (i >= d.length) break;
+      if (out) out += '-';
+      out += d.slice(i, i + len);
+      i += len;
+    }
+    el.value = out;
+  });
+}
+
+(function initPersonForm() {
+  $('pBank').innerHTML = '<option value=""></option>' +
+    BANKS.map((b) => `<option>${b}</option>`).join('');
+  hyphen($('pRrn'), [6, 7]);
+  hyphen($('pPhone'), [3, 4, 4]);
+
+  $('pRrnEye').onclick = () => {
+    const on = $('pRrn').type === 'password';
+    $('pRrn').type = on ? 'text' : 'password';
+    $('pRrnEye').textContent = on ? '가림' : '보기';
+  };
+
+  $('pRrn').addEventListener('blur', () => {
+    const v = $('pRrn').value, h = $('pRrnHint');
+    if (!v) { h.textContent = '신고에 쓰이므로 정확히 입력하세요.'; h.style.color = ''; return; }
+    const okv = rrnValid(v);
+    h.textContent = okv ? '✓ 형식 확인' : '번호를 다시 확인해 주세요.';
+    h.style.color = okv ? 'var(--ok)' : 'var(--bad)';
+  });
+})();
+
+function openPerson(person, data) {
+  pEditId = person ? person.id : null;
+  $('pTitle').textContent = person ? `인력 수정 — ${person.name}` : '인력 직접 등록';
+  $('pMsg').className = 'msg hide';
+  $('pDelete').classList.toggle('hide', !person);
+  $('pRrn').type = 'password';
+  $('pRrnEye').textContent = '보기';
+
+  $('pName').value = person ? person.name : '';
+  $('pType').value = person ? (person.incomeType || 'biz') : 'biz';
+  $('pRole').value = person ? (person.role || '') : '';
+  $('pBank').value = person ? (person.bank || '') : '';
+  $('pHolder').value = person ? (person.holder || '') : '';
+  $('pIndustry').value = person ? (person.industry || '940909') : '940909';
+  $('pConsent').value = person ? (String(person.consentDate || '').slice(0, 10) || today()) : today();
+
+  const d = data || {};
+  const raw = String(d.rrn || '').replace(/\D/g, '');
+  $('pRrn').value = raw.length === 13 ? `${raw.slice(0, 6)}-${raw.slice(6)}` : '';
+  $('pPhone').value = d.phone || '';
+  $('pAddr').value = d.address || '';
+  $('pAcc').value = d.account || '';
+  if (d.bank_name) $('pBank').value = d.bank_name;
+  if (d.account_holder) $('pHolder').value = d.account_holder;
+
+  $('pDlg').showModal();
+}
+
+$('btnNewPerson').onclick = () => openPerson(null, null);
+
+window.editPerson = async (id) => {
+  const person = WCT.data.people.find((p) => p.id === id);
+  if (!person) return;
+  try {
+    const d = person.envFileId ? await WCT.reveal(person) : {};
+    openPerson(person, d);
+  } catch (e) {
+    toast('저장된 정보를 열지 못했습니다. 새로 입력해 주세요.', true);
+    openPerson(person, {});
+  }
+};
+
+$('pSave').onclick = async () => {
+  const m = $('pMsg');
+  const name = $('pName').value.trim();
+  const rrn = $('pRrn').value.replace(/\D/g, '');
+  if (!name) { m.className = 'msg bad'; m.textContent = '성명을 입력하세요.'; return; }
+  if (!rrnValid(rrn)) {
+    if (!confirm('주민등록번호 형식이 올바르지 않습니다.\n\n그래도 이대로 저장할까요?\n' +
+                 '잘못된 번호는 신고 시 가산세 사유가 됩니다.')) return;
+  }
+  // 같은 이름이 이미 있으면 한 번 확인 (중복 등록은 명세서 집계를 갈라놓습니다)
+  if (!pEditId) {
+    const dup = WCT.data.people.find((p) => p.name === name && p.active);
+    if (dup && !confirm(`'${name}' 이름으로 이미 등록된 인력이 있습니다.\n\n같은 사람이면 새로 만들지 말고 수정하세요.\n그래도 새로 등록할까요?`)) return;
+  }
+
+  const btn = $('pSave');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    const type = $('pType').value;
+    const acc = $('pAcc').value.trim();
+    const env = await WCT.seal({
+      kind: type === 'other' ? 'other' : 'freelancer',
+      name, rrn, address: $('pAddr').value.trim(), phone: $('pPhone').value.trim(),
+      bank_name: $('pBank').value, account: acc, account_holder: $('pHolder').value.trim(),
+    });
+    const payload = {
+      name, role: $('pRole').value.trim(), bank: $('pBank').value,
+      holder: $('pHolder').value.trim(), accMask: acc ? maskAcc(acc) : '',
+      industry: $('pIndustry').value.trim() || '940909',
+      consentDate: $('pConsent').value, incomeType: type, envelope: env,
+    };
+    if (pEditId) {
+      await WCT.api('person.update', Object.assign({ id: pEditId, active: true }, payload));
+      delete WCT._cache[(WCT.data.people.find((p) => p.id === pEditId) || {}).envFileId];
+    } else {
+      await WCT.api('person.add', payload);
+    }
+    await refreshAll(true);
+    $('pDlg').close();
+    toast(pEditId ? `${name} 정보를 수정했습니다.` : `${name} 등록되었습니다.`);
+  } catch (e) {
+    m.className = 'msg bad'; m.textContent = e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '저장';
+  }
+};
+
+$('pDelete').onclick = async () => {
+  const used = WCT.data.payments.filter((p) => p.personId === pEditId);
+  if (used.length) {
+    return alert(`지급 기록이 ${used.length}건 있어 삭제할 수 없습니다.\n` +
+      '기록을 남겨야 신고 이력이 유지됩니다.');
+  }
+  if (!confirm('이 인력을 삭제할까요? 되돌릴 수 없습니다.')) return;
+  await WCT.api('person.delete', { id: pEditId });
+  await refreshAll(true);
+  $('pDlg').close();
+  toast('삭제했습니다.');
+};
 
 </script>
 </body>
