@@ -75,11 +75,11 @@
       <div class="ds">프리 · 프로덕션 · 포스트 진행 현황</div>
       <div id="badgeProj"></div>
     </a>
-    <a class="tile soon" href="invoices.html">
+    <a class="tile" href="invoices.html">
       <div class="ic">📑</div>
       <div class="tt">세금계산서</div>
-      <div class="ds">발행 · 입금 · 미수금</div>
-      <div class="badge">준비 중</div>
+      <div class="ds">매출 · 매입 · 부가세 · 미수금</div>
+      <div id="badgeInv"></div>
     </a>
   </div>
 
@@ -212,14 +212,27 @@ async function showHub() {
   $('todayLine').textContent =
     `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 (${days[now.getDay()]})`;
 
-  try { await WCT.load(true); } catch (e) {
+  const draw = () => {
+    const D = WCT.data;
+    if (D.company && !$('todayLine').textContent.includes(D.company)) {
+      $('todayLine').textContent += ` · ${D.company}`;
+    }
+    renderDue(D); renderStat(D); renderProj(D); renderInv(D); renderBoard(D); renderSub(D);
+  };
+  try {
+    await WCT.loadThenRefresh(draw);   // 캐시로 먼저 그리고 뒤에서 갱신
+  } catch (e) {
     $('wDue').innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`;
-    return;
   }
-  const D = WCT.data;
-  if (D.company) $('todayLine').textContent += ` · ${D.company}`;
-  renderDue(D); renderStat(D); renderProj(D); renderBoard(D); renderSub(D);
 }
+
+$('btnReload').onclick = async () => {
+  const b = $('btnReload');
+  b.disabled = true; b.textContent = '불러오는 중…';
+  try { await WCT.load(true); showHub(); toast('최신 정보로 갱신했습니다.'); }
+  catch (e) { toast(e.message, true); }
+  finally { b.disabled = false; b.textContent = '새로고침'; }
+};
 
 function renderDue(D) {
   const items = [];
@@ -260,13 +273,17 @@ function renderStat(D) {
   const total = (D.payments || []).filter((p) => String(p.ym).startsWith(y))
     .reduce((a, p) => a + p.gross, 0);
   const waiting = (D.submissions || []).filter((s) => s.status === '대기').length;
+  const unpaidAmt = (D.sales || []).filter((x) => x.status === '발행완료')
+    .reduce((a, x) => a + x.total, 0);
   $('wStat').innerHTML = `
     <div class="stat"><span class="dim">등록 인력</span><b>${
       (D.people || []).filter((p) => p.active).length}명</b></div>
     <div class="stat"><span class="dim">거래처</span><b>${(D.vendors || []).length}곳</b></div>
     <div class="stat"><span class="dim">대기 중 제출</span><b style="${
       waiting ? 'color:var(--warn)' : ''}">${waiting}건</b></div>
-    <div class="stat"><span class="dim">${y}년 지급 합계</span><b>${won(total)}원</b></div>`;
+    <div class="stat"><span class="dim">${y}년 지급 합계</span><b>${won(total)}원</b></div>
+    <div class="stat"><span class="dim">미수금</span><b style="${
+      unpaidAmt ? 'color:var(--warn)' : ''}">${won(unpaidAmt)}원</b></div>`;
 }
 
 function renderProj(D) {
@@ -297,6 +314,16 @@ function renderProj(D) {
   $('badgeProj').innerHTML = soon.length
     ? `<span class="badge ${over ? 'bad' : 'hot'}">${over ? '마감 초과' : `마감 임박 ${soon.length}건`}</span>`
     : `<span class="badge">진행 ${act.length}건</span>`;
+}
+
+function renderInv(D) {
+  const unpaid = (D.sales || []).filter((x) => x.status === '발행완료');
+  const plan = (D.sales || []).filter((x) => x.status === '발행예정');
+  const amt = unpaid.reduce((a, x) => a + x.total, 0);
+  const parts = [];
+  if (plan.length) parts.push(`<span class="badge bad">미발행 ${plan.length}건</span>`);
+  else if (unpaid.length) parts.push(`<span class="badge hot">미수 ${won(amt)}원</span>`);
+  $('badgeInv').innerHTML = parts.join('');
 }
 
 function renderBoard(D) {

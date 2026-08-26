@@ -160,6 +160,7 @@ let CUR = null;
 
 (async function init() {
   if (!await WCT.requireAuth()) return;
+  window.__onReload = render;
   mountHeader('프로젝트');
 
   STAGES.forEach((s) => {
@@ -179,8 +180,7 @@ let CUR = null;
   };
   $('newTask').addEventListener('keydown', (e) => { if (e.key === 'Enter') addTask(); });
 
-  await WCT.load(true);
-  render();
+  await WCT.loadThenRefresh(render);
 })();
 
 const tasksOf = (pid) => (WCT.data.tasks || []).filter((t) => t.projectId === pid);
@@ -195,6 +195,14 @@ function progress(pid) {
 function laborOf(name) {
   const list = (WCT.data.payments || []).filter((p) => p.project === name);
   return { count: list.length, gross: list.reduce((a, p) => a + p.gross, 0) };
+}
+
+/** 세금계산서에서 끌어온 매출·매입 (공급가액 기준) */
+function moneyOf(name) {
+  const s = (WCT.data.sales || []).filter((x) => x.project === name);
+  const p = (WCT.data.purchases || []).filter((x) => x.project === name);
+  return { salesCount: s.length, sales: s.reduce((a, x) => a + x.supply, 0),
+           purCount: p.length, purchases: p.reduce((a, x) => a + x.supply, 0) };
 }
 
 function dueChip(due) {
@@ -250,9 +258,17 @@ function card(p) {
       ${dueChip(p.due)}
       ${p.owner ? `<span class="chip">${esc(p.owner)}</span>` : ''}
     </div>
-    ${(p.amount || lb.gross) ? `<div class="amt">
-      ${p.amount ? `계약 ${won(p.amount)}원` : ''}${p.amount && lb.gross ? ' · ' : ''}
-      ${lb.gross ? `인건비 ${won(lb.gross)}원` : ''}</div>` : ''}
+    ${(() => {
+      const mo = moneyOf(p.name);
+      const rev = mo.sales || p.amount || 0;
+      const cost = lb.gross + mo.purchases;
+      if (!rev && !cost) return '';
+      const margin = rev - cost;
+      return `<div class="amt">${rev ? `매출 ${won(rev)}원` : ''}${rev && cost ? ' · ' : ''}${
+        cost ? `원가 ${won(cost)}원` : ''}${rev && cost
+          ? ` · <span style="color:${margin >= 0 ? 'var(--ok)' : 'var(--bad)'}">${
+              won(margin)}원</span>` : ''}</div>`;
+    })()}
   </div>`;
 }
 
@@ -301,13 +317,22 @@ window.openProject = (id) => {
   $('dMsg').className = 'msg hide';
 
   const lb = laborOf(p.name);
+  const mo = moneyOf(p.name);
   const pr = progress(p.id);
+  const revenue = mo.sales || p.amount || 0;
+  const cost = lb.gross + mo.purchases;
+  const margin = revenue - cost;
   $('dCost').innerHTML = `
-    진행률 <b>${pr.done}/${pr.total}</b> (${pr.pct}%) ·
-    계약 <b>${won(p.amount || 0)}</b>원 ·
-    인건비 <b>${won(lb.gross)}</b>원 (${lb.count}건)
-    ${p.amount ? ` · 인건비 비중 ${Math.round(lb.gross / p.amount * 100)}%` : ''}
-    <br><span style="font-size:11.5px">인건비는 원천징수 &gt; 지급 탭에서 이 프로젝트로 등록한 금액입니다.</span>`;
+    진행률 <b>${pr.done}/${pr.total}</b> (${pr.pct}%)<br>
+    매출 <b>${won(mo.sales)}</b>원 (${mo.salesCount}건)${
+      p.amount ? ` · 계약 ${won(p.amount)}원` : ''}<br>
+    인건비 <b>${won(lb.gross)}</b>원 (${lb.count}건) ·
+    기타매입 <b>${won(mo.purchases)}</b>원 (${mo.purCount}건)<br>
+    <span style="color:${margin >= 0 ? 'var(--ok)' : 'var(--bad)'}">
+      남은 금액 <b>${won(margin)}</b>원${
+        revenue ? ` (${Math.round(margin / revenue * 100)}%)` : ''}</span>
+    <br><span style="font-size:11.5px">인건비는 원천징수 &gt; 지급, 매출·매입은 세금계산서에서
+    이 프로젝트로 등록한 금액입니다. 공급가액 기준입니다.</span>`;
 
   renderTasks();
   $('dlg').showModal();

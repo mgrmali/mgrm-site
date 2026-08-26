@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>세금계산서 · 맹그라미</title>
+<link rel="stylesheet" href="wct-style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+  .tabs button{padding:9px 16px;background:var(--card);border:1px solid var(--line);
+    border-radius:9px;color:var(--dim);font-size:13px;font-family:inherit;cursor:pointer}
+  .tabs button.on{border-color:var(--accent);color:var(--accent);background:#1e1a10}
+  .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  @media(max-width:860px){.kpi{grid-template-columns:repeat(2,1fr)}}
+  .kpi div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .kpi span{display:block;color:var(--dim);font-size:11.5px;margin-bottom:5px}
+  .kpi b{font-size:18px;font-variant-numeric:tabular-nums}
+  .st{padding:2px 9px;border-radius:20px;font-size:10.5px;border:1px solid var(--line);
+    color:var(--dim);white-space:nowrap}
+  .st.plan{color:var(--warn);border-color:var(--warn)}
+  .st.issued{color:var(--info);border-color:var(--info)}
+  .st.paid{color:var(--ok);border-color:var(--ok)}
+  .st.late{color:var(--bad);border-color:var(--bad)}
+  .st.nodeduct{color:var(--bad);border-color:var(--bad)}
+  .st.check{color:var(--warn);border-color:var(--warn)}
+  tbody tr:hover{background:#1a1d24}
+  .vatbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .vatline{display:flex;justify-content:space-between;padding:9px 0;
+    border-bottom:1px solid var(--line);font-size:13.5px}
+  .vatline:last-child{border-bottom:0}
+  .vatline.total{font-size:17px;font-weight:700;padding-top:14px}
+  .vatline .n{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tabs" id="tabs"></div>
+
+  <div class="kpi" id="kpi"></div>
+
+  <!-- 매출 -->
+  <section data-tab="매출">
+    <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">매출 세금계산서</h2>
+        <select id="sFilter" style="width:150px"></select>
+        <button class="b" id="btnNewSale">＋ 매출 등록</button>
+      </div>
+      <div class="note">
+        발행 전 단계부터 기록해 두면 빠뜨리지 않습니다.
+        <b>발행예정 → 발행완료 → 입금완료</b> 순으로 상태를 바꾸세요.
+      </div>
+      <table><thead><tr>
+        <th>일자</th><th>프로젝트</th><th>거래처</th><th>항목</th>
+        <th class="n">공급가액</th><th class="n">부가세</th><th class="n">합계</th>
+        <th>상태</th><th></th></tr></thead><tbody id="sTb"></tbody></table>
+      <div class="dim" id="sSum" style="text-align:right;margin-top:10px"></div>
+    </div>
+  </section>
+
+  <!-- 매입 -->
+  <section data-tab="매입" class="hide">
+    <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">매입</h2>
+        <select id="pFilter" style="width:150px"></select>
+        <button class="b" id="btnNewPur">＋ 매입 등록</button>
+      </div>
+      <div class="note" style="border-left-color:var(--bad)">
+        매입을 빠뜨리면 <b>부가세를 더 냅니다.</b> 받은 계산서·카드 내역을 꼭 넣으세요.<br>
+        인건비(프리랜서 지급)는 원천징수에서 자동으로 잡히므로 여기에 또 넣지 마세요.
+      </div>
+      <table><thead><tr>
+        <th>일자</th><th>프로젝트</th><th>거래처</th><th>분류</th><th>항목</th>
+        <th class="n">공급가액</th><th class="n">부가세</th><th>증빙</th><th></th>
+        </tr></thead><tbody id="pTb"></tbody></table>
+      <div class="dim" id="pSum" style="text-align:right;margin-top:10px"></div>
+    </div>
+  </section>
+
+  <!-- 부가세 -->
+  <section data-tab="부가세" class="hide">
+    <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">부가세 예상</h2>
+        <select id="vPeriod" style="width:190px"></select>
+      </div>
+      <div class="grid g2">
+        <div class="vatbox" id="vatBox"></div>
+        <div>
+          <div class="note" style="border-left-color:var(--bad);margin:0 0 12px">
+            <b>이 숫자는 참고치입니다.</b><br>
+            매입세액 공제 여부에는 판단이 들어갑니다. 접대비·차량·사업무관 지출은
+            공제되지 않습니다. 그대로 신고하면 나중에 추징될 수 있습니다.
+          </div>
+          <div class="card" style="margin:0">
+            <h3>세무사에게 물어볼 항목</h3>
+            <div id="vatCheck"></div>
+          </div>
+        </div>
+      </div>
+      <div class="bar" style="margin-top:16px">
+        <button class="g" id="btnVatExcel">이 기간 자료 엑셀로 받기</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 미수금 -->
+  <section data-tab="미수금" class="hide">
+    <div class="card">
+      <h2>받을 돈</h2>
+      <div class="note">발행했지만 아직 입금되지 않은 건입니다.</div>
+      <table><thead><tr>
+        <th>발행일</th><th>프로젝트</th><th>거래처</th><th class="n">합계</th>
+        <th>경과</th><th></th></tr></thead><tbody id="rTb"></tbody></table>
+      <div class="dim" id="rSum" style="text-align:right;margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2>아직 발행 안 한 건</h2>
+      <div class="note" style="border-left-color:var(--warn)">
+        발행예정 상태로 남아 있는 건입니다. 부가세 신고 전에 정리하세요.
+      </div>
+      <table><thead><tr>
+        <th>일자</th><th>프로젝트</th><th>거래처</th><th class="n">합계</th><th></th>
+        </tr></thead><tbody id="nTb"></tbody></table>
+    </div>
+  </section>
+</div>
+
+<!-- 매출 입력 -->
+<dialog id="sDlg">
+  <div style="display:flex;gap:12px"><h2 id="sTitle" style="flex:1;margin:0">매출 등록</h2>
+    <button class="g sm" onclick="$('sDlg').close()">닫기</button></div>
+  <div class="row r2" style="margin-top:14px">
+    <div><label>일자 *</label><input type="date" id="sDate"></div>
+    <div><label>프로젝트</label><select id="sProject"></select></div>
+  </div>
+  <div class="row r2">
+    <div><label>거래처 *</label><input id="sClient" placeholder="대우건설"></div>
+    <div><label>항목</label><input id="sItem" placeholder="홍보영상 제작"></div>
+  </div>
+  <div class="row r3">
+    <div><label>금액 기준</label>
+      <select id="sMode">
+        <option value="supply">공급가액 (부가세 별도)</option>
+        <option value="total">합계금액 (부가세 포함)</option>
+      </select></div>
+    <div><label>금액 *</label><input id="sAmount" inputmode="numeric"></div>
+    <div><label>증빙</label>
+      <select id="sProof"><option>세금계산서</option><option>계산서(면세)</option>
+        <option>카드</option><option>현금영수증</option><option>증빙없음</option></select></div>
+  </div>
+  <div class="note" id="sCalc" style="margin-top:12px">금액을 입력하세요.</div>
+  <div class="row r3">
+    <div><label>상태</label>
+      <select id="sStatus"><option>발행예정</option><option>발행완료</option>
+        <option>입금완료</option></select></div>
+    <div><label>발행일</label><input type="date" id="sIssued"></div>
+    <div><label>입금일</label><input type="date" id="sPaid"></div>
+  </div>
+  <label>메모</label><input id="sMemo">
+  <div class="bar" style="margin-top:16px">
+    <button class="b" id="sSave">저장</button>
+    <span style="flex:1"></span>
+    <button class="g hide" id="sDelete">삭제</button>
+  </div>
+  <div class="msg hide" id="sMsg"></div>
+</dialog>
+
+<!-- 매입 입력 -->
+<dialog id="pDlg">
+  <div style="display:flex;gap:12px"><h2 id="pTitle" style="flex:1;margin:0">매입 등록</h2>
+    <button class="g sm" onclick="$('pDlg').close()">닫기</button></div>
+  <div class="row r2" style="margin-top:14px">
+    <div><label>일자 *</label><input type="date" id="pDate"></div>
+    <div><label>프로젝트</label><select id="pProject"></select></div>
+  </div>
+  <div class="row r2">
+    <div><label>거래처 *</label><input id="pVendor" placeholder="○○렌탈"></div>
+    <div><label>분류</label>
+      <select id="pCat"><option>외주</option><option>장비·렌탈</option><option>소품·미술</option>
+        <option>교통·숙박</option><option>식대</option><option>사무·통신</option>
+        <option>광고·홍보</option><option>기타</option></select></div>
+  </div>
+  <label>항목</label><input id="pItem" placeholder="드론 촬영 외주">
+  <div class="row r3">
+    <div><label>금액 기준</label>
+      <select id="pMode">
+        <option value="total">합계금액 (부가세 포함)</option>
+        <option value="supply">공급가액 (부가세 별도)</option>
+      </select></div>
+    <div><label>금액 *</label><input id="pAmount" inputmode="numeric"></div>
+    <div><label>증빙</label>
+      <select id="pProof"><option>세금계산서</option><option>계산서(면세)</option>
+        <option>카드</option><option>현금영수증</option><option>간이영수증</option>
+        <option>증빙없음</option></select></div>
+  </div>
+  <div class="note" id="pCalc" style="margin-top:12px">금액을 입력하세요.</div>
+  <label>부가세 공제</label>
+  <select id="pDeduct">
+    <option>공제</option><option>불공제</option><option>확인필요</option>
+  </select>
+  <div class="dim" style="font-size:11.5px;margin-top:5px">
+    접대비·차량 관련·사업무관 지출은 불공제입니다. 애매하면 '확인필요' 로 두세요.
+  </div>
+  <label>메모</label><input id="pMemo">
+  <div class="bar" style="margin-top:16px">
+    <button class="b" id="pSave">저장</button>
+    <span style="flex:1"></span>
+    <button class="g hide" id="pDelete">삭제</button>
+  </div>
+  <div class="msg hide" id="pMsg"></div>
+</dialog>
+
+<script src="wct-core.js"></script>
+<script>
+const TABS = ['매출', '매입', '부가세', '미수금'];
+let sEditId = null, pEditId = null;
+
+(async function init() {
+  if (!await WCT.requireAuth()) return;
+  window.__onReload = renderAll;
+  mountHeader('세금계산서');
+
+  TABS.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.textContent = t;
+    if (i === 0) b.className = 'on';
+    b.onclick = () => {
+      document.querySelectorAll('#tabs button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      document.querySelectorAll('section[data-tab]').forEach((s) =>
+        s.classList.toggle('hide', s.dataset.tab !== t));
+    };
+    $('tabs').appendChild(b);
+  });
+
+  ['sAmount', 'sMode'].forEach((id) => $(id).addEventListener('input', sCalc));
+  ['pAmount', 'pMode'].forEach((id) => $(id).addEventListener('input', pCalc));
+  $('sFilter').addEventListener('change', renderSales);
+  $('pFilter').addEventListener('change', renderPurchases);
+  $('vPeriod').addEventListener('change', renderVat);
+  $('btnNewSale').onclick = () => openSale(null);
+  $('btnNewPur').onclick = () => openPur(null);
+
+  await WCT.loadThenRefresh(renderAll);
+})();
+
+const sales = () => WCT.data.sales || [];
+const purchases = () => WCT.data.purchases || [];
+
+/* 부가세 과세기간
+   1기 1~6월 (예정 1~3 / 확정 4~6)
+   2기 7~12월 (예정 7~9 / 확정 10~12)  */
+function periodOf(date) {
+  if (!date) return '';
+  const [y, m] = date.split('-').map(Number);
+  const q = Math.ceil(m / 3);
+  return `${y}-${q}Q`;
+}
+function periodLabel(p) {
+  const [y, q] = p.split('-');
+  const n = Number(q[0]);
+  const range = ['1~3월', '4~6월', '7~9월', '10~12월'][n - 1];
+  const due = ['4/25 (1기 예정)', '7/25 (1기 확정)', '10/25 (2기 예정)', '1/25 (2기 확정)'][n - 1];
+  return `${y}년 ${range} · 신고 ${due}`;
+}
+
+function renderAll() {
+  fillProjects();
+  fillFilters();
+  renderKpi();
+  renderSales();
+  renderPurchases();
+  renderVat();
+  renderReceivable();
+}
+
+function fillProjects() {
+  const opts = '<option value="">(없음)</option>' +
+    (WCT.data.projects || []).filter((p) => p.active !== false)
+      .map((p) => `<option>${esc(p.name)}</option>`).join('');
+  $('sProject').innerHTML = opts;
+  $('pProject').innerHTML = opts;
+}
+
+function fillFilters() {
+  const ps = [...new Set(sales().map((x) => periodOf(x.date)).filter(Boolean))].sort().reverse();
+  const pp = [...new Set(purchases().map((x) => periodOf(x.date)).filter(Boolean))].sort().reverse();
+  const all = [...new Set([...ps, ...pp])].sort().reverse();
+  const cur = periodOf(today());
+  if (!all.includes(cur)) all.unshift(cur);
+
+  const keep = (id, list, prefix) => {
+    const old = $(id).value;
+    $(id).innerHTML = (prefix ? '<option value="">전체 기간</option>' : '') +
+      list.map((p) => `<option value="${p}">${p.replace('-', '년 ')}</option>`).join('');
+    if (list.includes(old) || old === '') $(id).value = old;
+  };
+  keep('sFilter', all, true);
+  keep('pFilter', all, true);
+
+  const oldV = $('vPeriod').value;
+  $('vPeriod').innerHTML = all.map((p) =>
+    `<option value="${p}">${esc(periodLabel(p))}</option>`).join('');
+  $('vPeriod').value = all.includes(oldV) ? oldV : all[0];
+}
+
+function renderKpi() {
+  const y = String(new Date().getFullYear());
+  const yS = sales().filter((x) => x.date.startsWith(y));
+  const yP = purchases().filter((x) => x.date.startsWith(y));
+  const unpaid = sales().filter((x) => x.status === '발행완료');
+  const plan = sales().filter((x) => x.status === '발행예정');
+  $('kpi').innerHTML = `
+    <div><span>${y}년 매출 (공급가액)</span><b>${won(yS.reduce((a, x) => a + x.supply, 0))}</b></div>
+    <div><span>${y}년 매입 (공급가액)</span><b>${won(yP.reduce((a, x) => a + x.supply, 0))}</b></div>
+    <div><span>미수금</span><b style="${unpaid.length ? 'color:var(--warn)' : ''}">${
+      won(unpaid.reduce((a, x) => a + x.total, 0))}</b></div>
+    <div><span>발행 예정</span><b style="${plan.length ? 'color:var(--bad)' : ''}">${
+      plan.length}건</b></div>`;
+}
+
+// ─────────── 매출
+function statusPill(s) {
+  const m = { '발행예정': 'plan', '발행완료': 'issued', '입금완료': 'paid' };
+  return `<span class="st ${m[s] || ''}">${esc(s)}</span>`;
+}
+
+function renderSales() {
+  const f = $('sFilter').value;
+  const list = sales().filter((x) => !f || periodOf(x.date) === f)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  $('sTb').innerHTML = list.map((x) => `<tr onclick="openSale(${x.id})">
+    <td>${esc(x.date)}</td><td>${esc(x.project || '-')}</td><td>${esc(x.client)}</td>
+    <td>${esc(x.item || '-')}</td>
+    <td class="n">${won(x.supply)}</td><td class="n">${won(x.vat)}</td>
+    <td class="n">${won(x.total)}</td><td>${statusPill(x.status)}</td>
+    <td style="text-align:right"><button class="g sm">수정</button></td></tr>`).join('')
+    || '<tr><td colspan="9" class="dim">매출 기록이 없습니다.</td></tr>';
+  const s = list.reduce((a, x) => ({ su: a.su + x.supply, v: a.v + x.vat, t: a.t + x.total }),
+    { su: 0, v: 0, t: 0 });
+  $('sSum').textContent =
+    `${list.length}건 · 공급가액 ${won(s.su)}원 · 부가세 ${won(s.v)}원 · 합계 ${won(s.t)}원`;
+}
+
+function sCalc() {
+  const raw = Number(String($('sAmount').value).replace(/[^\d]/g, '')) || 0;
+  const box = $('sCalc');
+  if (!raw) { box.textContent = '금액을 입력하세요.'; box.dataset.ok = ''; return; }
+  const r = $('sMode').value === 'total' ? vatFromTotal(raw) : calcVat(raw);
+  box.innerHTML = `공급가액 <b>${won(r.supply)}</b>원 · 부가세 <b>${won(r.vat)}</b>원 → ` +
+    `합계 <b>${won(r.total)}</b>원`;
+  box.dataset.ok = JSON.stringify(r);
+}
+
+window.openSale = (id) => {
+  const x = id ? sales().find((v) => v.id === id) : null;
+  sEditId = id;
+  $('sTitle').textContent = x ? '매출 수정' : '매출 등록';
+  $('sDelete').classList.toggle('hide', !x);
+  $('sMsg').className = 'msg hide';
+  $('sDate').value = x ? x.date : today();
+  $('sProject').value = x ? x.project : '';
+  $('sClient').value = x ? x.client : '';
+  $('sItem').value = x ? x.item : '';
+  $('sMode').value = 'supply';
+  $('sAmount').value = x ? x.supply : '';
+  $('sProof').value = x ? x.proof : '세금계산서';
+  $('sStatus').value = x ? x.status : '발행예정';
+  $('sIssued').value = x ? x.issuedAt : '';
+  $('sPaid').value = x ? x.paidAt : '';
+  $('sMemo').value = x ? x.memo : '';
+  sCalc();
+  $('sDlg').showModal();
+};
+
+$('sSave').onclick = async () => {
+  const m = $('sMsg');
+  const r = $('sCalc').dataset.ok;
+  if (!$('sClient').value.trim()) { m.className = 'msg bad'; m.textContent = '거래처를 입력하세요.'; return; }
+  if (!r) { m.className = 'msg bad'; m.textContent = '금액을 입력하세요.'; return; }
+  const v = JSON.parse(r);
+  const btn = $('sSave'); btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    await WCT.api('sales.save', {
+      id: sEditId, date: $('sDate').value, project: $('sProject').value,
+      client: $('sClient').value.trim(), item: $('sItem').value.trim(),
+      supply: v.supply, vat: v.vat, total: v.total,
+      status: $('sStatus').value, issuedAt: $('sIssued').value, paidAt: $('sPaid').value,
+      proof: $('sProof').value, memo: $('sMemo').value,
+    });
+    await WCT.load(true); renderAll();
+    $('sDlg').close();
+    toast('저장했습니다.');
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '저장'; }
+};
+
+$('sDelete').onclick = async () => {
+  if (!confirm('이 매출 기록을 삭제할까요?')) return;
+  await WCT.api('sales.delete', { id: sEditId });
+  await WCT.load(true); renderAll();
+  $('sDlg').close();
+};
+
+// ─────────── 매입
+function renderPurchases() {
+  const f = $('pFilter').value;
+  const list = purchases().filter((x) => !f || periodOf(x.date) === f)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  $('pTb').innerHTML = list.map((x) => `<tr onclick="openPur(${x.id})">
+    <td>${esc(x.date)}</td><td>${esc(x.project || '-')}</td><td>${esc(x.vendor)}</td>
+    <td><span class="st">${esc(x.cat)}</span></td><td>${esc(x.item || '-')}</td>
+    <td class="n">${won(x.supply)}</td><td class="n">${won(x.vat)}</td>
+    <td>${esc(x.proof)}${x.deduct === '불공제' ? ' <span class="st nodeduct">불공제</span>' : ''}${
+      x.deduct === '확인필요' ? ' <span class="st check">확인필요</span>' : ''}</td>
+    <td style="text-align:right"><button class="g sm">수정</button></td></tr>`).join('')
+    || '<tr><td colspan="9" class="dim">매입 기록이 없습니다.</td></tr>';
+  const s = list.reduce((a, x) => ({ su: a.su + x.supply, v: a.v + x.vat }), { su: 0, v: 0 });
+  $('pSum').textContent = `${list.length}건 · 공급가액 ${won(s.su)}원 · 부가세 ${won(s.v)}원`;
+}
+
+function pCalc() {
+  const raw = Number(String($('pAmount').value).replace(/[^\d]/g, '')) || 0;
+  const box = $('pCalc');
+  if (!raw) { box.textContent = '금액을 입력하세요.'; box.dataset.ok = ''; return; }
+  const r = $('pMode').value === 'total' ? vatFromTotal(raw) : calcVat(raw);
+  box.innerHTML = `공급가액 <b>${won(r.supply)}</b>원 · 부가세 <b>${won(r.vat)}</b>원 → ` +
+    `합계 <b>${won(r.total)}</b>원`;
+  box.dataset.ok = JSON.stringify(r);
+}
+
+window.openPur = (id) => {
+  const x = id ? purchases().find((v) => v.id === id) : null;
+  pEditId = id;
+  $('pTitle').textContent = x ? '매입 수정' : '매입 등록';
+  $('pDelete').classList.toggle('hide', !x);
+  $('pMsg').className = 'msg hide';
+  $('pDate').value = x ? x.date : today();
+  $('pProject').value = x ? x.project : '';
+  $('pVendor').value = x ? x.vendor : '';
+  $('pCat').value = x ? x.cat : '외주';
+  $('pItem').value = x ? x.item : '';
+  $('pMode').value = 'total';
+  $('pAmount').value = x ? x.total : '';
+  $('pProof').value = x ? x.proof : '세금계산서';
+  $('pDeduct').value = x ? x.deduct : '공제';
+  $('pMemo').value = x ? x.memo : '';
+  pCalc();
+  $('pDlg').showModal();
+};
+
+$('pSave').onclick = async () => {
+  const m = $('pMsg');
+  const r = $('pCalc').dataset.ok;
+  if (!$('pVendor').value.trim()) { m.className = 'msg bad'; m.textContent = '거래처를 입력하세요.'; return; }
+  if (!r) { m.className = 'msg bad'; m.textContent = '금액을 입력하세요.'; return; }
+  const v = JSON.parse(r);
+  const btn = $('pSave'); btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    await WCT.api('purchase.save', {
+      id: pEditId, date: $('pDate').value, project: $('pProject').value,
+      vendor: $('pVendor').value.trim(), cat: $('pCat').value, item: $('pItem').value.trim(),
+      supply: v.supply, vat: v.vat, total: v.total,
+      proof: $('pProof').value, deduct: $('pDeduct').value, memo: $('pMemo').value,
+    });
+    await WCT.load(true); renderAll();
+    $('pDlg').close();
+    toast('저장했습니다.');
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '저장'; }
+};
+
+$('pDelete').onclick = async () => {
+  if (!confirm('이 매입 기록을 삭제할까요?')) return;
+  await WCT.api('purchase.delete', { id: pEditId });
+  await WCT.load(true); renderAll();
+  $('pDlg').close();
+};
+
+// ─────────── 부가세
+function vatData(period) {
+  const s = sales().filter((x) => periodOf(x.date) === period);
+  const p = purchases().filter((x) => periodOf(x.date) === period);
+  // 공제받을 수 있는 매입세액만 더한다
+  const ded = p.filter((x) => x.deduct === '공제' &&
+    (x.proof === '세금계산서' || x.proof === '카드' || x.proof === '현금영수증'));
+  const check = p.filter((x) => x.deduct === '확인필요' || x.proof === '증빙없음' ||
+    x.proof === '간이영수증');
+  return {
+    s, p, ded, check,
+    outVat: s.reduce((a, x) => a + x.vat, 0),
+    inVat: ded.reduce((a, x) => a + x.vat, 0),
+  };
+}
+
+function renderVat() {
+  const period = $('vPeriod').value;
+  if (!period) return;
+  const d = vatData(period);
+  const due = d.outVat - d.inVat;
+  $('vatBox').innerHTML = `
+    <div class="vatline"><span>매출세액 <span class="dim">(${d.s.length}건)</span></span>
+      <span class="n">${won(d.outVat)}원</span></div>
+    <div class="vatline"><span>매입세액 <span class="dim">(공제 ${d.ded.length}건)</span></span>
+      <span class="n">− ${won(d.inVat)}원</span></div>
+    <div class="vatline total"><span>${due >= 0 ? '납부 예상' : '환급 예상'}</span>
+      <span class="n" style="color:${due >= 0 ? 'var(--warn)' : 'var(--ok)'}">${
+        won(Math.abs(due))}원</span></div>`;
+
+  $('vatCheck').innerHTML = d.check.length
+    ? d.check.map((x) => `<div style="padding:7px 0;border-bottom:1px solid var(--line)">
+        <div style="font-size:13px">${esc(x.vendor)} · ${esc(x.item || x.cat)}</div>
+        <div class="dim" style="font-size:11.5px">${esc(x.date)} · ${won(x.total)}원 ·
+          ${esc(x.proof)}${x.deduct === '확인필요' ? ' · 확인필요' : ''}</div></div>`).join('')
+    : '<div class="dim" style="font-size:12.5px">확인이 필요한 항목이 없습니다.</div>';
+}
+
+$('btnVatExcel').onclick = () => {
+  const period = $('vPeriod').value;
+  const d = vatData(period);
+  const wb = XLSX.utils.book_new();
+
+  const sAoa = [['일자', '프로젝트', '거래처', '항목', '공급가액', '부가세', '합계', '증빙', '상태']];
+  d.s.forEach((x) => sAoa.push([x.date, x.project, x.client, x.item,
+    x.supply, x.vat, x.total, x.proof, x.status]));
+  sAoa.push(['', '', '', '합계', d.s.reduce((a, x) => a + x.supply, 0), d.outVat,
+    d.s.reduce((a, x) => a + x.total, 0), '', '']);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sAoa), '매출');
+
+  const pAoa = [['일자', '프로젝트', '거래처', '분류', '항목', '공급가액', '부가세', '합계',
+    '증빙', '공제여부']];
+  d.p.forEach((x) => pAoa.push([x.date, x.project, x.vendor, x.cat, x.item,
+    x.supply, x.vat, x.total, x.proof, x.deduct]));
+  pAoa.push(['', '', '', '', '합계', d.p.reduce((a, x) => a + x.supply, 0),
+    d.p.reduce((a, x) => a + x.vat, 0), d.p.reduce((a, x) => a + x.total, 0), '', '']);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pAoa), '매입');
+
+  XLSX.writeFile(wb, `부가세자료_${period}.xlsx`);
+};
+
+// ─────────── 미수금
+function renderReceivable() {
+  const unpaid = sales().filter((x) => x.status === '발행완료')
+    .sort((a, b) => (a.issuedAt || a.date).localeCompare(b.issuedAt || b.date));
+  $('rTb').innerHTML = unpaid.map((x) => {
+    const base = x.issuedAt || x.date;
+    const days = Math.floor((new Date() - new Date(base + 'T00:00:00')) / 86400000);
+    const cls = days > 60 ? 'late' : days > 30 ? 'plan' : '';
+    return `<tr onclick="openSale(${x.id})">
+      <td>${esc(base)}</td><td>${esc(x.project || '-')}</td><td>${esc(x.client)}</td>
+      <td class="n">${won(x.total)}</td>
+      <td><span class="st ${cls}">${days}일</span></td>
+      <td style="text-align:right"><button class="g sm">수정</button></td></tr>`;
+  }).join('') || '<tr><td colspan="6" class="dim">미수금이 없습니다.</td></tr>';
+  $('rSum').textContent = unpaid.length
+    ? `${unpaid.length}건 · 합계 ${won(unpaid.reduce((a, x) => a + x.total, 0))}원` : '';
+
+  const plan = sales().filter((x) => x.status === '발행예정')
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  $('nTb').innerHTML = plan.map((x) => `<tr onclick="openSale(${x.id})">
+    <td>${esc(x.date)}</td><td>${esc(x.project || '-')}</td><td>${esc(x.client)}</td>
+    <td class="n">${won(x.total)}</td>
+    <td style="text-align:right"><button class="g sm">수정</button></td></tr>`).join('')
+    || '<tr><td colspan="5" class="dim">모두 발행되었습니다.</td></tr>';
+}
+</script>
+</body>
+</html>
