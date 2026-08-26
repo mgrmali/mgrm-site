@@ -24,7 +24,9 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const WCT = {
-  auth: '', priv: null, pub: '', data: null,
+  auth: '', priv: null, pub: '', data: null, role: 'admin', me: null,
+
+  isAdmin() { return WCT.role === 'admin'; },
 
   // ────────── 통신
   async api(action, body = {}) {
@@ -52,6 +54,19 @@ const WCT = {
       false, ['encrypt', 'decrypt']);
   },
 
+  /** PD 계정 토큰 — 아이디+비밀번호를 서버가 준 솔트로 늘려 만든다.
+      비밀번호 자체는 절대 전송되지 않고, 이 토큰으로는 개인키를 열 수 없다. */
+  async userToken(userId, pw, saltB64) {
+    const base = await crypto.subtle.importKey('raw',
+      new TextEncoder().encode(String(userId).trim().toLowerCase() + '\u0000' + pw),
+      'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', salt: b64d(saltB64), iterations: ITER, hash: 'SHA-256' }, base, 256);
+    return b64e(bits);
+  },
+
+  newSalt() { return b64e(crypto.getRandomValues(new Uint8Array(16))); },
+
   // ────────── 봉투
   async seal(payload, pubB64) {
     const pub = await crypto.subtle.importKey('spki', b64d(pubB64 || WCT.pub),
@@ -77,7 +92,8 @@ const WCT = {
   // ────────── 세션 (탭 안에서만 유지, 탭 닫으면 소멸)
   async saveSession(pkcs8B64) {
     sessionStorage.setItem('wct', JSON.stringify({
-      auth: WCT.auth, pub: WCT.pub, priv: pkcs8B64, at: Date.now(),
+      auth: WCT.auth, pub: WCT.pub, priv: pkcs8B64 || '',
+      role: WCT.role, me: WCT.me, at: Date.now(),
     }));
   },
 
@@ -94,15 +110,20 @@ const WCT = {
     if (!raw) return false;
     let s;
     try { s = JSON.parse(raw); } catch { return false; }
-    if (!s.priv || Date.now() - (s.at || 0) > IDLE_LIMIT) {
+    if (!s.auth || Date.now() - (s.at || 0) > IDLE_LIMIT) {
       sessionStorage.removeItem('wct');
       return false;
     }
     try {
-      WCT.priv = await crypto.subtle.importKey('pkcs8', b64d(s.priv),
-        { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+      // PD 계정에는 개인키가 없습니다 (주민번호·계좌를 열 수 없음)
+      WCT.priv = s.priv
+        ? await crypto.subtle.importKey('pkcs8', b64d(s.priv),
+            { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt'])
+        : null;
       WCT.auth = s.auth;
-      WCT.pub = s.pub;
+      WCT.pub = s.pub || '';
+      WCT.role = s.role || 'admin';
+      WCT.me = s.me || null;
       WCT.touch();
       return true;
     } catch {
@@ -115,14 +136,22 @@ const WCT = {
     sessionStorage.removeItem('wct');
     sessionStorage.removeItem('wct_data');
     WCT.priv = null; WCT.auth = ''; WCT.data = null;
+    WCT.role = 'admin'; WCT.me = null; WCT._cache = {}; WCT._fpKey = null;
     location.href = 'admin.html';
   },
 
-  /** 하위 페이지 진입점. 잠겨 있으면 허브로 돌려보낸다. */
-  async requireAuth() {
-    if (await WCT.restore()) return true;
-    location.href = 'admin.html?next=' + encodeURIComponent(location.pathname.split('/').pop());
-    return false;
+  /** 하위 페이지 진입점. 잠겨 있으면 허브로 돌려보낸다.
+      adminOnly=true 인 페이지는 PD 가 들어오면 되돌린다. */
+  async requireAuth(adminOnly = false) {
+    if (!await WCT.restore()) {
+      location.href = 'admin.html?next=' + encodeURIComponent(location.pathname.split('/').pop());
+      return false;
+    }
+    if (adminOnly && !WCT.isAdmin()) {
+      location.href = 'admin.html?denied=1';
+      return false;
+    }
+    return true;
   },
 
   /* 주민번호 지문(blind index)
@@ -183,6 +212,8 @@ const WCT = {
       } catch {}
     }
     WCT.data = await WCT.api('bootstrap', force ? { fresh: true } : {});
+    if (WCT.data.role) WCT.role = WCT.data.role;
+    if (WCT.data.me) WCT.me = WCT.data.me;
     try {
       sessionStorage.setItem('wct_data', JSON.stringify({ at: Date.now(), d: WCT.data }));
     } catch {}

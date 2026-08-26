@@ -220,7 +220,7 @@ const TABS = ['매출', '매입', '부가세', '미수금'];
 let sEditId = null, pEditId = null;
 
 (async function init() {
-  if (!await WCT.requireAuth()) return;
+  if (!await WCT.requireAuth(true)) return;   // 관리자 전용
   window.__onReload = renderAll;
   mountHeader('세금계산서');
 

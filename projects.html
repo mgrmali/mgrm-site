@@ -162,6 +162,9 @@ let CUR = null;
   if (!await WCT.requireAuth()) return;
   window.__onReload = render;
   mountHeader('프로젝트');
+  if (!WCT.isAdmin()) {
+    document.querySelectorAll('.adminOnlyField').forEach((el) => (el.style.display = 'none'));
+  }
 
   STAGES.forEach((s) => {
     $('dStage').innerHTML += `<option value="${s.key}">${s.key}</option>`;
@@ -224,10 +227,13 @@ function render() {
   const soon = active.filter((p) => p.due &&
     dday(new Date(p.due + 'T00:00:00')).left <= 7);
   const amount = active.reduce((a, p) => a + (p.amount || 0), 0);
+  const tasksLeft = (WCT.data.tasks || []).filter((t) => !t.done).length;
   $('kpi').innerHTML = `
     <div><span>진행 중</span><b>${active.length}건</b></div>
-    <div><span>이번 주 마감</span><b style="${soon.length ? 'color:var(--warn)' : ''}">${soon.length}건</b></div>
-    <div><span>진행 중 계약금액</span><b>${won(amount)}원</b></div>`;
+    <div><span>이번 주 마감</span><b style="${soon.length ? 'color:var(--warn)' : ''}">${soon.length}건</b></div>` +
+    (WCT.isAdmin()
+      ? `<div><span>진행 중 계약금액</span><b>${won(amount)}원</b></div>`
+      : `<div><span>남은 작업</span><b>${tasksLeft}개</b></div>`);
 
   $('board').innerHTML = STAGES.map((s) => {
     const items = list.filter((p) => (p.stage || '프리') === s.key)
@@ -259,6 +265,7 @@ function card(p) {
       ${p.owner ? `<span class="chip">${esc(p.owner)}</span>` : ''}
     </div>
     ${(() => {
+      if (!WCT.isAdmin()) return '';   // PD 에게는 금액을 보여주지 않습니다
       const mo = moneyOf(p.name);
       const rev = mo.sales || p.amount || 0;
       const cost = lb.gross + mo.purchases;
@@ -319,6 +326,11 @@ window.openProject = (id) => {
   const lb = laborOf(p.name);
   const mo = moneyOf(p.name);
   const pr = progress(p.id);
+  if (!WCT.isAdmin()) {
+    $('dCost').innerHTML = `진행률 <b>${pr.done}/${pr.total}</b> (${pr.pct}%)`;
+    $('dAmount').closest('div').style.display = 'none';
+    $('dDelete').style.display = 'none';
+  }
   const revenue = mo.sales || p.amount || 0;
   const cost = lb.gross + mo.purchases;
   const margin = revenue - cost;

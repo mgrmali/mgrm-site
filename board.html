@@ -74,6 +74,7 @@ let curCat = '전체';
 
 (async function init() {
   if (!await WCT.requireAuth()) return;
+  window.__onReload = render;
   mountHeader('게시판');
 
   CATS.forEach((c, i) => {
@@ -89,11 +90,12 @@ let curCat = '전체';
     $('cats').appendChild(b);
   });
 
-  $('author').value = localStorage.getItem('wct_author') || '';
+  $('author').value = (WCT.me && WCT.me.name)
+    || localStorage.getItem('wct_author') || '';
+  if (WCT.me && WCT.me.name) $('author').readOnly = true;
   $('q').addEventListener('input', render);
 
-  await WCT.load(true);
-  render();
+  await WCT.loadThenRefresh(render);
   if (location.hash) {
     const el = document.querySelector(location.hash);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -153,14 +155,12 @@ $('save').onclick = async () => {
 window.del = async (id) => {
   if (!confirm('이 글을 삭제할까요? 되돌릴 수 없습니다.')) return;
   await WCT.api('board.delete', { id });
-  await WCT.load(true);
-  render();
+  await WCT.load(true); render();
 };
 
 window.togglePin = async (id, pinned) => {
   await WCT.api('board.pin', { id, pinned });
-  await WCT.load(true);
-  render();
+  await WCT.load(true); render();
 };
 </script>
 </body>

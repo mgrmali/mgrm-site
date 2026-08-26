@@ -289,6 +289,24 @@
     </div>
 
     <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">계정 관리</h2>
+        <button class="b" id="btnNewUser">＋ 계정 만들기</button>
+      </div>
+      <div class="note">
+        조연출·제작PD 계정입니다. <b>프로젝트와 게시판만</b> 쓸 수 있습니다.<br>
+        원천징수·세금계산서는 화면을 숨기는 것이 아니라
+        <b>서버가 자료를 내려주지 않습니다.</b> 주소를 직접 쳐도 열리지 않습니다.<br>
+        주민등록번호·계좌를 여는 열쇠도 이 계정에는 들어 있지 않습니다.
+      </div>
+      <table><thead><tr>
+        <th>아이디</th><th>이름</th><th>권한</th><th>비밀번호</th>
+        <th>마지막 접속</th><th>상태</th><th></th></tr></thead>
+        <tbody id="userTb"></tbody></table>
+      <div class="msg hide" id="userMsg"></div>
+    </div>
+
+    <div class="card">
       <h2>4대보험 요율 (근로자 부담)</h2>
       <div class="note" style="border-left-color:var(--bad)">
         <b>요율은 매년 바뀌고, 자료마다 값이 다릅니다.</b><br>
@@ -331,6 +349,36 @@
     </div>
   </section>
 </div>
+
+<dialog id="uDlg">
+  <div style="display:flex;gap:12px">
+    <h2 id="uTitle" style="flex:1;margin:0">계정 만들기</h2>
+    <button class="g sm" onclick="$('uDlg').close()">닫기</button>
+  </div>
+  <div class="row r2" style="margin-top:14px">
+    <div><label>아이디 *</label>
+      <input id="uId" autocapitalize="off" spellcheck="false" placeholder="jo1"></div>
+    <div><label>이름 *</label><input id="uName" placeholder="김조연"></div>
+  </div>
+  <label>메모</label>
+  <input id="uMemo" placeholder="예: 뱀,꽃 조연출">
+  <div class="note" style="margin-top:14px">
+    초기 비밀번호는 자동으로 만들어집니다.<br>
+    본인이 처음 로그인할 때 바꾸도록 되어 있습니다.
+  </div>
+  <div class="bar" style="margin-top:14px">
+    <button class="b" id="uSave">만들기</button>
+  </div>
+  <div class="msg hide" id="uMsg"></div>
+  <div id="uResult" class="hide" style="margin-top:16px">
+    <div class="note" style="border-left-color:var(--ok)">
+      <div style="font-size:12px;margin-bottom:8px">아래 내용을 본인에게 전달하세요.
+        이 화면을 닫으면 비밀번호를 다시 볼 수 없습니다.</div>
+      <pre class="out" id="uResultText" style="margin:0"></pre>
+    </div>
+    <button class="b" id="uCopy" style="width:100%;margin-top:10px">전달 내용 복사</button>
+  </div>
+</dialog>
 
 <dialog id="prDlg">
   <div style="display:flex;align-items:flex-start;gap:12px">
@@ -465,7 +513,7 @@
 const TABS = ['수신함', '인력', '지급', '원천세', '월별 신고', '설정'];
 
 (async function init() {
-  if (!await WCT.requireAuth()) return;
+  if (!await WCT.requireAuth(true)) return;   // 관리자 전용
   window.__onReload = () => refreshAll(false);
   mountHeader('원천징수');
 
@@ -490,7 +538,7 @@ const TABS = ['수신함', '인력', '지급', '원천세', '월별 신고', '�
 async function refreshAll(force) {
   await WCT.load(force);
   renderInbox(); renderPeople(); renderPay(); renderWht(); renderPayroll();
-  renderReport(); renderSettings(); renderRates();
+  renderReport(); renderSettings(); renderRates(); renderUsers();
 }
 
 
@@ -1970,6 +2018,128 @@ $('rtTest').onclick = () => {
     '※ 공단 고지서와 대조해 보시고, 다르면 요율을 고치거나',
     '   급여 표에서 고지서 금액으로 직접 입력하세요.',
   ].join('\n');
+};
+
+
+// ═══════════════ 계정 관리 (조연출 · 제작PD)
+let USERS = [];
+
+async function renderUsers() {
+  try {
+    USERS = (await WCT.api('user.list')).users || [];
+  } catch (e) {
+    $('userTb').innerHTML = `<tr><td colspan="7" class="dim">${esc(e.message)}</td></tr>`;
+    return;
+  }
+  $('userTb').innerHTML = USERS.map((u) => `<tr>
+    <td><b>${esc(u.userId)}</b></td>
+    <td>${esc(u.name)}</td>
+    <td><span class="pill">${u.role === 'admin' ? '관리자' : 'PD'}</span></td>
+    <td>${u.mustChange ? '<span class="pill wait">초기 비밀번호</span>'
+                       : '<span class="pill done">변경됨</span>'}</td>
+    <td class="dim">${esc(u.lastSeen || '-')}</td>
+    <td>${u.active ? '<span class="pill done">사용</span>'
+                   : '<span class="pill bad">중지</span>'}</td>
+    <td style="text-align:right">
+      <button class="g sm" onclick="uReset(${u.id}, '${esc(u.userId)}')">비번 재발급</button>
+      <button class="g sm" onclick="uToggle(${u.id}, ${!u.active})">${
+        u.active ? '중지' : '재개'}</button>
+      <button class="g sm" onclick="uDelete(${u.id}, '${esc(u.userId)}')">삭제</button>
+    </td></tr>`).join('')
+    || '<tr><td colspan="7" class="dim">만든 계정이 없습니다.</td></tr>';
+}
+
+/** 사람이 옮겨 적기 쉬운 임시 비밀번호 (헷갈리는 글자 제외) */
+function tempPassword() {
+  const cs = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const a = crypto.getRandomValues(new Uint8Array(10));
+  return Array.from(a, (n) => cs[n % cs.length]).join('');
+}
+
+$('btnNewUser').onclick = () => {
+  $('uTitle').textContent = '계정 만들기';
+  $('uId').value = ''; $('uName').value = ''; $('uMemo').value = '';
+  $('uMsg').className = 'msg hide';
+  $('uResult').classList.add('hide');
+  $('uSave').classList.remove('hide');
+  $('uDlg').showModal();
+};
+
+$('uSave').onclick = async () => {
+  const m = $('uMsg');
+  const uid = $('uId').value.trim().toLowerCase();
+  const name = $('uName').value.trim();
+  if (!/^[a-z0-9._-]{3,20}$/.test(uid)) {
+    m.className = 'msg bad';
+    m.textContent = '아이디는 영문 소문자·숫자로 3~20자입니다.';
+    return;
+  }
+  if (!name) { m.className = 'msg bad'; m.textContent = '이름을 입력하세요.'; return; }
+
+  const btn = $('uSave');
+  btn.disabled = true; btn.textContent = '만드는 중…';
+  try {
+    const pw = tempPassword();
+    const salt = WCT.newSalt();
+    const token = await WCT.userToken(uid, pw, salt);
+    await WCT.api('user.add', { userId: uid, name, role: 'pd', token, salt,
+                                memo: $('uMemo').value.trim() });
+    showCredentials(uid, name, pw);
+    await renderUsers();
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '만들기'; }
+};
+
+function showCredentials(uid, name, pw) {
+  const url = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}admin.html`;
+  const text = [
+    `${name}님, 맹그라미 업무 허브 계정입니다.`, '',
+    `  주소      ${url}`,
+    `  아이디    ${uid}`,
+    `  비밀번호  ${pw}`, '',
+    '[아이디로 로그인] 을 눌러 들어오세요.',
+    '처음 로그인하면 비밀번호를 바꾸라고 안내가 나옵니다.',
+    '프로젝트와 게시판을 사용할 수 있습니다.',
+  ].join('\n');
+  $('uResultText').textContent = text;
+  $('uResult').classList.remove('hide');
+  $('uSave').classList.add('hide');
+  $('uMsg').className = 'msg ok';
+  $('uMsg').textContent = '계정을 만들었습니다.';
+  $('uCopy').onclick = async () => {
+    const okc = await copyText(text);
+    $('uCopy').textContent = okc ? '✓ 복사되었습니다' : '복사 실패';
+    setTimeout(() => { $('uCopy').textContent = '전달 내용 복사'; }, 1600);
+  };
+}
+
+window.uReset = async (id, uid) => {
+  if (!confirm(`${uid} 의 비밀번호를 새로 발급할까요?\n기존 비밀번호는 즉시 사용할 수 없게 됩니다.`)) return;
+  try {
+    const pw = tempPassword();
+    const salt = WCT.newSalt();
+    const token = await WCT.userToken(uid, pw, salt);
+    await WCT.api('user.reset', { id, token, salt });
+    const u = USERS.find((x) => x.id === id) || { name: uid };
+    $('uTitle').textContent = '비밀번호 재발급';
+    $('uMsg').className = 'msg hide';
+    $('uDlg').showModal();
+    showCredentials(uid, u.name, pw);
+    await renderUsers();
+  } catch (e) { toast(e.message, true); }
+};
+
+window.uToggle = async (id, active) => {
+  await WCT.api('user.set', { id, active });
+  await renderUsers();
+  toast(active ? '다시 사용할 수 있습니다.' : '사용을 중지했습니다.');
+};
+
+window.uDelete = async (id, uid) => {
+  if (!confirm(`${uid} 계정을 삭제할까요?\n되돌릴 수 없습니다. 잠시 막으려면 [중지] 를 쓰세요.`)) return;
+  await WCT.api('user.delete', { id });
+  await renderUsers();
+  toast('삭제했습니다.');
 };
 
 </script>
