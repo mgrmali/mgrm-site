@@ -137,6 +137,12 @@
       <div class="ds">프리 · 프로덕션 · 포스트 진행 현황</div>
       <div id="badgeProj"></div>
     </a>
+    <a class="tile adminOnly" href="vault.html">
+      <div class="ic">🔐</div>
+      <div class="tt">금고</div>
+      <div class="ds">라이선스 키 · 계정 정보</div>
+      <div id="badgeVault"></div>
+    </a>
     <a class="tile adminOnly" href="invoices.html">
       <div class="ic">📑</div>
       <div class="tt">세금계산서</div>
@@ -330,7 +336,8 @@ async function showHub() {
     if (D.company && !$('todayLine').textContent.includes(D.company)) {
       $('todayLine').textContent += ` · ${D.company}`;
     }
-    renderDue(D); renderStat(D); renderProj(D); renderInv(D); renderBoard(D); renderSub(D);
+    renderDue(D); renderStat(D); renderProj(D); renderInv(D);
+    renderVault(D); renderBoard(D); renderSub(D);
   };
   try {
     await WCT.loadThenRefresh(draw);   // 캐시로 먼저 그리고 뒤에서 갱신
@@ -446,6 +453,11 @@ function renderProj(D) {
   $('badgeProj').innerHTML = soon.length
     ? `<span class="badge ${over ? 'bad' : 'hot'}">${over ? '마감 초과' : `마감 임박 ${soon.length}건`}</span>`
     : `<span class="badge">진행 ${act.length}건</span>`;
+}
+
+function renderVault(D) {
+  const n = (D.vault || []).length;
+  $('badgeVault').innerHTML = n ? `<span class="badge">${n}개 보관</span>` : '';
 }
 
 function renderInv(D) {

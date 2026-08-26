@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>금고 · 맹그라미</title>
+<link rel="stylesheet" href="wct-style.css">
+<style>
+  .cats{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .cats button{padding:8px 14px;background:var(--card);border:1px solid var(--line);
+    border-radius:20px;color:var(--dim);font-size:12.5px;font-family:inherit;cursor:pointer}
+  .cats button.on{border-color:var(--accent);color:var(--accent);background:#1e1a10}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:15px 17px;margin-bottom:10px}
+  .item .hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .item .nm{font-weight:700;font-size:15px;flex:1;min-width:0}
+  .item .memo{color:var(--dim);font-size:11.5px;margin-top:3px}
+  .fields{margin-top:12px;display:none}
+  .fields.on{display:block}
+  .frow{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);
+    align-items:flex-start;cursor:pointer}
+  .frow:last-child{border-bottom:0}
+  .frow .k{color:var(--dim);font-size:12px;width:88px;flex:none;padding-top:2px}
+  .frow .v{flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:13.5px;word-break:break-all;line-height:1.6}
+  .frow .c{color:var(--accent);font-size:11px;flex:none;padding-top:3px}
+  .frow:active{background:#1a1d24}
+  .timer{color:var(--warn);font-size:11px;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="note" style="border-left-color:var(--bad)">
+    라이선스 키·계정 정보를 <b>암호화해서</b> 보관합니다. 주민등록번호와 같은 방식입니다.<br>
+    관리자만 볼 수 있고, 조연출·제작PD 계정으로는 열리지 않습니다.<br>
+    열어본 값은 <b>30초 뒤 자동으로 다시 가려집니다.</b>
+  </div>
+
+  <div class="bar">
+    <button class="b" id="btnNew">＋ 항목 추가</button>
+    <input id="q" placeholder="이름·메모 검색" style="max-width:240px">
+    <span style="flex:1"></span>
+    <span class="dim" id="count"></span>
+  </div>
+
+  <div class="cats" id="cats"></div>
+  <div id="list"><div class="dim">불러오는 중…</div></div>
+</div>
+
+<dialog id="dlg">
+  <div style="display:flex;gap:12px">
+    <h2 id="dTitle" style="flex:1;margin:0">항목 추가</h2>
+    <button class="g sm" onclick="$('dlg').close()">닫기</button>
+  </div>
+  <div class="row r2" style="margin-top:14px">
+    <div><label>분류</label><select id="dCat"></select></div>
+    <div><label>이름 *</label><input id="dName" placeholder="다빈치 리졸브"></div>
+  </div>
+  <div class="row r2">
+    <div><label>아이디 · 이메일</label><input id="dId" autocapitalize="off" spellcheck="false"></div>
+    <div><label>비밀번호</label><input id="dPw" autocapitalize="off" spellcheck="false"></div>
+  </div>
+  <label>라이선스 키 · 시리얼</label>
+  <textarea id="dKey" style="min-height:70px;font-family:ui-monospace,monospace"
+    placeholder="여러 개면 줄바꿈으로 구분&#10;1층 : XXXXX-XXXXX&#10;편집실 : XXXXX-XXXXX"></textarea>
+  <div class="row r2">
+    <div><label>주소 (URL)</label><input id="dUrl" autocapitalize="off" spellcheck="false"></div>
+    <div><label>메모 (공개 표시)</label><input id="dMemo" placeholder="목록에 그대로 보입니다"></div>
+  </div>
+  <label>비고 (암호화됨)</label>
+  <textarea id="dNote" style="min-height:60px"></textarea>
+  <div class="bar" style="margin-top:16px">
+    <button class="b" id="dSave">저장</button>
+    <span style="flex:1"></span>
+    <button class="g hide" id="dDelete">삭제</button>
+  </div>
+  <div class="msg hide" id="dMsg"></div>
+</dialog>
+
+<script src="wct-core.js"></script>
+<script>
+const CATS = ['전체', '소프트웨어', '서비스', '폰트·소재', 'OTT', 'SNS', '통신·결제', '기타'];
+let curCat = '전체', editId = null;
+const SHOW_MS = 30000;
+const timers = {};
+
+(async function init() {
+  if (!await WCT.requireAuth(true)) return;   // 관리자 전용
+  window.__onReload = render;
+  mountHeader('금고');
+
+  CATS.forEach((c, i) => {
+    const b = document.createElement('button');
+    b.textContent = c;
+    if (i === 0) b.className = 'on';
+    b.onclick = () => {
+      curCat = c;
+      document.querySelectorAll('#cats button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      render();
+    };
+    $('cats').appendChild(b);
+  });
+  $('dCat').innerHTML = CATS.slice(1).map((c) => `<option>${c}</option>`).join('');
+  $('q').addEventListener('input', render);
+  $('btnNew').onclick = () => openItem(null);
+
+  await WCT.loadThenRefresh(render);
+})();
+
+const items = () => WCT.data.vault || [];
+
+function render() {
+  hideAll();
+  const q = $('q').value.trim().toLowerCase();
+  let list = items();
+  if (curCat !== '전체') list = list.filter((x) => x.cat === curCat);
+  if (q) list = list.filter((x) => (x.name + ' ' + x.memo).toLowerCase().includes(q));
+  list.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+
+  $('count').textContent = `${list.length}개`;
+  $('list').innerHTML = list.map((x) => `
+    <div class="item" id="it${x.id}">
+      <div class="hd">
+        <span class="pill">${esc(x.cat)}</span>
+        <span class="nm">${esc(x.name)}</span>
+        <button class="g sm" onclick="reveal(${x.id}, this)">열기</button>
+        <button class="g sm" onclick="openItem(${x.id})">수정</button>
+      </div>
+      ${x.memo ? `<div class="memo">${esc(x.memo)}</div>` : ''}
+      <div class="fields" id="fd${x.id}"></div>
+    </div>`).join('')
+    || '<div class="card dim" style="text-align:center;padding:40px">항목이 없습니다.</div>';
+}
+
+const LABELS = [['id', '아이디'], ['pw', '비밀번호'], ['key', '라이선스 키'],
+                ['url', '주소'], ['note', '비고']];
+
+window.reveal = async (id, btn) => {
+  const box = $('fd' + id);
+  if (timers[id]) return hideOne(id);
+
+  btn.disabled = true;
+  try {
+    const it = items().find((x) => x.id === id);
+    const env = (await WCT.api('envelope', { fileId: it.envFileId })).envelope;
+    const d = await WCT.open(env);
+    const rows = LABELS.filter(([k]) => d[k]).map(([k, label]) => `
+      <div class="frow" data-copy="${esc(d[k])}">
+        <span class="k">${label}</span>
+        <span class="v">${esc(d[k])}</span>
+        <span class="c">복사</span>
+      </div>`).join('');
+    box.innerHTML = (rows || '<div class="dim" style="font-size:12.5px">저장된 값이 없습니다.</div>') +
+      `<div class="timer" id="tm${id}">${SHOW_MS / 1000}초 뒤 다시 가려집니다</div>`;
+    box.classList.add('on');
+    btn.textContent = '가림';
+
+    box.querySelectorAll('.frow').forEach((row) => {
+      row.onclick = async () => {
+        const okc = await copyText(row.dataset.copy);
+        const tag = row.querySelector('.c');
+        tag.textContent = okc ? '✓ 복사됨' : '실패';
+        tag.style.color = okc ? 'var(--ok)' : 'var(--bad)';
+        setTimeout(() => { tag.textContent = '복사'; tag.style.color = ''; }, 1200);
+      };
+    });
+
+    let left = SHOW_MS / 1000;
+    timers[id] = setInterval(() => {
+      left--;
+      const t = $('tm' + id);
+      if (t) t.textContent = `${left}초 뒤 다시 가려집니다`;
+      if (left <= 0) hideOne(id);
+    }, 1000);
+  } catch (e) {
+    toast(e.message, true);
+  } finally { btn.disabled = false; }
+};
+
+function hideOne(id) {
+  if (timers[id]) { clearInterval(timers[id]); delete timers[id]; }
+  const box = $('fd' + id);
+  if (box) { box.innerHTML = ''; box.classList.remove('on'); }
+  const it = $('it' + id);
+  if (it) {
+    const b = it.querySelector('button');
+    if (b && b.textContent === '가림') b.textContent = '열기';
+  }
+}
+
+function hideAll() { Object.keys(timers).forEach((id) => hideOne(id)); }
+document.addEventListener('visibilitychange', () => { if (document.hidden) hideAll(); });
+window.addEventListener('blur', hideAll);
+
+window.openItem = async (id) => {
+  editId = id;
+  $('dTitle').textContent = id ? '항목 수정' : '항목 추가';
+  $('dDelete').classList.toggle('hide', !id);
+  $('dMsg').className = 'msg hide';
+  ['dId', 'dPw', 'dKey', 'dUrl', 'dNote'].forEach((k) => ($(k).value = ''));
+
+  if (id) {
+    const it = items().find((x) => x.id === id);
+    $('dCat').value = it.cat;
+    $('dName').value = it.name;
+    $('dMemo').value = it.memo || '';
+    try {
+      const env = (await WCT.api('envelope', { fileId: it.envFileId })).envelope;
+      const d = await WCT.open(env);
+      $('dId').value = d.id || ''; $('dPw').value = d.pw || '';
+      $('dKey').value = d.key || ''; $('dUrl').value = d.url || '';
+      $('dNote').value = d.note || '';
+    } catch (e) { toast('기존 값을 열지 못했습니다.', true); }
+  } else {
+    $('dCat').value = curCat === '전체' ? '소프트웨어' : curCat;
+    $('dName').value = ''; $('dMemo').value = '';
+  }
+  $('dlg').showModal();
+};
+
+$('dSave').onclick = async () => {
+  const m = $('dMsg');
+  const name = $('dName').value.trim();
+  if (!name) { m.className = 'msg bad'; m.textContent = '이름을 입력하세요.'; return; }
+  const btn = $('dSave');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    const env = await WCT.seal({ kind: 'vault',
+      id: $('dId').value.trim(), pw: $('dPw').value,
+      key: $('dKey').value.trim(), url: $('dUrl').value.trim(),
+      note: $('dNote').value });
+    await WCT.api('vault.save', { id: editId, cat: $('dCat').value, name,
+      memo: $('dMemo').value.trim(), envelope: env });
+    await WCT.load(true); render();
+    $('dlg').close();
+    toast('저장했습니다.');
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '저장'; }
+};
+
+$('dDelete').onclick = async () => {
+  if (!confirm('이 항목을 삭제할까요? 되돌릴 수 없습니다.')) return;
+  await WCT.api('vault.delete', { id: editId });
+  await WCT.load(true); render();
+  $('dlg').close();
+};
+</script>
+</body>
+</html>
