@@ -113,6 +113,7 @@ const WCT = {
 
   lock() {
     sessionStorage.removeItem('wct');
+    sessionStorage.removeItem('wct_data');
     WCT.priv = null; WCT.auth = ''; WCT.data = null;
     location.href = 'admin.html';
   },
@@ -122,6 +123,34 @@ const WCT = {
     if (await WCT.restore()) return true;
     location.href = 'admin.html?next=' + encodeURIComponent(location.pathname.split('/').pop());
     return false;
+  },
+
+  /* 주민번호 지문(blind index)
+       같은 번호 → 같은 지문, 지문 → 원본 복원 불가.
+       키는 마스터 비밀번호에서 유도하므로 서버에는 절대 없다.
+       덕분에 시트만 털려도 지문으로 주민번호를 알아낼 수 없다. */
+  _fpKey: null,
+
+  async fpKey() {
+    if (WCT._fpKey) return WCT._fpKey;
+    // 개인키를 재료로 삼는다 — 이 브라우저에서 잠금을 푼 사람만 만들 수 있다
+    const seed = sessionStorage.getItem('wct');
+    if (!seed) throw new Error('잠금이 풀려 있지 않습니다.');
+    const priv = JSON.parse(seed).priv;
+    const bits = await crypto.subtle.digest('SHA-256',
+      new TextEncoder().encode('wct-fp-v1:' + priv));
+    WCT._fpKey = await crypto.subtle.importKey('raw', bits,
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return WCT._fpKey;
+  },
+
+  /** 주민번호 → 지문 문자열 (숫자만 남겨 정규화 후 HMAC) */
+  async fingerprint(rrn) {
+    const digits = String(rrn || '').replace(/\D/g, '');
+    if (digits.length !== 13) return '';
+    const key = await WCT.fpKey();
+    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(digits));
+    return b64e(sig).replace(/[+/=]/g, '').slice(0, 22);
   },
 
   /** 인력 봉투를 열어 계좌·주민번호 등 원본을 꺼낸다.
@@ -136,10 +165,38 @@ const WCT = {
     return data;
   },
 
+  /* 페이지를 옮겨도 방금 받은 데이터를 다시 씁니다.
+     force=true 는 내가 뭔가 바꾼 직후에만 쓰세요. */
+  DATA_TTL: 90 * 1000,
+
   async load(force = false) {
-    if (!WCT.data || force) WCT.data = await WCT.api('bootstrap');
+    if (!force) {
+      if (WCT.data) { WCT.touch(); return WCT.data; }
+      try {
+        const raw = sessionStorage.getItem('wct_data');
+        if (raw) {
+          const c = JSON.parse(raw);
+          if (Date.now() - c.at < WCT.DATA_TTL) {
+            WCT.data = c.d; WCT.touch(); return WCT.data;
+          }
+        }
+      } catch {}
+    }
+    WCT.data = await WCT.api('bootstrap', force ? { fresh: true } : {});
+    try {
+      sessionStorage.setItem('wct_data', JSON.stringify({ at: Date.now(), d: WCT.data }));
+    } catch {}
     WCT.touch();
     return WCT.data;
+  },
+
+  /** 화면을 먼저 그리고 데이터는 뒤에서 갱신 — 체감 속도를 위한 것 */
+  async loadThenRefresh(render) {
+    await WCT.load(false);
+    render();
+    const before = JSON.stringify(WCT.data);
+    await WCT.load(true);
+    if (JSON.stringify(WCT.data) !== before) render();
   },
 };
 
@@ -342,7 +399,18 @@ function mountHeader(title, backTo = 'admin.html') {
   el.innerHTML = `
     <a class="back" href="${backTo}">← 홈</a>
     <span class="apptitle">${esc(title)}</span>
+    <button class="g sm" id="__reload">새로고침</button>
     <button class="g sm" id="__lock">잠그기</button>`;
   document.body.insertBefore(el, document.body.firstChild);
   $('__lock').onclick = () => WCT.lock();
+  $('__reload').onclick = async () => {
+    const b = $('__reload');
+    b.disabled = true; b.textContent = '갱신 중…';
+    try {
+      await WCT.load(true);
+      if (typeof window.__onReload === 'function') window.__onReload();
+      toast('최신 정보로 갱신했습니다.');
+    } catch (e) { toast(e.message, true); }
+    finally { b.disabled = false; b.textContent = '새로고침'; }
+  };
 }
