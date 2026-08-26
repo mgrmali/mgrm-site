@@ -41,6 +41,9 @@
     color:var(--dim);font-size:13px;cursor:pointer;background:#0d0f14}
   .drop.has{border-style:solid;border-color:var(--ok);color:var(--ok)}
   .thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .drop.busy{opacity:.6;pointer-events:none}
+  .fileerr{margin-top:8px;padding:10px 12px;border-radius:8px;background:#2a1614;
+    border:1px solid var(--bad);color:#f0a89f;font-size:12px;line-height:1.6}
   .thumb{position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;
     border:1px solid var(--line)}
   .thumb img{width:100%;height:100%;object-fit:cover}
@@ -166,14 +169,16 @@
         <h2>서류 사진</h2>
         <label class="req">통장 사본</label>
         <div class="drop" data-for="f_bankbook">📷 촬영하거나 사진을 선택하세요</div>
-        <input type="file" id="f_bankbook" accept="image/*" multiple class="hidden">
+        <input type="file" id="f_bankbook" accept="image/*,.heic,.heif,.HEIC,.HEIF" multiple class="hidden">
+        <div class="fileerr" id="err_f_bankbook" style="display:none"></div>
         <div class="thumbs" id="thumb_f_bankbook"></div>
 
         <label class="req">신분증</label>
         <div class="drop" data-for="f_id">📷 촬영하거나 사진을 선택하세요</div>
-        <input type="file" id="f_id" accept="image/*" multiple class="hidden">
+        <input type="file" id="f_id" accept="image/*,.heic,.heif,.HEIC,.HEIF" multiple class="hidden">
+        <div class="fileerr" id="err_f_id" style="display:none"></div>
         <div class="thumbs" id="thumb_f_id"></div>
-        <div class="hint">글씨가 또렷하게 보이도록 밝은 곳에서 찍어주세요.</div>
+        <div class="hint">촬영해도 되고, 갤러리에 있는 사진을 골라도 됩니다.<br>글씨가 또렷하게 보이도록 밝은 곳에서 찍어주세요.</div>
       </div>
     </div>
 
@@ -225,12 +230,14 @@
         <h2>서류 사진</h2>
         <label class="req">사업자등록증</label>
         <div class="drop" data-for="b_cert">📷 촬영하거나 사진을 선택하세요</div>
-        <input type="file" id="b_cert" accept="image/*" multiple class="hidden">
+        <input type="file" id="b_cert" accept="image/*,.heic,.heif,.HEIC,.HEIF" multiple class="hidden">
+        <div class="fileerr" id="err_b_cert" style="display:none"></div>
         <div class="thumbs" id="thumb_b_cert"></div>
 
         <label class="req">통장 사본</label>
         <div class="drop" data-for="b_bankbook">📷 촬영하거나 사진을 선택하세요</div>
-        <input type="file" id="b_bankbook" accept="image/*" multiple class="hidden">
+        <input type="file" id="b_bankbook" accept="image/*,.heic,.heif,.HEIC,.HEIF" multiple class="hidden">
+        <div class="fileerr" id="err_b_bankbook" style="display:none"></div>
         <div class="thumbs" id="thumb_b_bankbook"></div>
       </div>
     </div>
@@ -399,33 +406,116 @@ document.querySelectorAll('.drop').forEach((d) => {
 });
 ['f_bankbook', 'f_id', 'b_cert', 'b_bankbook'].forEach((id) => {
   $(id).addEventListener('change', async (e) => {
-    files[id] = files[id] || [];
-    for (const f of e.target.files) {
-      if (files[id].length >= 3) break;
-      try { files[id].push(await shrink(f)); } catch (err) { console.error(err); }
-    }
+    const chosen = [...e.target.files];
     e.target.value = '';
+    if (!chosen.length) return;
+
+    files[id] = files[id] || [];
+    const drop = document.querySelector(`.drop[data-for="${id}"]`);
+    const errBox = $('err_' + id);
+    errBox.textContent = '';
+    errBox.style.display = 'none';
+    drop.classList.add('busy');
+
+    const problems = [];
+    for (let i = 0; i < chosen.length; i++) {
+      const f = chosen[i];
+      if (files[id].length >= 3) { problems.push('최대 3장까지 올릴 수 있습니다.'); break; }
+      drop.textContent = `사진을 처리하는 중… (${i + 1}/${chosen.length})`;
+      try {
+        files[id].push(await shrink(f));
+      } catch (err) {
+        problems.push(`${f.name || '사진'} — ${err.message}`);
+      }
+    }
+
+    drop.classList.remove('busy');
+    if (problems.length) {
+      errBox.textContent = problems.join('\n');
+      errBox.style.display = 'block';
+    }
     renderThumbs(id);
     check();
   });
 });
 
-function shrink(file) {
+/* 사진 축소
+   갤러리 사진은 촬영본보다 훨씬 크고(4천만 화소도 있음) 아이폰은 HEIC 형식이라
+   그냥 <img> 로 열면 실패하는 기기가 있습니다. 그래서 단계별로 시도합니다.
+     ① createImageBitmap  — 형식·회전 정보를 가장 잘 처리
+     ② <img> + objectURL  — 예전 브라우저용
+     ③ 원본 그대로 전송   — 위 둘 다 실패했을 때 (용량이 작으면)                */
+
+const CANVAS_MAX_PX = 12000000;   // 모바일 캔버스 한계(대략 1600만 화소) 아래로
+
+async function decode(file) {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      return await createImageBitmap(file, { imageOrientation: 'from-image' });
+    } catch (e) { /* ② 로 */ }
+  }
   return new Promise((res, rej) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
-      const c = document.createElement('canvas');
-      c.width = Math.round(img.width * scale);
-      c.height = Math.round(img.height * scale);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      res({ name: file.name, type: 'image/jpeg', data: c.toDataURL('image/jpeg', JPEG_Q) });
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('이미지를 읽지 못했습니다.')); };
+    const done = (fn) => { URL.revokeObjectURL(url); fn(); };
+    img.onload = () => done(() => res(img));
+    img.onerror = () => done(() => rej(new Error('decode')));
     img.src = url;
   });
+}
+
+function fileToDataUrl(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(new Error('read'));
+    r.readAsDataURL(file);
+  });
+}
+
+async function shrink(file) {
+  let src;
+  try {
+    src = await decode(file);
+  } catch (e) {
+    // ③ 축소는 못 하지만 원본이 작으면 그대로 보냅니다
+    if (file.size <= 2.5 * 1024 * 1024) {
+      return { name: file.name, type: file.type || 'image/jpeg',
+               data: await fileToDataUrl(file), raw: true };
+    }
+    throw new Error(
+      '이 사진 형식을 읽지 못했습니다.\n' +
+      '사진 앱에서 한 번 열어 저장하거나, 직접 촬영해 올려주세요.');
+  }
+
+  const w0 = src.width, h0 = src.height;
+  if (!w0 || !h0) throw new Error('사진 크기를 확인하지 못했습니다.');
+
+  // 긴 변 기준 + 전체 화소 기준, 둘 다 만족하도록 축소 비율을 정한다
+  let scale = Math.min(1, MAX_EDGE / Math.max(w0, h0));
+  if (w0 * h0 * scale * scale > CANVAS_MAX_PX) {
+    scale = Math.sqrt(CANVAS_MAX_PX / (w0 * h0));
+  }
+  const w = Math.max(1, Math.round(w0 * scale));
+  const h = Math.max(1, Math.round(h0 * scale));
+
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  if (!ctx) throw new Error('사진을 처리하지 못했습니다. 다시 시도해 주세요.');
+  ctx.drawImage(src, 0, 0, w, h);
+  if (src.close) src.close();
+
+  let data = c.toDataURL('image/jpeg', JPEG_Q);
+  // 그래도 크면 한 번 더 줄인다
+  if (data.length > 1.4 * 1024 * 1024) {
+    const c2 = document.createElement('canvas');
+    c2.width = Math.round(w * 0.7); c2.height = Math.round(h * 0.7);
+    c2.getContext('2d').drawImage(c, 0, 0, c2.width, c2.height);
+    data = c2.toDataURL('image/jpeg', 0.65);
+  }
+  if (!data || data.length < 200) throw new Error('사진을 처리하지 못했습니다.');
+  return { name: file.name, type: 'image/jpeg', data };
 }
 
 function renderThumbs(id) {
