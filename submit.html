@@ -309,6 +309,15 @@ const files = {};   // inputId -> [{name, type, data}]
     $('main').classList.remove('hidden');
     if (j.label) $('ctx').textContent = `맹그라미 (맹진욱) · ${j.label}`;
     if (j.role) $('f_role').value = j.role;
+    if (j.cap > 1) {
+      const b = document.createElement('div');
+      b.className = 'note';
+      b.innerHTML = `<span>👥</span><div>여러 명이 함께 쓰는 링크입니다.
+        현재 <b>${j.used}명</b> 제출 · <b>${j.left}자리</b> 남았습니다.<br>
+        본인 정보만 정확히 넣어주세요.</div>`;
+      const hdr = document.querySelector('header');
+      hdr.parentNode.insertBefore(b, hdr.nextSibling);
+    }
   } catch (e) {
     invalid('네트워크 연결을 확인해 주세요.');
   }

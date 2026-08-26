@@ -26,16 +26,29 @@
   <section data-tab="수신함">
     <div class="card">
       <h2>제출 링크</h2>
+      <div class="row r2">
+        <div><label>링크 종류</label>
+          <select id="invKind">
+            <option value="1">1회용 — 한 사람에게 보냄</option>
+            <option value="n">다회용 — 여러 명이 함께 사용</option>
+          </select></div>
+        <div><label id="invLabelName">보낼 사람 (라벨)</label>
+          <input id="invLabel" placeholder="홍길동 촬영감독"></div>
+      </div>
       <div class="row r3">
-        <div><label>보낼 사람 (라벨)</label><input id="invLabel" placeholder="홍길동 촬영감독"></div>
-        <div><label>역할</label><input id="invRole" placeholder="촬영감독"></div>
+        <div><label>역할 (미리 채워둘 값)</label><input id="invRole" placeholder="보조출연"></div>
+        <div id="invCapBox" class="hide"><label>제출 인원</label>
+          <input id="invCap" type="number" value="10" min="2" max="200"></div>
         <div><label>유효기간(일)</label><input id="invDays" type="number" value="7"></div>
       </div>
-      <button class="b" id="mkInvite" style="margin-top:14px">링크 만들어 복사</button>
+      <div class="note" id="invHint" style="margin-top:12px">
+        한 사람이 제출하면 링크가 자동으로 닫힙니다. 개별 스태프에게 보낼 때 쓰세요.
+      </div>
+      <button class="b" id="mkInvite">링크 만들어 복사</button>
       <div class="msg hide" id="invMsg"></div>
       <table style="margin-top:16px"><thead><tr>
-        <th>라벨</th><th>역할</th><th>만료</th><th>사용</th><th></th></tr></thead>
-        <tbody id="invTb"></tbody></table>
+        <th>라벨</th><th>역할</th><th>종류</th><th>제출</th><th>만료</th><th>상태</th><th></th>
+        </tr></thead><tbody id="invTb"></tbody></table>
     </div>
 
     <div class="card">
@@ -227,6 +240,7 @@ const TABS = ['수신함', '인력', '지급', '원천세', '월별 신고'];
 
 (async function init() {
   if (!await WCT.requireAuth()) return;
+  window.__onReload = () => refreshAll(false);
   mountHeader('원천징수');
 
   TABS.forEach((t, i) => {
@@ -244,7 +258,7 @@ const TABS = ['수신함', '인력', '지급', '원천세', '월별 신고'];
 
   $('payDate').value = today();
   $('payYm').value = thisYm();
-  await refreshAll(true);
+  await refreshAll(false);
 })();
 
 async function refreshAll(force) {
@@ -254,13 +268,26 @@ async function refreshAll(force) {
 
 
 function renderInbox() {
-  $('invTb').innerHTML = WCT.data.invites.map((i) => `<tr>
-    <td>${i.label || '-'}</td><td>${i.role || '-'}</td><td class="dim">${i.expires || '-'}</td>
-    <td>${i.used ? '<span class="pill done">사용됨</span>' : '<span class="pill wait">대기</span>'}</td>
-    <td style="text-align:right">
-      <button class="g" onclick="copyLink('${i.token}')">복사</button>
-      <button class="g" onclick="delInvite('${i.token}')">삭제</button></td></tr>`).join('')
-    || '<tr><td colspan="5" class="dim">발급한 링크가 없습니다.</td></tr>';
+  $('invTb').innerHTML = WCT.data.invites.map((i) => {
+    const cap = i.cap || 1;
+    const cnt = i.count || 0;
+    const full = cnt >= cap;
+    const expired = i.expires && new Date(i.expires) < new Date();
+    const state = i.closed ? '<span class="pill bad">닫힘</span>'
+      : full ? '<span class="pill done">완료</span>'
+      : expired ? '<span class="pill bad">기간만료</span>'
+      : '<span class="pill wait">열림</span>';
+    return `<tr>
+      <td>${esc(i.label || '-')}</td><td>${esc(i.role || '-')}</td>
+      <td>${cap > 1 ? `<span class="pill">다회용</span>` : '1회용'}</td>
+      <td class="n">${cap > 1 ? `${cnt} / ${cap}` : (cnt ? '완료' : '-')}</td>
+      <td class="dim">${esc(String(i.expires || '-').slice(0, 16))}</td>
+      <td>${state}</td>
+      <td style="text-align:right">
+        <button class="g sm" onclick="copyLink('${i.token}')">복사</button>
+        ${(!i.closed && !full) ? `<button class="g sm" onclick="closeInvite('${i.token}')">닫기</button>` : ''}
+        <button class="g sm" onclick="delInvite('${i.token}')">삭제</button></td></tr>`;
+  }).join('') || '<tr><td colspan="7" class="dim">발급한 링크가 없습니다.</td></tr>';
 
   $('subTb').innerHTML = WCT.data.submissions.map((s) => `<tr>
     <td class="dim">${s.at}</td><td>${s.kind}</td><td>${s.label || '-'}</td>
@@ -481,23 +508,29 @@ $('dlgRegister').onclick = async () => {
 // ═══════════════ 링크
 $('mkInvite').onclick = async () => {
   const label = $('invLabel').value.trim();
-  if (!label) return;
+  const m = $('invMsg');
+  if (!label) { m.className = 'msg bad'; m.textContent = '라벨을 입력하세요.'; return; }
+
+  const multi = $('invKind').value === 'n';
+  const cap = multi ? Math.max(2, Math.min(200, Number($('invCap').value) || 10)) : 1;
   const token = b64e(crypto.getRandomValues(new Uint8Array(18)))
     .replace(/[+/=]/g, '').slice(0, 22);
   const days = Number($('invDays').value) || 7;
   const exp = new Date(Date.now() + days * 86400000);
-  const expStr = `${ymd(exp)} ${String(exp.getHours()).padStart(2,'0')}:` +
-    `${String(exp.getMinutes()).padStart(2,'0')}:00`;
+  const expStr = `${ymd(exp)} ${String(exp.getHours()).padStart(2, '0')}:` +
+    `${String(exp.getMinutes()).padStart(2, '0')}:00`;
+
   try {
-    await WCT.api('invite.create', { token, label, role: $('invRole').value.trim(), expires: expStr });
+    await WCT.api('invite.create', { token, label, role: $('invRole').value.trim(),
+      expires: expStr, cap });
     const link = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}submit.html?t=${token}`;
-    await navigator.clipboard.writeText(link).catch(() => {});
-    const m = $('invMsg');
+    await copyText(link);
     m.className = 'msg ok';
-    m.innerHTML = `클립보드에 복사했습니다 · ${expStr} 까지<br><code>${link}</code>`;
-    $('invLabel').value = ''; $('invRole').value = '';
+    m.innerHTML = `클립보드에 복사했습니다 · ${multi ? `최대 ${cap}명` : '1회용'} · ${expStr} 까지` +
+      `<br><code>${esc(link)}</code>`;
+    $('invLabel').value = '';
     await refreshAll(true);
-  } catch (e) { const m = $('invMsg'); m.className = 'msg bad'; m.textContent = e.message; }
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
 };
 
 window.copyLink = (t) => {
@@ -505,6 +538,13 @@ window.copyLink = (t) => {
   navigator.clipboard.writeText(link);
   const m = $('invMsg'); m.className = 'msg ok'; m.textContent = link;
 };
+window.closeInvite = async (t) => {
+  if (!confirm('이 링크를 지금 닫을까요?\n더 이상 제출을 받지 않습니다.')) return;
+  await WCT.api('invite.close', { token: t, closed: true });
+  await refreshAll(true);
+  toast('링크를 닫았습니다.');
+};
+
 window.delInvite = async (t) => {
   if (!confirm('이 링크를 삭제할까요?')) return;
   await WCT.api('invite.delete', { token: t }); await refreshAll(true);
@@ -1122,6 +1162,19 @@ function hideAllRrn() {
 document.addEventListener('visibilitychange', () => { if (document.hidden) hideAllRrn(); });
 window.addEventListener('blur', hideAllRrn);
 $('tabs').addEventListener('click', hideAllRrn);
+
+
+// ═══════════════ 링크 종류 전환
+$('invKind').addEventListener('change', () => {
+  const multi = $('invKind').value === 'n';
+  $('invCapBox').classList.toggle('hide', !multi);
+  $('invLabelName').textContent = multi ? '회차 이름 (라벨)' : '보낼 사람 (라벨)';
+  $('invLabel').placeholder = multi ? '8/28 경국대 촬영 보조출연' : '홍길동 촬영감독';
+  $('invHint').innerHTML = multi
+    ? '카톡방에 한 번만 뿌리면 됩니다. 정한 인원이 다 차거나 기간이 지나면 자동으로 닫힙니다.<br>' +
+      '링크가 새더라도 그 회차 인원까지만 들어옵니다.'
+    : '한 사람이 제출하면 링크가 자동으로 닫힙니다. 개별 스태프에게 보낼 때 쓰세요.';
+});
 
 </script>
 </body>
