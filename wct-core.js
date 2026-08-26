@@ -523,12 +523,25 @@ function buildCalendarEvents(D) {
     desc: '결산·세무조정이 필요합니다. 세무사에게 맡기세요.' }));
 
   // 프로젝트 마감
+  const projById = {};
+  (D.projects || []).forEach((p) => { projById[p.id] = p; });
   (D.projects || []).filter((p) => p.active !== false && p.due && p.stage !== '완료')
     .forEach((p) => {
       ev.push({ key: `proj-${p.id}`, date: p.due, remind: 3,
         title: `마감 · ${p.name}`,
         desc: (p.client ? `클라이언트: ${p.client}\n` : '') + `단계: ${p.stage}` });
     });
+
+  /* 작업 — 📅 를 켠 것만 넣습니다.
+     마감일이 없거나, 이미 완료했거나, 프로젝트가 끝났으면 넣지 않습니다. */
+  (D.tasks || []).filter((t) => t.cal && t.due && !t.done).forEach((t) => {
+    const p = projById[t.projectId];
+    if (!p || p.active === false || p.stage === '완료') return;
+    ev.push({ key: `task-${t.id}`, date: t.due, remind: 2,
+      title: `${t.title} · ${p.name}`,
+      desc: `프로젝트: ${p.name}\n단계: ${t.stage}` +
+            (t.assignee ? `\n담당: ${t.assignee}` : '') });
+  });
 
   // 1년 넘게 지난 것은 만들지 않습니다
   const cut = ymd(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));

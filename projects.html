@@ -47,6 +47,14 @@
   .task .tx{flex:1;font-size:13px;line-height:1.5}
   .task.on .tx{color:var(--dim);text-decoration:line-through}
   .task .x{background:none;border:0;color:#4a5160;cursor:pointer;font-size:15px;padding:0 4px}
+  .tmeta{display:flex;gap:8px;align-items:center;margin-top:5px;flex-wrap:wrap}
+  .tdue{width:132px;padding:4px 7px;font-size:11.5px;background:#0d0f14}
+  .tcal{display:flex;align-items:center;gap:4px;margin:0;padding:4px 8px;
+    border:1px solid var(--line);border-radius:16px;cursor:pointer;
+    font-size:10.5px;color:var(--dim);white-space:nowrap}
+  .tcal input{width:13px;height:13px;margin:0;accent-color:var(--accent)}
+  .tcal.on{border-color:var(--accent);color:var(--accent);background:#1e1a10}
+  .task.on .tmeta{opacity:.45}
   .task .x:hover{color:var(--bad)}
 
   .stagehd{display:flex;align-items:center;gap:8px;margin:18px 0 6px;font-size:12.5px;
@@ -101,7 +109,12 @@
 
   <div id="dTasks"></div>
 
-  <div class="bar" style="margin-top:16px">
+  <div class="dim" style="font-size:11.5px;margin-top:10px">
+    📅 를 켜고 마감일을 정하면 구글 캘린더(MGRM스케줄)에 들어갑니다.
+    본 촬영·납품처럼 꼭 챙길 것만 켜세요.
+  </div>
+
+  <div class="bar" style="margin-top:12px">
     <input id="newTask" placeholder="작업 추가 후 Enter" style="flex:1;min-width:180px">
     <select id="newTaskStage" style="width:120px"></select>
   </div>
@@ -147,14 +160,30 @@ const STAGES = [
   { key: '완료',    color: '#4ea87a', desc: '납품 완료' },
 ];
 
-// 영상 제작 실무 기준 기본 작업
+/* 영상 제작 실무 기준 기본 작업
+   ★ 표시한 것은 캘린더에 넣도록 미리 켜둡니다.
+     날짜가 정해지는 굵직한 일정만 골랐습니다.
+     나머지는 필요할 때 개별로 켜면 됩니다. */
 const TEMPLATE = {
-  '프리': ['기획 · 시나리오', '콘티 · 스토리보드', '견적 · 계약', '로케이션 헌팅',
-          '캐스팅', '스태프 섭외', '촬영 스케줄 확정', '장비 리스트 · 렌탈'],
-  '프로덕션': ['장비 점검', '촬영 D-1 준비', '본 촬영', 'DIT 백업 · 검수', '데이터 인계'],
-  '포스트': ['가편집', '1차 시사', '수정 반영', 'DI · 색보정', '사운드 믹싱',
-           'CG · 그래픽', '최종 시사', '마스터 출력', '납품'],
+  '프리': [
+    '기획 · 시나리오', '콘티 · 스토리보드', '견적 · 계약', '로케이션 헌팅',
+    '캐스팅', '스태프 섭외', '★촬영 스케줄 확정', '장비 리스트 · 렌탈',
+  ],
+  '프로덕션': [
+    '장비 점검', '★촬영 D-1 준비', '★본 촬영', 'DIT 백업 · 검수', '데이터 인계',
+  ],
+  '포스트': [
+    '가편집', '★1차 시사', '수정 반영', 'DI · 색보정', '사운드 믹싱',
+    'CG · 그래픽', '★최종 시사', '마스터 출력', '★납품',
+  ],
 };
+
+/** '★' 접두사를 떼고 캘린더 표시 여부를 가려냅니다 */
+function parseTask(title) {
+  return title.startsWith('★')
+    ? { title: title.slice(1), cal: true }
+    : { title, cal: false };
+}
 
 let CUR = null;
 
@@ -172,7 +201,12 @@ let CUR = null;
   });
 
   $('nTplPreview').innerHTML = Object.entries(TEMPLATE)
-    .map(([k, v]) => `<b>${k}</b> ${v.length}개 — ${esc(v.slice(0, 3).join(', '))} …`).join('<br>');
+    .map(([k, v]) => `<b>${k}</b> ${v.length}개 — ` +
+      esc(v.slice(0, 3).map((t) => parseTask(t).title).join(', ')) + ' …').join('<br>') +
+    '<br><br>📅 표시가 붙는 작업: ' +
+    esc(Object.values(TEMPLATE).flat().filter((t) => t.startsWith('★'))
+      .map((t) => t.slice(1)).join(', ')) +
+    '<br><span style="font-size:11px">마감일을 정하면 캘린더에 들어갑니다. 언제든 끄고 켤 수 있습니다.</span>';
 
   $('q').addEventListener('input', render);
   $('showDone').addEventListener('change', render);
@@ -360,7 +394,18 @@ function renderTasks() {
       <span class="dim" style="font-weight:400">${done}/${list.length}</span></div>` +
       list.map((t) => `<div class="task ${t.done ? 'on' : ''}">
         <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleTask(${t.id}, this.checked)">
-        <span class="tx">${esc(t.title)}</span>
+        <div class="tx">
+          <div>${esc(t.title)}</div>
+          <div class="tmeta">
+            <input type="date" class="tdue" value="${esc(t.due || '')}"
+              onchange="setTaskDue(${t.id}, this.value)">
+            <label class="tcal ${t.cal ? 'on' : ''}" title="캘린더에 표시">
+              <input type="checkbox" ${t.cal ? 'checked' : ''}
+                onchange="setTaskCal(${t.id}, this.checked)">
+              <span>📅 캘린더</span>
+            </label>
+          </div>
+        </div>
         <button class="x" onclick="delTask(${t.id})">×</button>
       </div>`).join('');
   }).join('') || '<div class="dim" style="margin-top:16px;font-size:12.5px">작업이 없습니다. 아래에서 추가하세요.</div>';
@@ -372,6 +417,25 @@ window.toggleTask = async (id, done) => {
   renderTasks(); render();
   try { await WCT.api('task.set', { id, done }); }
   catch (e) { alert(e.message); await WCT.load(true); renderTasks(); render(); }
+};
+
+window.setTaskDue = async (id, due) => {
+  const t = WCT.data.tasks.find((x) => x.id === id);
+  if (t) t.due = due;
+  try { await WCT.api('task.set', { id, due }); }
+  catch (e) { toast(e.message, true); await WCT.load(true); renderTasks(); }
+};
+
+window.setTaskCal = async (id, cal) => {
+  const t = WCT.data.tasks.find((x) => x.id === id);
+  if (t) t.cal = cal;
+  renderTasks();
+  try {
+    await WCT.api('task.set', { id, cal });
+    if (cal && !(t && t.due)) {
+      toast('마감일을 정해야 캘린더에 들어갑니다.', true);
+    }
+  } catch (e) { toast(e.message, true); await WCT.load(true); renderTasks(); }
 };
 
 window.delTask = async (id) => {
@@ -429,7 +493,8 @@ $('nSave').onclick = async () => {
   btn.disabled = true; btn.textContent = '만드는 중…';
   try {
     const tasks = $('nTemplate').checked
-      ? Object.entries(TEMPLATE).flatMap(([stage, arr]) => arr.map((title) => ({ stage, title })))
+      ? Object.entries(TEMPLATE).flatMap(([stage, arr]) =>
+          arr.map((raw) => Object.assign({ stage }, parseTask(raw))))
       : [];
     await WCT.api('project.add', {
       name, client: $('nClient').value.trim(), stage: '프리',
