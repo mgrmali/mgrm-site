@@ -16,6 +16,8 @@
   .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
   .thumbs img{width:100px;height:100px;object-fit:cover;border-radius:8px;
     border:1px solid var(--line);cursor:pointer}
+  .thumbbad{width:150px;padding:12px 10px;border-radius:8px;border:1px dashed var(--bad);
+    color:var(--bad);font-size:11px;line-height:1.5;text-align:center;background:#1a1214}
   .kv{font-size:13px;line-height:2}
   .kv b{color:var(--dim);font-weight:500;display:inline-block;width:120px}
 </style>
@@ -509,26 +511,66 @@ window.openSub = async (fileId, kind) => {
     const imgs = [];
     Object.entries(p.files || {}).forEach(([g, arr]) => (arr || []).forEach((f, i) => {
       const nm = ({ bankbook: '통장사본', id_card: '신분증', cert: '사업자등록증' }[g] || g);
-      imgs.push({ name: `${nm}_${i + 1}.jpg`, data: f.data });
+      const data = f.data || '';
+      const mime = (data.match(/^data:([^;,]*)/) || [])[1] || '';
+      const bytes = data.includes(',') ? Math.round(data.split(',')[1].length * 0.75) : 0;
+      imgs.push({ name: nm + '_' + (i + 1), data, mime, bytes, orig: f.name || '' });
     }));
     CUR.images = imgs;
-    $('dlgThumbs').innerHTML = imgs.map((im, i) =>
-      `<img src="${im.data}" title="${im.name}" onclick="window.open('').document.write(
-        '<img src=\\'' + this.src + '\\' style=max-width:100%>')">`).join('');
+
+    $('dlgThumbs').innerHTML = imgs.map((im, i) => {
+      const kb = (im.bytes / 1024).toFixed(0);
+      if (!im.data || im.bytes < 500) {
+        return '<div class="thumbbad"><div style="font-size:20px">\u26A0\uFE0F</div>' +
+          '<div style="font-weight:700;margin:4px 0">' + esc(im.name) + '</div>' +
+          '<div>전송 중 손상되었습니다</div>' +
+          '<div class="dim" style="margin-top:4px">' + esc(im.mime || '형식 없음') +
+          ' \u00B7 ' + kb + 'KB</div>' +
+          '<div style="margin-top:6px">다시 올려달라고 요청하세요</div></div>';
+      }
+      if (!/^image\/(jpeg|png|gif|webp|bmp)$/.test(im.mime)) {
+        return '<div class="thumbbad" style="border-color:var(--warn);color:var(--warn)">' +
+          '<div style="font-size:20px">\uD83D\uDCC4</div>' +
+          '<div style="font-weight:700;margin:4px 0">' + esc(im.name) + '</div>' +
+          '<div>이 브라우저에서 미리보기 불가</div>' +
+          '<div class="dim" style="margin-top:4px">' + esc(im.mime) + ' \u00B7 ' + kb + 'KB</div>' +
+          '<div style="margin-top:6px">[사진 내려받기] 로 확인하세요</div></div>';
+      }
+      return '<img src="' + im.data + '" title="' + esc(im.name) + ' \u00B7 ' + kb +
+        'KB" onclick="viewImage(' + i + ')">';
+    }).join('') || '<div class="dim">첨부된 사진이 없습니다.</div>';
   } catch (e) {
     $('dlgBody').innerHTML = `<span style="color:var(--bad)">${e.message}</span>`;
   }
 };
 
+window.viewImage = (i) => {
+  const im = CUR.images[i];
+  const w = window.open('', '_blank');
+  if (!w) return toast('팝업이 차단되었습니다.', true);
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>' +
+    esc(im.name) + '</title><style>body{margin:0;background:#111;display:flex;' +
+    'align-items:center;justify-content:center;min-height:100vh}' +
+    'img{max-width:100%;max-height:100vh}</style></head><body><img src="' +
+    im.data + '"></body></html>');
+  w.document.close();
+};
+
 $('dlgClose').onclick = () => $('dlg').close();
 
 $('dlgDownload').onclick = () => {
-  (CUR.images || []).forEach((im, i) => setTimeout(() => {
+  const list = (CUR.images || []).filter((im) => im.data && im.bytes >= 500);
+  if (!list.length) return toast('내려받을 수 있는 사진이 없습니다.', true);
+  const who = CUR.payload.name || CUR.payload.company_name || '제출';
+  list.forEach((im, i) => setTimeout(() => {
+    const ext = ({ 'image/png': 'png', 'image/heic': 'heic',
+                   'image/heif': 'heif', 'image/webp': 'webp' })[im.mime] || 'jpg';
     const a = document.createElement('a');
     a.href = im.data;
-    a.download = `${CUR.payload.name || CUR.payload.company_name || '제출'}_${im.name}`;
+    a.download = who + '_' + im.name + '.' + ext;
     a.click();
   }, i * 250));
+  toast(list.length + '장 내려받는 중입니다.');
 };
 
 $('dlgRegister').onclick = async () => {
