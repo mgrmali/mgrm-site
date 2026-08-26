@@ -53,10 +53,10 @@
   .thumb{width:auto;min-width:72px}
   .thumb .tag{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.66);
     color:#cfd4dd;font-size:9px;text-align:center;padding:2px 0;line-height:1.3}
-  .thumb.bad{border-color:var(--bad);width:112px;height:auto}
-  .thumb .ph{padding:14px 6px;text-align:center;color:var(--bad);font-size:10px;
-    line-height:1.5;background:#1a1214}
-  .thumb .ph small{color:var(--dim);font-size:9px}
+  .thumb.noprev{border-color:var(--ok);width:118px;height:auto}
+  .thumb .ph{padding:14px 6px;text-align:center;color:var(--ok);font-size:11px;
+    font-weight:700;line-height:1.5;background:#101a15}
+  .thumb .ph small{color:var(--dim);font-size:9px;font-weight:400;display:block;margin-top:4px}
   .agree{display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:13px}
   .agree input{width:20px;height:20px;margin-top:2px;flex:none;accent-color:var(--accent)}
   details{margin-top:10px;font-size:12px;color:var(--dim)}
@@ -586,6 +586,25 @@ async function shrink(file) {
            info: `${w}×${h} · ${(data.length / 1365).toFixed(0)}KB` };
 }
 
+/* 아이폰·삼성의 '고효율 이미지' 설정으로 찍은 사진(HEIC)은
+   일부 안드로이드 브라우저가 화면에 못 띄웁니다.
+   제출·저장은 정상이므로, 다음부터 편하시라고 안내만 합니다. */
+function showHeicTip(type) {
+  if (!/heic|heif/i.test(type || '')) return;
+  if ($('heicTip')) return;
+  const box = document.createElement('div');
+  box.id = 'heicTip';
+  box.className = 'note';
+  box.style.marginTop = '12px';
+  box.innerHTML = '<span>ℹ️</span><div>이 사진은 <b>정상적으로 첨부되었습니다.</b> ' +
+    '그대로 제출하시면 됩니다.<br><br>' +
+    '화면에 사진이 안 보이는 것은 휴대폰 카메라의 <b>고효율 이미지(HEIC)</b> 형식 때문입니다.<br>' +
+    '카메라 설정 → 고급 → <b>고효율 이미지 끄기</b> 로 바꾸면 다음부터는 보입니다.</div>';
+  const anchor = document.querySelector('#formFree .card:last-of-type')
+    || document.querySelector('#formFree');
+  if (anchor) anchor.appendChild(box);
+}
+
 function renderThumbs(id) {
   const box = $('thumb_' + id);
   box.innerHTML = '';
@@ -599,14 +618,17 @@ function renderThumbs(id) {
       '<span class="tag">' + (f.info || (f.raw ? '원본' : '')) + '</span>';
     const img = d.querySelector('img');
     img.onerror = () => {
-      d.classList.add('bad');
+      // 미리보기가 안 될 뿐 제출에는 문제가 없습니다.
+      // 실패로 보이면 스태프가 불필요하게 다시 시도하게 되므로 정확히 알립니다.
+      d.classList.add('noprev');
       img.remove();
+      const kb = Math.round((f.data || '').length / 1365);
       const p = document.createElement('div');
       p.className = 'ph';
-      p.innerHTML = '미리보기 실패<br><small>' +
-        (f.type || '형식없음') + '<br>' +
-        Math.round((f.data || '').length / 1365) + 'KB</small>';
+      p.innerHTML = '✓ 첨부됨<br><small>미리보기만 지원되지<br>않는 형식입니다<br>' +
+        (f.type || '형식없음') + ' · ' + kb + 'KB</small>';
       d.insertBefore(p, d.firstChild);
+      showHeicTip(f.type);
     };
     d.querySelector('.del').onclick = () => {
       files[id].splice(i, 1); renderThumbs(id); check();
