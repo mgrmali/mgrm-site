@@ -67,6 +67,37 @@ const WCT = {
 
   newSalt() { return b64e(crypto.getRandomValues(new Uint8Array(16))); },
 
+  /* ── 복구 코드
+     사람이 옮겨 적기 쉽도록 헷갈리는 글자(I,O,0,1)를 뺀 20자를
+     4자씩 끊어 씁니다. 대소문자와 하이픈은 무시합니다. */
+  newRecoveryCode() {
+    const cs = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const a = crypto.getRandomValues(new Uint8Array(20));
+    const s = Array.from(a, (n) => cs[n % cs.length]).join('');
+    return s.match(/.{1,4}/g).join('-');
+  },
+
+  normalizeCode(code) {
+    return String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  },
+
+  /** 개인키(pkcs8)를 주어진 비밀문구로 감싼다 */
+  async wrapKey(pkcs8, secret, saltB64) {
+    const key = await WCT.derive(secret, b64d(saltB64), 'key');
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const wrapped = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, pkcs8);
+    return { wrapped: b64e(wrapped), iv: b64e(iv) };
+  },
+
+  /** 감싸인 개인키를 비밀문구로 푼다. 실패하면 null */
+  async unwrapKey(wrappedB64, ivB64, secret, saltB64) {
+    try {
+      const key = await WCT.derive(secret, b64d(saltB64), 'key');
+      return await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(ivB64) },
+        key, b64d(wrappedB64));
+    } catch { return null; }
+  },
+
   // ────────── 봉투
   async seal(payload, pubB64) {
     const pub = await crypto.subtle.importKey('spki', b64d(pubB64 || WCT.pub),

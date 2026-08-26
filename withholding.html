@@ -22,6 +22,10 @@
     color:var(--ok);font-size:11px;line-height:1.5;text-align:center;background:#101a15}
   .kv{font-size:13px;line-height:2}
   .kv b{color:var(--dim);font-weight:500;display:inline-block;width:120px}
+  .reccode{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:24px;
+    letter-spacing:2px;text-align:center;padding:22px 12px;margin:16px 0;
+    background:#0d0f14;border:2px dashed var(--accent);border-radius:12px;
+    color:var(--accent);word-break:break-all;line-height:1.6}
 
   /* 급여 표 — 열이 좁아 글자가 세로로 접히던 문제를 막습니다 */
   .payrollWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -290,6 +294,20 @@
 
     <div class="card">
       <div class="bar">
+        <h2 style="margin:0;flex:1">복구 코드</h2>
+        <button class="b" id="btnRecovery">발급하기</button>
+      </div>
+      <div class="note" style="border-left-color:var(--bad)">
+        관리자 비밀번호를 잊으면 <b>주민등록번호·계좌를 영영 열 수 없습니다.</b><br>
+        복구 코드를 발급해 종이에 인쇄해 두세요.<br><br>
+        ⚠️ 이 코드를 주운 사람은 비밀번호를 아는 것과 같습니다.
+        비밀번호와 같은 수준으로 보관하세요. 사진·카톡·클라우드는 피하세요.
+      </div>
+      <div id="recStatus" class="dim" style="font-size:13px"></div>
+    </div>
+
+    <div class="card">
+      <div class="bar">
         <h2 style="margin:0;flex:1">계정 관리</h2>
         <button class="b" id="btnNewUser">＋ 계정 만들기</button>
       </div>
@@ -349,6 +367,41 @@
     </div>
   </section>
 </div>
+
+<dialog id="recDlg">
+  <div style="display:flex;gap:12px">
+    <h2 style="flex:1;margin:0">복구 코드</h2>
+    <button class="g sm" id="recClose">닫기</button>
+  </div>
+  <div id="recStep1">
+    <div class="note" style="margin-top:14px;border-left-color:var(--bad)">
+      새 코드를 발급하면 <b>이전 코드는 즉시 무효</b>가 됩니다.<br>
+      발급 후 바로 인쇄하거나 종이에 적어 두세요. 이 화면을 닫으면 다시 볼 수 없습니다.
+    </div>
+    <label>확인을 위해 관리자 비밀번호를 다시 입력하세요</label>
+    <input type="password" id="recPw" autocomplete="current-password">
+    <div class="bar" style="margin-top:14px">
+      <button class="b" id="recMake">발급하기</button>
+    </div>
+    <div class="msg hide" id="recMsg"></div>
+  </div>
+
+  <div id="recStep2" class="hide">
+    <div class="reccode" id="recCode"></div>
+    <div class="note" style="border-left-color:var(--ok)">
+      · 이 코드로도 자료를 열 수 있습니다<br>
+      · 인쇄하거나 종이에 적어 금고·서류철에 보관하세요<br>
+      · 사진 촬영, 카톡 전송, 클라우드 저장은 피하세요<br>
+      · 이 창을 닫으면 다시 볼 수 없습니다 (재발급은 가능)
+    </div>
+    <div class="bar">
+      <button class="b" id="recPrint">인쇄하기</button>
+      <button class="g" id="recCopy">복사</button>
+      <span style="flex:1"></span>
+      <button class="g" id="recDone">보관했습니다</button>
+    </div>
+  </div>
+</dialog>
 
 <dialog id="uDlg">
   <div style="display:flex;gap:12px">
@@ -538,7 +591,7 @@ const TABS = ['수신함', '인력', '지급', '원천세', '월별 신고', '�
 async function refreshAll(force) {
   await WCT.load(force);
   renderInbox(); renderPeople(); renderPay(); renderWht(); renderPayroll();
-  renderReport(); renderSettings(); renderRates(); renderUsers();
+  renderReport(); renderSettings(); renderRates(); renderUsers(); renderRecovery();
 }
 
 
@@ -2140,6 +2193,105 @@ window.uDelete = async (id, uid) => {
   await WCT.api('user.delete', { id });
   await renderUsers();
   toast('삭제했습니다.');
+};
+
+
+// ═══════════════ 복구 코드
+async function renderRecovery() {
+  try {
+    const r = await WCT.api('recovery.status');
+    $('recStatus').innerHTML = r.exists
+      ? `<span class="pill done">발급됨</span> ${esc(r.issuedAt || '')}
+         <span style="display:block;margin-top:6px">보관하신 종이를 잃어버렸다면
+         새로 발급하세요. 이전 코드는 무효가 됩니다.</span>`
+      : '<span class="pill bad">아직 없음</span> ' +
+        '<span style="display:block;margin-top:6px">비밀번호를 잊으면 복구할 방법이 없습니다. ' +
+        '지금 발급해 두시길 권합니다.</span>';
+  } catch (e) { $('recStatus').textContent = e.message; }
+}
+
+$('btnRecovery').onclick = () => {
+  $('recStep1').classList.remove('hide');
+  $('recStep2').classList.add('hide');
+  $('recPw').value = '';
+  $('recMsg').className = 'msg hide';
+  $('recDlg').showModal();
+};
+
+$('recClose').onclick = () => $('recDlg').close();
+$('recDone').onclick = () => { $('recDlg').close(); renderRecovery(); };
+
+$('recMake').onclick = async () => {
+  const m = $('recMsg');
+  const pw = $('recPw').value;
+  if (!pw) { m.className = 'msg bad'; m.textContent = '비밀번호를 입력하세요.'; return; }
+  const btn = $('recMake');
+  btn.disabled = true; btn.textContent = '발급 중…';
+  try {
+    // 입력한 비밀번호로 개인키를 실제로 열어 본인 확인 + 원본 확보
+    const st = await WCT.status();
+    const auth = await WCT.derive(pw, b64d(st.saltAuth), 'auth');
+    const saved = WCT.auth;
+    WCT.auth = auth;
+    let ks;
+    try { ks = (await WCT.api('unlock')).keystore; }
+    catch (e) { WCT.auth = saved; throw new Error('비밀번호가 올바르지 않습니다.'); }
+    const pkcs8 = await WCT.unwrapKey(ks.wrapped, ks.iv, pw, ks.saltKey);
+    WCT.auth = saved;
+    if (!pkcs8) throw new Error('비밀번호가 올바르지 않습니다.');
+
+    // 같은 개인키를 복구 코드로 한 번 더 감싼다
+    const code = WCT.newRecoveryCode();
+    const salt = WCT.newSalt();
+    const w = await WCT.wrapKey(pkcs8, WCT.normalizeCode(code), salt);
+    await WCT.api('recovery.set', { recWrapped: w.wrapped, recIv: w.iv, recSalt: salt });
+
+    $('recCode').textContent = code;
+    $('recStep1').classList.add('hide');
+    $('recStep2').classList.remove('hide');
+    window.__recCode = code;
+    await renderRecovery();
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '발급하기'; }
+};
+
+$('recCopy').onclick = async () => {
+  const okc = await copyText(window.__recCode || '');
+  $('recCopy').textContent = okc ? '✓ 복사됨' : '실패';
+  setTimeout(() => { $('recCopy').textContent = '복사'; }, 1500);
+};
+
+$('recPrint').onclick = () => {
+  const w = window.open('', '_blank');
+  if (!w) return toast('팝업이 차단되었습니다.', true);
+  const company = (WCT.data.companyInfo && WCT.data.companyInfo['회사명']) || '맹그라미';
+  w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">
+    <title>복구 코드</title><style>
+    body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+      margin:40px;color:#111;line-height:1.8}
+    h1{font-size:20px;margin-bottom:4px}
+    .sub{color:#666;font-size:13px;margin-bottom:28px}
+    .code{font-family:monospace;font-size:30px;letter-spacing:3px;text-align:center;
+      padding:28px;border:3px dashed #999;border-radius:10px;margin:24px 0}
+    .warn{border:1px solid #c00;border-left:5px solid #c00;padding:14px 16px;
+      font-size:13px;color:#900;margin-top:24px}
+    ul{font-size:13px;padding-left:20px}
+    </style></head><body>
+    <h1>맹그라미 업무 허브 — 관리자 복구 코드</h1>
+    <div class="sub">${esc(company)} · 발급 ${esc(today())}</div>
+    <div class="code">${esc(window.__recCode || '')}</div>
+    <ul>
+      <li>관리자 비밀번호를 잊었을 때 이 코드로 새 비밀번호를 정할 수 있습니다.</li>
+      <li>로그인 화면의 [비밀번호를 잊으셨나요] 를 누르고 이 코드를 입력하세요.</li>
+      <li>새 코드를 발급하면 이 코드는 무효가 됩니다.</li>
+    </ul>
+    <div class="warn">
+      <b>이 종이를 주운 사람은 비밀번호를 아는 것과 같습니다.</b><br>
+      스태프의 주민등록번호와 계좌를 모두 열 수 있습니다.<br>
+      금고나 잠긴 서류철에 보관하시고, 사진 촬영·메신저 전송은 하지 마세요.
+    </div>
+    <script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
 };
 
 </script>

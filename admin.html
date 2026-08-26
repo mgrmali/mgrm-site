@@ -50,9 +50,49 @@
     <button class="b" id="unlockBtn" style="width:100%;margin-top:14px">열기</button>
     <button class="g" id="toggleUser" style="width:100%;margin-top:8px">
       아이디로 로그인 (조연출 · 제작PD)</button>
+    <div style="text-align:center;margin-top:14px">
+      <a href="#" id="forgotLink" class="dim"
+         style="font-size:12.5px;text-decoration:underline">비밀번호를 잊으셨나요?</a>
+    </div>
     <div class="msg hide" id="lockMsg"></div>
   </div>
 </div>
+
+<dialog id="recDlg">
+  <div style="display:flex;gap:12px">
+    <h2 style="flex:1;margin:0">복구 코드로 들어가기</h2>
+    <button class="g sm" onclick="$('recDlg').close()">닫기</button>
+  </div>
+
+  <div id="rStep1">
+    <div class="note" style="margin-top:14px">
+      발급받아 보관하신 복구 코드를 입력하세요.<br>
+      대소문자와 하이픈은 신경 쓰지 않으셔도 됩니다.
+    </div>
+    <label>복구 코드</label>
+    <input type="text" id="rCode" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX"
+           autocapitalize="characters" spellcheck="false"
+           style="font-family:monospace;font-size:17px;letter-spacing:1px">
+    <div class="bar" style="margin-top:14px">
+      <button class="b" id="rCheck">확인</button>
+    </div>
+    <div class="msg hide" id="rMsg"></div>
+  </div>
+
+  <div id="rStep2" class="hide">
+    <div class="note" style="border-left-color:var(--ok);margin-top:14px">
+      확인되었습니다. 새 관리자 비밀번호를 정해주세요.
+    </div>
+    <label>새 비밀번호 (12자 이상)</label>
+    <input type="password" id="rNew1">
+    <label>새 비밀번호 확인</label>
+    <input type="password" id="rNew2">
+    <div class="bar" style="margin-top:14px">
+      <button class="b" id="rSave">변경하고 들어가기</button>
+    </div>
+    <div class="msg hide" id="rMsg2"></div>
+  </div>
+</dialog>
 
 <dialog id="pwDlg">
   <h2 style="margin:0 0 6px">비밀번호 변경</h2>
@@ -477,6 +517,101 @@ function renderSub(D) {
       '</tbody></table>'
     : '<div class="dim">확인할 새 제출이 없습니다.</div>';
 }
+
+// ═══════════════ 복구 코드로 들어가기
+let REC_PKCS8 = null;
+
+$('forgotLink').onclick = async (e) => {
+  e.preventDefault();
+  $('rStep1').classList.remove('hide');
+  $('rStep2').classList.add('hide');
+  $('rCode').value = '';
+  $('rMsg').className = 'msg hide';
+  try {
+    const r = await fetch(`${GAS_URL}?action=recoveryinfo`);
+    const j = await r.json();
+    if (!j.exists) {
+      $('rMsg').className = 'msg bad';
+      $('rMsg').textContent =
+        '복구 코드가 발급되어 있지 않습니다. 비밀번호를 되찾을 방법이 없습니다.';
+    }
+    window.__recInfo = j;
+  } catch (err) {
+    $('rMsg').className = 'msg bad';
+    $('rMsg').textContent = '서버에 연결하지 못했습니다.';
+  }
+  $('recDlg').showModal();
+};
+
+// 입력하는 동안 4자마다 하이픈을 넣어줍니다
+$('rCode').addEventListener('input', () => {
+  const raw = WCT.normalizeCode($('rCode').value).slice(0, 20);
+  $('rCode').value = raw.match(/.{1,4}/g) ? raw.match(/.{1,4}/g).join('-') : raw;
+});
+
+$('rCheck').onclick = async () => {
+  const m = $('rMsg');
+  const info = window.__recInfo;
+  if (!info || !info.exists) {
+    m.className = 'msg bad';
+    m.textContent = '복구 코드가 발급되어 있지 않습니다.';
+    return;
+  }
+  const code = WCT.normalizeCode($('rCode').value);
+  if (code.length < 20) { m.className = 'msg bad'; m.textContent = '코드를 모두 입력하세요.'; return; }
+
+  const btn = $('rCheck');
+  btn.disabled = true; btn.textContent = '확인 중…';
+  try {
+    const pkcs8 = await WCT.unwrapKey(info.wrapped, info.iv, code, info.salt);
+    if (!pkcs8) throw new Error('복구 코드가 올바르지 않습니다.');
+    REC_PKCS8 = pkcs8;
+    $('rStep1').classList.add('hide');
+    $('rStep2').classList.remove('hide');
+    $('rNew1').value = ''; $('rNew2').value = '';
+    $('rMsg2').className = 'msg hide';
+    $('rNew1').focus();
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '확인'; }
+};
+
+$('rSave').onclick = async () => {
+  const m = $('rMsg2');
+  const a = $('rNew1').value, b = $('rNew2').value;
+  if (a.length < 12) { m.className = 'msg bad'; m.textContent = '12자 이상으로 정해주세요.'; return; }
+  if (a !== b) { m.className = 'msg bad'; m.textContent = '두 비밀번호가 다릅니다.'; return; }
+
+  const btn = $('rSave');
+  btn.disabled = true; btn.textContent = '변경 중…';
+  try {
+    const saltKey = WCT.newSalt();
+    const saltAuth = WCT.newSalt();
+    const w = await WCT.wrapKey(REC_PKCS8, a, saltKey);
+    const authToken = await WCT.derive(a, b64d(saltAuth), 'auth');
+
+    const r = await fetch(GAS_URL, { method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'recovery.reset',
+        wrapped: w.wrapped, iv: w.iv, saltKey, saltAuth, authToken,
+        proof: String(window.__recInfo.wrapped).slice(0, 32) }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+
+    WCT.auth = authToken;
+    WCT.role = 'admin';
+    WCT.pub = window.__recInfo.pub || '';
+    WCT.priv = await crypto.subtle.importKey('pkcs8', REC_PKCS8,
+      { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+    await WCT.saveSession(b64e(REC_PKCS8));
+    REC_PKCS8 = null;
+
+    m.className = 'msg ok';
+    m.textContent = '비밀번호를 바꿨습니다. 잠시 후 들어갑니다.';
+    setTimeout(() => { $('recDlg').close(); showHub(); }, 900);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '변경하고 들어가기'; }
+};
+
 </script>
 </body>
 </html>
