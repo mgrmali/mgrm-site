@@ -310,6 +310,22 @@ function calcFromNet(net, type = 'biz') {
   return calcTax(g0, 10, type);
 }
 
+/* 4대보험 근로자 부담분
+   ⚠️ 계산값은 참고치입니다. 공단 고지서 금액이 정답이며 화면에서 덮어쓸 수 있습니다.
+      국민연금은 기준소득월액 등급으로 부과되어 단순 비율과 다를 수 있습니다. */
+function calcInsurance(gross, opt = {}) {
+  const g = Math.round(Number(gross) || 0);
+  const r = (WCT.data && WCT.data.rates) || {};
+  const num = (k, d) => Number(r[k] != null ? r[k] : d) || 0;
+  const floor = (v) => Math.floor(v);   // 공단은 원 단위로 부과합니다
+
+  const np = opt.np === false ? 0 : floor(g * num('요율_국민연금', 4.75) / 100);
+  const hi = opt.hi === false ? 0 : floor(g * num('요율_건강보험', 3.595) / 100);
+  const ltc = hi ? floor(hi * num('요율_장기요양', 12.95) / 100) : 0;
+  const ei = opt.ei === true ? floor(g * num('요율_고용보험', 0.9) / 100) : 0;
+  return { np, hi, ltc, ei, total: np + hi + ltc + ei };
+}
+
 /** 부가세 — 공급가액 기준 10% */
 function calcVat(supply) {
   const s = Math.round(Number(supply) || 0);
