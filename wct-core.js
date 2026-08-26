@@ -471,6 +471,67 @@ function whtAggregate(payYm) {
   };
 }
 
+/* ══════════════ 캘린더에 보낼 일정 ══════════════
+   key 를 기준으로 갱신하므로 여러 번 눌러도 일정이 늘어나지 않습니다. */
+
+function vatDeadlines(year) {
+  return [
+    { key: `vat-${year}-1`, date: `${year}-04-25`,
+      title: `[부가세] ${year}년 1기 예정신고 (1~3월)` },
+    { key: `vat-${year}-2`, date: `${year}-07-25`,
+      title: `[부가세] ${year}년 1기 확정신고 (4~6월)` },
+    { key: `vat-${year}-3`, date: `${year}-10-25`,
+      title: `[부가세] ${year}년 2기 예정신고 (7~9월)` },
+    { key: `vat-${year}-4`, date: `${year + 1}-01-25`,
+      title: `[부가세] ${year}년 2기 확정신고 (10~12월)` },
+  ];
+}
+
+function buildCalendarEvents(D) {
+  const ev = [];
+  const now = new Date();
+
+  // 원천세 — 지급월 기준 (급여만 있어도 신고 대상)
+  const paid = (D.payments || []).filter((p) => p.status !== '예정')
+    .map((p) => (p.payDate || '').slice(0, 7)).filter(Boolean);
+  const wage = (D.payroll || []).map((r) => r.ym);
+  [...new Set([...paid, ...wage])].sort().forEach((m) => {
+    ev.push({ key: `wht-${m}`, date: ymd(whtDeadline(m)), remind: 3,
+      title: `[원천세] ${m} 지급분 신고·납부`,
+      desc: '홈택스(소득세)와 위택스(지방소득세)를 둘 다 하셔야 합니다.\n' +
+            '업무 허브 → 원천징수 → 원천세 탭 → [신고 순서 보기]' });
+  });
+
+  // 간이지급명세서 — 귀속월 기준 (원천세와 날짜가 다릅니다)
+  [...new Set((D.payments || []).filter((p) => p.status === '지급완료')
+    .map((p) => p.ym))].sort().forEach((m) => {
+    ev.push({ key: `stmt-${m}`, date: ymd(stmtDeadline(m)), remind: 3,
+      title: `[명세서] ${m} 귀속 간이지급명세서`,
+      desc: '업무 허브 → 원천징수 → 월별 신고 탭 → [엑셀 만들기]' });
+  });
+
+  // 부가세 · 법인세
+  const y = now.getFullYear();
+  [y - 1, y, y + 1].forEach((yy) => vatDeadlines(yy).forEach((v) =>
+    ev.push(Object.assign({ remind: 5,
+      desc: '업무 허브 → 세금계산서 → 부가세 탭' }, v))));
+  [y, y + 1].forEach((yy) => ev.push({ key: `corp-${yy}`, date: `${yy}-03-31`,
+    remind: 14, title: `[법인세] ${yy - 1}년 귀속 신고`,
+    desc: '결산·세무조정이 필요합니다. 세무사에게 맡기세요.' }));
+
+  // 프로젝트 마감
+  (D.projects || []).filter((p) => p.active !== false && p.due && p.stage !== '완료')
+    .forEach((p) => {
+      ev.push({ key: `proj-${p.id}`, date: p.due, remind: 3,
+        title: `[마감] ${p.name}`,
+        desc: (p.client ? `클라이언트: ${p.client}\n` : '') + `단계: ${p.stage}` });
+    });
+
+  // 1년 넘게 지난 것은 만들지 않습니다
+  const cut = ymd(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
+  return ev.filter((e) => e.date >= cut);
+}
+
 /* ══════════════ 공통 헤더 ══════════════ */
 
 function mountHeader(title, backTo = 'admin.html') {

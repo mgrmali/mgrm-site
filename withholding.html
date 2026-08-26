@@ -294,6 +294,21 @@
 
     <div class="card">
       <div class="bar">
+        <h2 style="margin:0;flex:1">구글 캘린더 연동</h2>
+        <button class="g" id="btnCalCheck">연결 확인</button>
+        <button class="b" id="btnCalSync">캘린더로 보내기</button>
+      </div>
+      <div class="note">
+        세무 마감과 프로젝트 마감을 <b>MGRM스케줄</b> 캘린더에 종일 일정으로 넣습니다.<br>
+        도구 → 캘린더 <b>한 방향</b>으로만 보냅니다. 캘린더에서 고친 것은 다음에 덮어씁니다.<br>
+        여러 번 눌러도 일정이 늘어나지 않고, 도구에서 사라진 일정은 캘린더에서도 지웁니다.
+      </div>
+      <div id="calStatus" class="dim" style="font-size:13px"></div>
+      <pre class="out hide" id="calOut" style="margin-top:12px"></pre>
+    </div>
+
+    <div class="card">
+      <div class="bar">
         <h2 style="margin:0;flex:1">복구 코드</h2>
         <button class="b" id="btnRecovery">발급하기</button>
       </div>
@@ -591,7 +606,7 @@ const TABS = ['수신함', '인력', '지급', '원천세', '월별 신고', '�
 async function refreshAll(force) {
   await WCT.load(force);
   renderInbox(); renderPeople(); renderPay(); renderWht(); renderPayroll();
-  renderReport(); renderSettings(); renderRates(); renderUsers(); renderRecovery();
+  renderReport(); renderSettings(); renderRates(); renderUsers(); renderRecovery(); renderCalendar();
 }
 
 
@@ -2292,6 +2307,61 @@ $('recPrint').onclick = () => {
     </div>
     <script>window.onload=()=>window.print()<\/script></body></html>`);
   w.document.close();
+};
+
+
+// ═══════════════ 구글 캘린더
+function renderCalendar() {
+  const ev = buildCalendarEvents(WCT.data);
+  const soon = ev.filter((e) => e.date >= today()).sort((a, b) => a.date.localeCompare(b.date));
+  $('calStatus').innerHTML = soon.length
+    ? `보낼 일정 <b>${ev.length}개</b> · 앞으로 남은 것 ${soon.length}개<br>` +
+      `<span style="font-size:12px">다음: ${esc(soon[0].date)} ${esc(soon[0].title)}</span>`
+    : '보낼 일정이 없습니다.';
+}
+
+$('btnCalCheck').onclick = async () => {
+  const out = $('calOut');
+  out.classList.remove('hide');
+  out.textContent = '확인 중…';
+  try {
+    const r = await WCT.api('calendar.check');
+    out.textContent = r.found
+      ? `✅ '${r.name}' 캘린더를 찾았습니다.\n   지금까지 보낸 일정 ${r.synced}개`
+      : `❌ 'MGRM스케줄' 캘린더를 찾지 못했습니다.\n\n` +
+        `   내 캘린더 목록\n` +
+        (r.names || []).map((n) => '     · ' + n).join('\n') +
+        `\n\n   이름이 정확히 일치해야 합니다. 띄어쓰기도 확인하세요.`;
+  } catch (e) { out.textContent = '오류: ' + e.message; }
+};
+
+$('btnCalSync').onclick = async () => {
+  const ev = buildCalendarEvents(WCT.data);
+  const out = $('calOut');
+  out.classList.remove('hide');
+
+  if (!confirm(`MGRM스케줄 캘린더에 일정 ${ev.length}개를 보냅니다.\n\n` +
+    '이미 보낸 일정은 갱신되고, 도구에서 사라진 일정은 캘린더에서 지워집니다.\n계속할까요?')) return;
+
+  const btn = $('btnCalSync');
+  btn.disabled = true; btn.textContent = '보내는 중…';
+  out.textContent = '캘린더에 반영하는 중입니다. 일정이 많으면 시간이 걸립니다…';
+  try {
+    const r = await WCT.api('calendar.sync', { events: ev });
+    const list = ev.filter((e) => e.date >= today())
+      .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 12);
+    out.textContent = [
+      `✅ ${r.calendar} 에 반영했습니다.`,
+      `   새로 만듦 ${r.added} · 갱신 ${r.updated} · 삭제 ${r.removed} · 전체 ${r.total}`,
+      '', '앞으로의 일정',
+      ...list.map((e) => `  ${e.date}  ${e.title}`),
+      ev.filter((e) => e.date >= today()).length > 12 ? '  …' : '',
+    ].filter(Boolean).join('\n');
+    toast('캘린더에 반영했습니다.');
+  } catch (e) {
+    out.textContent = '오류: ' + e.message;
+    toast(e.message, true);
+  } finally { btn.disabled = false; btn.textContent = '캘린더로 보내기'; }
 };
 
 </script>
