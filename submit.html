@@ -79,6 +79,19 @@
   .hidden{display:none}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .foot{text-align:center;color:#5b6270;font-size:11px;margin-top:24px}
+  .card.issuer{border-color:var(--accent);background:#191712}
+  .irow{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);
+    align-items:flex-start;cursor:pointer}
+  .irow:last-of-type{border-bottom:0}
+  .irow .k{color:var(--dim);font-size:12.5px;width:96px;flex:none;padding-top:1px}
+  .irow .v{flex:1;font-size:14px;word-break:break-all;line-height:1.5}
+  .irow .c{color:var(--accent);font-size:11px;flex:none;padding-top:2px}
+  .irow:active{background:#221f18}
+  .irow .v.big2{font-size:17px;font-weight:700;letter-spacing:.3px}
+  .copyall{width:100%;margin-top:14px;padding:13px;background:#0d0f14;
+    border:1px solid var(--accent);border-radius:10px;color:var(--accent);
+    font-size:14px;font-family:inherit;cursor:pointer}
+  .copyall:active{background:#221f18}
 </style>
 </head>
 <body>
@@ -103,6 +116,13 @@
     <div class="big">✅</div>
     <h2>제출이 완료되었습니다</h2>
     <p>확인 후 정산 절차를 진행하겠습니다.<br>감사합니다.</p>
+    <div id="doneIssuer" class="card issuer hidden" style="margin-top:26px;text-align:left">
+      <h2>📄 세금계산서 발행 정보</h2>
+      <p class="hint" style="margin:-6px 0 12px">
+        이 화면을 캡처해 두시면 계산서 발행할 때 편합니다.</p>
+      <div id="doneIssuerBox"></div>
+      <button type="button" class="copyall" id="copyIssuer2">전체 정보 복사</button>
+    </div>
   </div>
 
   <!-- 본문 -->
@@ -191,6 +211,15 @@
 
     <!-- 사업자 -->
     <div id="formBiz" class="hidden">
+      <div class="card issuer">
+        <h2>📄 세금계산서 발행 정보</h2>
+        <p class="hint" style="margin:-6px 0 12px">
+          아래 정보로 세금계산서를 발행해 주세요. 항목을 누르면 복사됩니다.</p>
+        <div id="issuerBox"><span class="hint">불러오는 중…</span></div>
+        <button type="button" class="copyall" id="copyIssuer">전체 정보 복사</button>
+        <div class="hint" id="issuerNotice" style="margin-top:10px"></div>
+      </div>
+
       <div class="card">
         <h2>사업자 정보</h2>
         <label class="req">상호</label>
@@ -364,6 +393,7 @@ function setKind(k) {
   $('formBiz').classList.toggle('hidden', k !== 'business');
   $('agreeBox').classList.remove('hidden');
   $('kindHint').textContent = HINTS[k] || '';
+  if (k === 'business') showIssuer();
   check();
 }
 
@@ -737,6 +767,7 @@ $('submitBtn').onclick = async () => {
     $('main').classList.add('hidden');
     $('done').classList.remove('hidden');
     window.scrollTo(0, 0);
+    showIssuerOnDone();
   } catch (e) {
     msg.className = 'msg bad';
     msg.textContent = e.message || '제출에 실패했습니다. 잠시 후 다시 시도해 주세요.';
@@ -744,6 +775,116 @@ $('submitBtn').onclick = async () => {
     btn.textContent = '제출하기';
   }
 };
+
+// ═══════════════ 세금계산서 발행 정보 (사업자에게 보여줍니다)
+let ISSUER = null;
+
+const ISSUER_FIELDS = [
+  ['상호', 'name'], ['사업자등록번호', 'bizNo'], ['대표자', 'ceo'],
+  ['사업장 주소', 'address'], ['업태', 'bizType'], ['종목', 'bizItem'],
+  ['계산서 이메일', 'email'],
+];
+
+async function loadIssuer() {
+  if (ISSUER) return ISSUER;
+  const r = await fetch(`${GAS_URL}?action=company`);
+  const j = await r.json();
+  if (!j.ok) throw new Error('발행 정보를 불러오지 못했습니다.');
+  ISSUER = j.company;
+  return ISSUER;
+}
+
+function issuerHtml(c) {
+  return ISSUER_FIELDS.map(([label, key]) => {
+    const v = c[key] || '-';
+    const big = (key === 'bizNo') ? ' big2' : '';
+    return `<div class="irow" data-copy="${escAttr(v)}">
+      <span class="k">${label}</span>
+      <span class="v${big}">${escHtml(v)}</span>
+      <span class="c">복사</span>
+    </div>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+const escAttr = escHtml;
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch {}
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+
+function flash(el, msg) {
+  const tag = el.querySelector('.c');
+  if (!tag) return;
+  const old = tag.textContent;
+  tag.textContent = msg;
+  tag.style.color = 'var(--ok)';
+  setTimeout(() => { tag.textContent = old; tag.style.color = ''; }, 1200);
+}
+
+function bindIssuer(container) {
+  container.querySelectorAll('.irow').forEach((row) => {
+    row.onclick = async () => {
+      const okc = await copyText(row.dataset.copy);
+      flash(row, okc ? '✓ 복사됨' : '실패');
+    };
+  });
+}
+
+function issuerText(c) {
+  return ISSUER_FIELDS.map(([label, key]) => `${label}: ${c[key] || ''}`).join('\n');
+}
+
+async function showIssuer() {
+  try {
+    const c = await loadIssuer();
+    $('issuerBox').innerHTML = issuerHtml(c);
+    bindIssuer($('issuerBox'));
+    $('issuerNotice').textContent = c.notice || '';
+  } catch (e) {
+    $('issuerBox').innerHTML =
+      '<span class="hint" style="color:var(--bad)">발행 정보를 불러오지 못했습니다. ' +
+      '담당자에게 문의해 주세요.</span>';
+  }
+}
+
+$('copyIssuer').onclick = async () => {
+  const okc = await copyText(issuerText(await loadIssuer()));
+  $('copyIssuer').textContent = okc ? '✓ 복사되었습니다' : '복사 실패';
+  setTimeout(() => { $('copyIssuer').textContent = '전체 정보 복사'; }, 1600);
+};
+
+$('copyIssuer2').onclick = async () => {
+  const okc = await copyText(issuerText(await loadIssuer()));
+  $('copyIssuer2').textContent = okc ? '✓ 복사되었습니다' : '복사 실패';
+  setTimeout(() => { $('copyIssuer2').textContent = '전체 정보 복사'; }, 1600);
+};
+
+/** 사업자로 제출을 마치면 완료 화면에도 발행 정보를 남깁니다 */
+async function showIssuerOnDone() {
+  if (kind !== 'business') return;
+  try {
+    const c = await loadIssuer();
+    $('doneIssuerBox').innerHTML = issuerHtml(c);
+    bindIssuer($('doneIssuerBox'));
+    $('doneIssuer').classList.remove('hidden');
+  } catch (e) { /* 완료 자체는 이미 끝났으므로 조용히 넘어갑니다 */ }
+}
+
 </script>
 </body>
 </html>

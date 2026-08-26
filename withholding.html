@@ -154,12 +154,33 @@
           <td class="n" id="whtOthCount">0</td><td class="n" id="whtOthGross">0</td>
           <td class="n" id="whtOthTax">0</td></tr>
         <tr><td>근로소득 (대표 보수·급여)</td><td class="dim">A01</td>
-          <td><input id="whtWageCount" class="n" inputmode="numeric" placeholder="0"></td>
-          <td><input id="whtWageGross" class="n" inputmode="numeric" placeholder="0"></td>
-          <td><input id="whtWageTax" class="n" inputmode="numeric" placeholder="0"></td></tr>
+          <td class="n" id="whtWageCount">0</td><td class="n" id="whtWageGross">0</td>
+          <td class="n" id="whtWageTax">0</td></tr>
       </tbody></table>
       <div class="dim" style="font-size:12px;margin-top:8px">
-        근로소득은 자동 집계되지 않습니다. 급여대장을 보고 직접 넣으세요. 없으면 비워두면 됩니다.</div>
+        근로소득은 아래 [급여] 에서 입력한 값이 자동으로 합산됩니다.</div>
+
+      <div class="card" style="margin:16px 0 0;background:#12141a">
+        <div class="bar">
+          <h3 style="margin:0;flex:1">급여 <span class="dim" id="payrollYmLabel"></span></h3>
+          <button class="g sm" id="btnPayrollPeople">대상자 관리</button>
+        </div>
+        <div class="note" style="margin-bottom:10px">
+          소득세는 <b>간이세액표</b>를 봐야 나옵니다. 급여액과 부양가족 수에 따라 달라집니다.<br>
+          월 급여가 <b>106만원 미만이면 소득세 0원</b>입니다(2026년 기준). 0원이어도 신고는 해야 합니다.<br>
+          <a href="https://hometax.go.kr" target="_blank" rel="noopener"
+             style="color:var(--accent)">홈택스 → 근로소득 간이세액표 조회 →</a>
+        </div>
+        <table><thead><tr>
+          <th>성명</th><th>구분</th><th class="n">지급액</th>
+          <th class="n">소득세</th><th class="n">지방세</th><th class="n">실지급</th>
+        </tr></thead><tbody id="payrollTb"></tbody></table>
+        <div class="bar" style="margin:12px 0 0">
+          <button class="b" id="btnPayrollSave">이 달 급여 저장</button>
+          <span class="dim" id="payrollSum" style="flex:1;text-align:right"></span>
+        </div>
+        <div class="msg hide" id="payrollMsg"></div>
+      </div>
 
       <div class="row r2" style="margin-top:16px">
         <div class="note" style="border-left-color:var(--ok);margin:0">
@@ -213,7 +234,81 @@
       </div>
     </div>
   </section>
+  <!-- 설정 -->
+  <section data-tab="설정" class="hide">
+    <div class="card">
+      <h2>세금계산서 발행 정보</h2>
+      <div class="note">
+        사업자가 제출 폼을 열면 이 정보가 표시됩니다. 계산서를 발행하는 데 필요한 항목입니다.<br>
+        법인등록번호와 법인통장은 계산서 발행에 필요하지 않아 넣지 않았습니다.
+      </div>
+      <div class="row r2">
+        <div><label>상호</label><input id="cfName"></div>
+        <div><label>사업자등록번호</label><input id="cfBizNo"></div>
+      </div>
+      <label>대표자</label>
+      <input id="cfCeo">
+      <label>사업장 주소</label>
+      <input id="cfAddr">
+      <div class="row r2">
+        <div><label>업태</label><input id="cfType"></div>
+        <div><label>종목</label><input id="cfItem"></div>
+      </div>
+      <label>계산서 수신 이메일</label>
+      <input id="cfEmail" inputmode="email">
+      <label>발행 안내 문구</label>
+      <input id="cfNotice" placeholder="용역 완료 후 7일 이내에 발행 부탁드립니다.">
+      <div class="bar" style="margin-top:16px">
+        <button class="b" id="cfSave">저장</button>
+        <button class="g" id="cfPreview">제출 폼에서 보이는 모습</button>
+      </div>
+      <div class="msg hide" id="cfMsg"></div>
+      <pre class="out hide" id="cfOut" style="margin-top:12px"></pre>
+    </div>
+
+    <div class="card">
+      <h2>확인해 두실 것</h2>
+      <div class="note" style="border-left-color:var(--warn)">
+        사업자등록증의 <b>전자세금계산서 전용 전자우편주소</b> 칸이 비어 있습니다.<br><br>
+        홈택스에 등록해 두면 상대가 사업자번호만 입력해도 이메일이 자동으로 채워집니다.
+        지금은 상대가 직접 물어봐야 합니다.<br><br>
+        홈택스 → 전자세금계산서 → 이메일 관리 에서 등록할 수 있습니다.
+      </div>
+    </div>
+  </section>
 </div>
+
+<dialog id="prDlg">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <h2 style="flex:1;margin:0">급여 대상자</h2>
+    <button class="g sm" onclick="$('prDlg').close()">닫기</button>
+  </div>
+  <div class="note" style="margin-top:14px">
+    대표·직원을 등록해 두면 매월 급여 입력이 간편해집니다.<br>
+    기본 급여와 기본 소득세를 넣어두면 매달 자동으로 채워집니다.
+  </div>
+  <table><thead><tr>
+    <th>성명</th><th>구분</th><th class="n">기본급여</th><th class="n">기본소득세</th>
+    <th>상태</th><th></th></tr></thead><tbody id="prTb"></tbody></table>
+
+  <h3 style="margin:18px 0 0" id="prFormTitle">＋ 새 대상자</h3>
+  <div class="row r2">
+    <div><label>성명 *</label><input id="prName"></div>
+    <div><label>구분</label>
+      <select id="prKind"><option>대표</option><option>직원</option></select></div>
+  </div>
+  <div class="row r2">
+    <div><label>기본 급여 (월)</label><input id="prGross" inputmode="numeric" placeholder="1000000"></div>
+    <div><label>기본 소득세</label><input id="prTax" inputmode="numeric" placeholder="0"></div>
+  </div>
+  <div class="bar" style="margin-top:14px">
+    <button class="b" id="prSave">저장</button>
+    <button class="g hide" id="prCancel">취소</button>
+    <span style="flex:1"></span>
+    <button class="g hide" id="prDelete">삭제</button>
+  </div>
+  <div class="msg hide" id="prMsg"></div>
+</dialog>
 
 <dialog id="pDlg">
   <div style="display:flex;align-items:flex-start;gap:12px">
@@ -300,7 +395,7 @@
 
 <script src="wct-core.js"></script>
 <script>
-const TABS = ['수신함', '인력', '지급', '원천세', '월별 신고'];
+const TABS = ['수신함', '인력', '지급', '원천세', '월별 신고', '설정'];
 
 (async function init() {
   if (!await WCT.requireAuth()) return;
@@ -327,7 +422,8 @@ const TABS = ['수신함', '인력', '지급', '원천세', '월별 신고'];
 
 async function refreshAll(force) {
   await WCT.load(force);
-  renderInbox(); renderPeople(); renderPay(); renderWht(); renderReport();
+  renderInbox(); renderPeople(); renderPay(); renderWht(); renderPayroll();
+  renderReport(); renderSettings();
 }
 
 
@@ -461,15 +557,19 @@ function whtCalc() {
   $('whtOthGross').textContent = won(a.other.gross);
   $('whtOthTax').textContent = won(a.other.tax);
 
-  if (saved && !$('whtWageGross').dataset.touched) {
-    $('whtWageCount').value = saved.wageCount || '';
-    $('whtWageGross').value = saved.wageGross || '';
-    $('whtWageTax').value = saved.wageTax || '';
-  }
-  const num = (id) => Number(String($(id).value).replace(/[^\d]/g, '')) || 0;
-  const wageTax = num('whtWageTax');
+  // 근로소득은 급여 표에서 자동 집계
+  const wage = (typeof readPayroll === 'function' ? readPayroll() : [])
+    .filter((r) => r.gross > 0);
+  const wageCount = wage.length;
+  const wageGross = wage.reduce((a, r) => a + r.gross, 0);
+  const wageTax = wage.reduce((a, r) => a + r.tax, 0);
+  const wageLocal = wage.reduce((a, r) => a + r.localTax, 0);
+  $('whtWageCount').textContent = wageCount;
+  $('whtWageGross').textContent = won(wageGross);
+  $('whtWageTax').textContent = won(wageTax);
+  const num = () => 0;
   const national = a.tax + wageTax;
-  const local = a.local + Math.floor(wageTax * 0.1 / 10) * 10;
+  const local = a.local + wageLocal;
 
   $('whtNational').textContent = won(national) + '원';
   $('whtLocal').textContent = won(local) + '원';
@@ -856,15 +956,19 @@ function whtCalc() {
   $('whtOthGross').textContent = won(a.other.gross);
   $('whtOthTax').textContent = won(a.other.tax);
 
-  if (saved && !$('whtWageGross').dataset.touched) {
-    $('whtWageCount').value = saved.wageCount || '';
-    $('whtWageGross').value = saved.wageGross || '';
-    $('whtWageTax').value = saved.wageTax || '';
-  }
-  const num = (id) => Number(String($(id).value).replace(/[^\d]/g, '')) || 0;
-  const wageTax = num('whtWageTax');
+  // 근로소득은 급여 표에서 자동 집계
+  const wage = (typeof readPayroll === 'function' ? readPayroll() : [])
+    .filter((r) => r.gross > 0);
+  const wageCount = wage.length;
+  const wageGross = wage.reduce((a, r) => a + r.gross, 0);
+  const wageTax = wage.reduce((a, r) => a + r.tax, 0);
+  const wageLocal = wage.reduce((a, r) => a + r.localTax, 0);
+  $('whtWageCount').textContent = wageCount;
+  $('whtWageGross').textContent = won(wageGross);
+  $('whtWageTax').textContent = won(wageTax);
+  const num = () => 0;
   const national = a.tax + wageTax;
-  const local = a.local + Math.floor(wageTax * 0.1 / 10) * 10;
+  const local = a.local + wageLocal;
 
   $('whtNational').textContent = won(national) + '원';
   $('whtLocal').textContent = won(local) + '원';
@@ -877,11 +981,7 @@ function whtCalc() {
     (a.accrual.length ? ` <span class="dim">· 귀속 ${a.accrual.join(', ')}</span>` : '');
 }
 
-['whtWageCount', 'whtWageGross', 'whtWageTax'].forEach((id) =>
-  $(id).addEventListener('input', () => { $('whtWageGross').dataset.touched = '1'; whtCalc(); }));
-$('whtYm').addEventListener('change', () => {
-  $('whtWageGross').dataset.touched = ''; whtCalc();
-});
+$('whtYm').addEventListener('change', () => { renderPayroll(); });
 
 $('whtDetail').onclick = () => {
   const ym = $('whtYm').value;
@@ -902,22 +1002,25 @@ $('whtGuide').onclick = () => {
   const ym = $('whtYm').value;
   const a = whtAggregate(ym);
   const num = (id) => Number(String($(id).value).replace(/[^\d]/g, '')) || 0;
-  const wt = num('whtWageTax');
+  const wage = readPayroll().filter((r) => r.gross > 0);
+  const wt = wage.reduce((x, r) => x + r.tax, 0);
+  const wc = wage.length;
+  const wg = wage.reduce((x, r) => x + r.gross, 0);
   $('whtOut').textContent = [
     `━━━ ① 홈택스 (소득세) ━━━`,
     `  1. 홈택스 로그인 → 세금신고 → 원천세 신고 → 정기신고`,
     `  2. 기본정보  귀속연월 ${a.accrual[0] || ym} / 지급연월 ${ym} / 매월`,
     `  3. 소득종류 선택: ${[a.biz.gross ? '사업소득' : '', a.other.gross ? '기타소득' : '',
-        wt ? '근로소득' : ''].filter(Boolean).join(' + ') || '사업소득'}`,
+        wc ? '근로소득' : ''].filter(Boolean).join(' + ') || '사업소득'}`,
     a.biz.gross ? `  · 사업소득 [A25]  인원 ${a.biz.count}  총지급액 ${won(a.biz.gross)}  소득세 ${won(a.biz.tax)}` : '',
     a.other.gross ? `  · 기타소득 [A40]  인원 ${a.other.count}  총지급액 ${won(a.other.gross)}  소득세 ${won(a.other.tax)}` : '',
-    wt ? `  · 근로소득 [A01]  인원 ${num('whtWageCount')}  총지급액 ${won(num('whtWageGross'))}  소득세 ${won(wt)}` : '',
+    wc ? `  · 근로소득 [A01]  인원 ${wc}  총지급액 ${won(wg)}  소득세 ${won(wt)}` : '',
     `  4. 신고서 제출 → 납부할 세액 ${won(a.tax + wt)}원 납부`,
     ``,
     `━━━ ② 위택스 (지방소득세) ━━━`,
     `  홈택스 제출 후 뜨는 [지방소득세 신고 이동] 버튼을 쓰면 자료가 넘어갑니다.`,
     `  놓쳤으면 위택스 로그인 → 신고 → 지방소득세 특별징수 로 직접 들어가세요.`,
-    `  납부액 ${won(a.local + Math.floor(wt * 0.1 / 10) * 10)}원`,
+    `  납부액 ${won(a.local + wage.reduce((x, r) => x + r.localTax, 0))}원`,
     ``,
     `━━━ 확인 ━━━`,
     `  · 기한: ${ymd(whtDeadline(ym))} (다음 달 10일)`,
@@ -929,19 +1032,21 @@ $('whtGuide').onclick = () => {
 $('whtSave').onclick = async () => {
   const ym = $('whtYm').value;
   const a = whtAggregate(ym);
-  const num = (id) => Number(String($(id).value).replace(/[^\d]/g, '')) || 0;
-  const wt = num('whtWageTax');
+  const wageRows = readPayroll().filter((r) => r.gross > 0);
+  const wt = wageRows.reduce((x, r) => x + r.tax, 0);
+  const wl = wageRows.reduce((x, r) => x + r.localTax, 0);
   const m = $('whtMsg');
   const today = today();
   if (!confirm(`${ym} 지급분을 신고 완료로 기록할까요?\n\n` +
-    `홈택스 ${won(a.tax + wt)}원 / 위택스 ${won(a.local + Math.floor(wt * 0.1 / 10) * 10)}원\n\n` +
+    `홈택스 ${won(a.tax + wt)}원 / 위택스 ${won(a.local + wl)}원\n\n` +
     `※ 실제 신고·납부를 마친 뒤에 누르세요.`)) return;
   try {
     await WCT.api('wht.save', { payYm: ym, accrualYm: a.accrual[0] || ym,
       bizCount: a.biz.count, bizGross: a.biz.gross, bizTax: a.biz.tax,
       otherCount: a.other.count, otherGross: a.other.gross, otherTax: a.other.tax,
-      wageCount: num('whtWageCount'), wageGross: num('whtWageGross'), wageTax: wt,
-      totalTax: a.tax + wt, localTax: a.local + Math.floor(wt * 0.1 / 10) * 10,
+      wageCount: wageRows.length,
+      wageGross: wageRows.reduce((x, r) => x + r.gross, 0), wageTax: wt,
+      totalTax: a.tax + wt, localTax: a.local + wl,
       hometax: today, wetax: today });
     m.className = 'msg ok'; m.textContent = '기록했습니다.';
     await refreshAll(true);
@@ -1459,6 +1564,237 @@ $('pDelete').onclick = async () => {
   await refreshAll(true);
   $('pDlg').close();
   toast('삭제했습니다.');
+};
+
+
+// ═══════════════ 급여 (근로소득 A01)
+let prEditId = null;
+
+/** 해당 달의 급여 행을 만든다. 저장된 값 > 지난달 값 > 기본값 순으로 채운다. */
+function payrollRowsFor(ym) {
+  const people = (WCT.data.payrollPeople || []).filter((p) => p.active);
+  const saved = (WCT.data.payroll || []).filter((r) => r.ym === ym);
+  // 직전에 기록이 있는 달을 찾아 그 값을 참고한다
+  const prevYms = [...new Set((WCT.data.payroll || []).map((r) => r.ym))]
+    .filter((y) => y < ym).sort();
+  const prevYm = prevYms.length ? prevYms[prevYms.length - 1] : null;
+
+  return people.map((p) => {
+    const s = saved.find((r) => r.personId === p.id);
+    if (s) return { personId: p.id, name: p.name, kind: p.kind,
+                    gross: s.gross, tax: s.tax, from: '저장됨' };
+    const prev = prevYm && (WCT.data.payroll || [])
+      .find((r) => r.ym === prevYm && r.personId === p.id);
+    if (prev) return { personId: p.id, name: p.name, kind: p.kind,
+                       gross: prev.gross, tax: prev.tax, from: prevYm + ' 값' };
+    return { personId: p.id, name: p.name, kind: p.kind,
+             gross: p.baseGross, tax: p.baseTax, from: '기본값' };
+  });
+}
+
+function renderPayroll() {
+  const ym = $('whtYm').value;
+  $('payrollYmLabel').textContent = ym ? `· ${ym} 지급분` : '';
+  const rows = payrollRowsFor(ym);
+
+  if (!rows.length) {
+    $('payrollTb').innerHTML =
+      '<tr><td colspan="6" class="dim">등록된 급여 대상자가 없습니다. ' +
+      '[대상자 관리] 에서 추가하세요.</td></tr>';
+    $('payrollSum').textContent = '';
+    whtCalc();
+    return;
+  }
+
+  $('payrollTb').innerHTML = rows.map((r, i) => `<tr>
+    <td>${esc(r.name)}</td>
+    <td><span class="pill">${esc(r.kind)}</span></td>
+    <td><input class="n prGrossIn" data-i="${i}" inputmode="numeric" value="${r.gross || ''}"></td>
+    <td><input class="n prTaxIn" data-i="${i}" inputmode="numeric" value="${r.tax || ''}"></td>
+    <td class="n" id="prLocal${i}">-</td>
+    <td class="n" id="prNet${i}">-</td>
+  </tr>`).join('');
+
+  document.querySelectorAll('.prGrossIn, .prTaxIn')
+    .forEach((el) => el.addEventListener('input', calcPayroll));
+  calcPayroll();
+}
+
+function readPayroll() {
+  const ym = $('whtYm').value;
+  const base = payrollRowsFor(ym);
+  const num = (el) => Number(String(el.value).replace(/[^\d]/g, '')) || 0;
+  return base.map((r, i) => {
+    const g = document.querySelector(`.prGrossIn[data-i="${i}"]`);
+    const t = document.querySelector(`.prTaxIn[data-i="${i}"]`);
+    const gross = g ? num(g) : r.gross;
+    const tax = t ? num(t) : r.tax;
+    const localTax = Math.floor(tax * 0.1 / 10) * 10;   // 지방소득세 = 소득세의 10%
+    return { personId: r.personId, name: r.name, kind: r.kind,
+             gross, tax, localTax, net: gross - tax - localTax };
+  });
+}
+
+function calcPayroll() {
+  const rows = readPayroll();
+  rows.forEach((r, i) => {
+    const l = $('prLocal' + i), n = $('prNet' + i);
+    if (l) l.textContent = won(r.localTax);
+    if (n) n.textContent = won(r.net);
+  });
+  const paid = rows.filter((r) => r.gross > 0);
+  $('payrollSum').textContent = paid.length
+    ? `${paid.length}명 · 지급 ${won(paid.reduce((a, r) => a + r.gross, 0))}원 · ` +
+      `소득세 ${won(paid.reduce((a, r) => a + r.tax, 0))}원`
+    : '지급액을 입력하세요.';
+  whtCalc();
+}
+
+$('btnPayrollSave').onclick = async () => {
+  const ym = $('whtYm').value;
+  const m = $('payrollMsg');
+  const rows = readPayroll().filter((r) => r.gross > 0);
+  const btn = $('btnPayrollSave');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    await WCT.api('payroll.save', { ym, rows });
+    await refreshAll(true);
+    m.className = 'msg ok';
+    m.textContent = rows.length
+      ? `${ym} 급여 ${rows.length}명분을 저장했습니다.`
+      : `${ym} 급여 기록을 비웠습니다.`;
+    setTimeout(() => { m.className = 'msg hide'; }, 2500);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '이 달 급여 저장'; }
+};
+
+// ─────────── 대상자 관리
+$('btnPayrollPeople').onclick = () => { prReset(); renderPrTable(); $('prDlg').showModal(); };
+
+function renderPrTable() {
+  const list = WCT.data.payrollPeople || [];
+  $('prTb').innerHTML = list.map((p) => `<tr>
+    <td>${esc(p.name)}</td><td><span class="pill">${esc(p.kind)}</span></td>
+    <td class="n">${won(p.baseGross)}</td><td class="n">${won(p.baseTax)}</td>
+    <td>${p.active ? '<span class="pill done">사용</span>'
+                   : '<span class="pill">중지</span>'}</td>
+    <td style="text-align:right">
+      <button class="g sm" onclick="prEdit(${p.id})">수정</button>
+      <button class="g sm" onclick="prToggle(${p.id}, ${!p.active})">${
+        p.active ? '중지' : '재개'}</button></td></tr>`).join('')
+    || '<tr><td colspan="6" class="dim">등록된 대상자가 없습니다.</td></tr>';
+}
+
+function prReset() {
+  prEditId = null;
+  $('prFormTitle').textContent = '＋ 새 대상자';
+  $('prName').value = ''; $('prKind').value = '대표';
+  $('prGross').value = ''; $('prTax').value = '';
+  $('prMsg').className = 'msg hide';
+  $('prCancel').classList.add('hide');
+  $('prDelete').classList.add('hide');
+}
+
+window.prEdit = (id) => {
+  const p = (WCT.data.payrollPeople || []).find((x) => x.id === id);
+  if (!p) return;
+  prEditId = id;
+  $('prFormTitle').textContent = `수정 — ${p.name}`;
+  $('prName').value = p.name;
+  $('prKind').value = p.kind;
+  $('prGross').value = p.baseGross || '';
+  $('prTax').value = p.baseTax || '';
+  $('prCancel').classList.remove('hide');
+  $('prDelete').classList.remove('hide');
+};
+
+$('prCancel').onclick = prReset;
+
+$('prSave').onclick = async () => {
+  const name = $('prName').value.trim();
+  const m = $('prMsg');
+  if (!name) { m.className = 'msg bad'; m.textContent = '성명을 입력하세요.'; return; }
+  const num = (id) => Number(String($(id).value).replace(/[^\d]/g, '')) || 0;
+  const payload = { name, kind: $('prKind').value,
+                    baseGross: num('prGross'), baseTax: num('prTax') };
+  const btn = $('prSave');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    if (prEditId) await WCT.api('payroll.person.update',
+      Object.assign({ id: prEditId, active: true }, payload));
+    else await WCT.api('payroll.person.add', payload);
+    await refreshAll(true);
+    renderPrTable(); prReset();
+    toast(`${name} 저장되었습니다.`);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '저장'; }
+};
+
+window.prToggle = async (id, active) => {
+  await WCT.api('payroll.person.update', { id, active });
+  await refreshAll(true);
+  renderPrTable();
+};
+
+$('prDelete').onclick = async () => {
+  const used = (WCT.data.payroll || []).filter((r) => r.personId === prEditId);
+  if (used.length) {
+    return alert(`급여 기록이 ${used.length}건 있어 삭제할 수 없습니다.\n` +
+      '대신 [중지] 로 바꾸세요. 신고 이력은 남아야 합니다.');
+  }
+  if (!confirm('이 대상자를 삭제할까요?')) return;
+  await WCT.api('payroll.person.delete', { id: prEditId });
+  await refreshAll(true);
+  renderPrTable(); prReset();
+};
+
+
+// ═══════════════ 설정 — 세금계산서 발행 정보
+const CF_MAP = [
+  ['cfName', '회사명'], ['cfBizNo', '사업자번호'], ['cfCeo', '대표자'],
+  ['cfAddr', '사업장주소'], ['cfType', '업태'], ['cfItem', '종목'],
+  ['cfEmail', '계산서이메일'], ['cfNotice', '계산서안내'],
+];
+
+function renderSettings() {
+  const c = WCT.data.companyInfo || {};
+  CF_MAP.forEach(([id, key]) => { $(id).value = c[key] || ''; });
+}
+
+$('cfSave').onclick = async () => {
+  const m = $('cfMsg');
+  const payload = { company: $('cfName').value.trim() };
+  CF_MAP.forEach(([id, key]) => { payload[key] = $(id).value.trim(); });
+  const btn = $('cfSave');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    await WCT.api('company.set', payload);
+    await refreshAll(true);
+    m.className = 'msg ok';
+    m.textContent = '저장했습니다. 제출 폼에 바로 반영됩니다.';
+    setTimeout(() => { m.className = 'msg hide'; }, 2500);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '저장'; }
+};
+
+$('cfPreview').onclick = () => {
+  const out = $('cfOut');
+  out.classList.remove('hide');
+  out.textContent = [
+    '━━ 사업자가 보게 되는 화면 ━━', '',
+    '📄 세금계산서 발행 정보',
+    '   아래 정보로 세금계산서를 발행해 주세요. 항목을 누르면 복사됩니다.', '',
+    `   상호            ${$('cfName').value}`,
+    `   사업자등록번호   ${$('cfBizNo').value}`,
+    `   대표자          ${$('cfCeo').value}`,
+    `   사업장 주소      ${$('cfAddr').value}`,
+    `   업태            ${$('cfType').value}`,
+    `   종목            ${$('cfItem').value}`,
+    `   계산서 이메일    ${$('cfEmail').value}`, '',
+    '   [ 전체 정보 복사 ]', '',
+    `   ${$('cfNotice').value}`, '',
+    '제출을 마친 뒤 완료 화면에도 같은 내용이 한 번 더 표시됩니다.',
+  ].join('\n');
 };
 
 </script>
