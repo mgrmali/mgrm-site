@@ -159,8 +159,11 @@ window.del = async (id) => {
 };
 
 window.togglePin = async (id, pinned) => {
+  const p = (WCT.data.board || []).find((x) => x.id === id);
+  if (p) p.pinned = pinned;
+  render();
   await WCT.api('board.pin', { id, pinned });
-  await WCT.load(true); render();
+  WCT.syncLater();
 };
 </script>
 </body>

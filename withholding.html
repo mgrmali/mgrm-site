@@ -1251,15 +1251,17 @@ async function buildRows(ym, type) {
     byId[p.personId].incomeTax += p.incomeTax;
     byId[p.personId].localTax += p.localTax;
   });
+  // 필요한 봉투를 한 번에 가져옵니다 (한 명씩 따로 열면 매우 느립니다)
+  const persons = Object.values(byId)
+    .map((r) => WCT.data.people.find((p) => p.id === r.personId)).filter(Boolean);
+  try { await WCT.revealMany(persons); } catch (e) {}
+
   const out = [];
   for (const r of Object.values(byId)) {
     const person = WCT.data.people.find((p) => p.id === r.personId);
     let rrn = '';
     if (person && person.envFileId) {
-      try {
-        const env = (await WCT.api('envelope', { fileId: person.envFileId })).envelope;
-        rrn = (await WCT.open(env)).rrn || '';
-      } catch (e) { rrn = ''; }
+      try { rrn = (await WCT.reveal(person)).rrn || ''; } catch (e) { rrn = ''; }
     }
     const d = String(rrn).replace(/\D/g, '');
     out.push(Object.assign(r, { rrn: d.length === 13 ? `${d.slice(0,6)}-${d.slice(6)}` : '',
@@ -1453,6 +1455,12 @@ $('btnTransfer').onclick = async () => {
     byPerson[p.personId].net += p.net;
     byPerson[p.personId].count++;
   });
+
+  // 봉투를 한 번에 가져옵니다
+  try {
+    await WCT.revealMany(Object.values(byPerson)
+      .map((r) => WCT.data.people.find((x) => x.id === r.personId)).filter(Boolean));
+  } catch (e) {}
 
   const rows = [];
   for (const r of Object.values(byPerson)) {

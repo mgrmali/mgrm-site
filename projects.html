@@ -336,8 +336,8 @@ function bindDnD() {
       if (!p || p.stage === stage) return;
       p.stage = stage;         // 화면 먼저 반영
       render();
-      try { await WCT.api('project.update', { id: dragId, stage }); }
-      catch (err) { alert(err.message); await WCT.load(true); render(); }
+      try { await WCT.api('project.update', { id: dragId, stage }); WCT.syncLater(); }
+      catch (err) { toast(err.message, true); await WCT.load(true); render(); }
     });
   });
 }
@@ -414,15 +414,15 @@ function renderTasks() {
 window.toggleTask = async (id, done) => {
   const t = WCT.data.tasks.find((x) => x.id === id);
   if (t) t.done = done;
-  renderTasks(); render();
-  try { await WCT.api('task.set', { id, done }); }
-  catch (e) { alert(e.message); await WCT.load(true); renderTasks(); render(); }
+  renderTasks(); render();                 // 화면은 즉시
+  try { await WCT.api('task.set', { id, done }); WCT.syncLater(); }
+  catch (e) { toast(e.message, true); await WCT.load(true); renderTasks(); render(); }
 };
 
 window.setTaskDue = async (id, due) => {
   const t = WCT.data.tasks.find((x) => x.id === id);
   if (t) t.due = due;
-  try { await WCT.api('task.set', { id, due }); }
+  try { await WCT.api('task.set', { id, due }); WCT.syncLater(); }
   catch (e) { toast(e.message, true); await WCT.load(true); renderTasks(); }
 };
 
@@ -432,6 +432,7 @@ window.setTaskCal = async (id, cal) => {
   renderTasks();
   try {
     await WCT.api('task.set', { id, cal });
+    WCT.syncLater();
     if (cal && !(t && t.due)) {
       toast('마감일을 정해야 캘린더에 들어갑니다.', true);
     }
@@ -450,9 +451,13 @@ async function addTask() {
   const stage = $('newTaskStage').value;
   $('newTask').value = '';
   try {
-    await WCT.api('task.add', { projectId: CUR.id, stage, title, order: 999 });
-    await WCT.load(true); renderTasks(); render();
-  } catch (e) { alert(e.message); }
+    const r = await WCT.api('task.add', { projectId: CUR.id, stage, title, order: 999 });
+    // 서버를 다시 읽지 않고 화면에만 먼저 더합니다
+    WCT.data.tasks.push({ id: r.id, projectId: CUR.id, stage, title,
+      assignee: '', due: '', done: false, order: 999, cal: false });
+    renderTasks(); render();
+    WCT.syncLater();
+  } catch (e) { toast(e.message, true); }
 }
 
 $('dSave').onclick = async () => {

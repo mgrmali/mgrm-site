@@ -29,15 +29,31 @@ const WCT = {
   isAdmin() { return WCT.role === 'admin'; },
 
   // ────────── 통신
+  /* 앱스스크립트는 요청이 겹치면 서로 밀립니다.
+     같은 조회가 이미 돌고 있으면 새로 보내지 않고 그 결과를 함께 씁니다. */
+  _inflight: {},
+
   async api(action, body = {}) {
-    const r = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({ action, key: WCT.auth }, body)),
-    });
-    const j = await r.json();
-    if (!j.ok) throw new Error(j.error || '요청에 실패했습니다.');
-    return j;
+    const dedupe = action === 'bootstrap' || action === 'envelope';
+    const sig = dedupe ? action + ':' + JSON.stringify(body) : null;
+    if (sig && WCT._inflight[sig]) return WCT._inflight[sig];
+
+    const run = (async () => {
+      const r = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action, key: WCT.auth }, body)),
+      });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || '요청에 실패했습니다.');
+      return j;
+    })();
+
+    if (sig) {
+      WCT._inflight[sig] = run;
+      run.finally(() => { delete WCT._inflight[sig]; });
+    }
+    return run;
   },
 
   async status() {
@@ -213,6 +229,20 @@ const WCT = {
     return b64e(sig).replace(/[+/=]/g, '').slice(0, 22);
   },
 
+  /** 봉투 여러 개를 한 번에 열어 캐시에 채웁니다.
+      명세서·영수증처럼 여러 사람을 한꺼번에 다룰 때 씁니다. */
+  async revealMany(list) {
+    const need = list.filter((p) => p && p.envFileId && !WCT._cache[p.envFileId]);
+    if (!need.length) return;
+    const ids = [...new Set(need.map((p) => p.envFileId))];
+    const r = await WCT.api('envelopes', { fileIds: ids });
+    for (const id of ids) {
+      const env = r.envelopes[id];
+      if (!env) continue;
+      try { WCT._cache[id] = await WCT.open(env); } catch (e) {}
+    }
+  },
+
   /** 인력 봉투를 열어 계좌·주민번호 등 원본을 꺼낸다.
       한 번 연 것은 탭이 살아 있는 동안 재사용한다(매번 서버를 두드리지 않도록). */
   _cache: {},
@@ -228,6 +258,16 @@ const WCT = {
   /* 페이지를 옮겨도 방금 받은 데이터를 다시 씁니다.
      force=true 는 내가 뭔가 바꾼 직후에만 쓰세요. */
   DATA_TTL: 90 * 1000,
+
+  /* 저장 직후 전체를 다시 읽으면 느립니다.
+     화면에 이미 반영해 둔 경우에는 이걸 써서 뒤에서 조용히 맞춥니다. */
+  _pending: null,
+  syncLater() {
+    clearTimeout(WCT._pending);
+    WCT._pending = setTimeout(function () {
+      WCT.load(true).catch(function () {});
+    }, 1500);
+  },
 
   async load(force = false) {
     if (!force) {
@@ -252,13 +292,34 @@ const WCT = {
     return WCT.data;
   },
 
-  /** 화면을 먼저 그리고 데이터는 뒤에서 갱신 — 체감 속도를 위한 것 */
+  /* 화면을 먼저 그리고 데이터는 뒤에서 갱신.
+     캐시가 신선하면 조회를 아예 하지 않습니다.
+     예전에는 캐시로 한 번, 최신으로 또 한 번 불러 요청이 두 배였습니다. */
   async loadThenRefresh(render) {
+    const fresh = WCT.data ||
+      (() => { try {
+        const c = JSON.parse(sessionStorage.getItem('wct_data') || 'null');
+        return c && Date.now() - c.at < WCT.DATA_TTL ? c.d : null;
+      } catch { return null; } })();
+
+    if (fresh) {
+      WCT.data = fresh;
+      render();
+      // 캐시가 꽤 지났을 때만 뒤에서 한 번 갱신합니다
+      const raw = sessionStorage.getItem('wct_data');
+      let age = Infinity;
+      try { age = Date.now() - JSON.parse(raw).at; } catch {}
+      if (age > 30 * 1000) {
+        const before = JSON.stringify(WCT.data);
+        try {
+          await WCT.load(true);
+          if (JSON.stringify(WCT.data) !== before) render();
+        } catch {}
+      }
+      return;
+    }
     await WCT.load(false);
     render();
-    const before = JSON.stringify(WCT.data);
-    await WCT.load(true);
-    if (JSON.stringify(WCT.data) !== before) render();
   },
 };
 
