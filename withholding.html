@@ -22,6 +22,16 @@
     color:var(--ok);font-size:11px;line-height:1.5;text-align:center;background:#101a15}
   .kv{font-size:13px;line-height:2}
   .kv b{color:var(--dim);font-weight:500;display:inline-block;width:120px}
+
+  /* 급여 표 — 열이 좁아 글자가 세로로 접히던 문제를 막습니다 */
+  .payrollWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .payrollTable{font-size:12.5px;min-width:880px;table-layout:fixed}
+  .payrollTable th,.payrollTable td{white-space:nowrap;padding:8px 6px}
+  .payrollTable th{font-size:11.5px}
+  .payrollTable td:first-child{font-weight:600}
+  .payrollTable input{padding:8px 9px;font-size:13px;width:100%;
+    font-variant-numeric:tabular-nums}
+  .payrollTable td.n,.payrollTable th.n{text-align:right}
 </style>
 </head>
 <body>
@@ -171,11 +181,18 @@
           <a href="https://hometax.go.kr" target="_blank" rel="noopener"
              style="color:var(--accent)">홈택스 → 근로소득 간이세액표 조회 →</a>
         </div>
-        <table style="font-size:12.5px"><thead><tr>
-          <th>성명</th><th class="n">지급액</th><th class="n">소득세</th><th class="n">지방세</th>
-          <th class="n">연금</th><th class="n">건강</th><th class="n">요양</th><th class="n">고용</th>
-          <th class="n">실지급</th>
-        </tr></thead><tbody id="payrollTb"></tbody></table>
+        <div class="payrollWrap">
+          <table class="payrollTable"><colgroup>
+            <col style="width:78px"><col style="width:118px"><col style="width:100px">
+            <col style="width:78px"><col style="width:100px"><col style="width:100px">
+            <col style="width:92px"><col id="colEi" style="width:92px">
+            <col style="width:110px">
+          </colgroup><thead><tr>
+            <th>성명</th><th class="n">지급액</th><th class="n">소득세</th><th class="n">지방세</th>
+            <th class="n">연금</th><th class="n">건강</th><th class="n">요양</th>
+            <th class="n" id="thEi">고용</th><th class="n">실지급</th>
+          </tr></thead><tbody id="payrollTb"></tbody></table>
+        </div>
         <div class="dim" style="font-size:11.5px;margin-top:8px">
           보험료는 요율로 계산한 <b>참고치</b>입니다. 공단 고지서 금액이 다르면 그대로 고치세요.<br>
           ※ 4대보험은 원천세 신고서(A01)에 들어가지 않습니다. 실지급액 계산용입니다.
@@ -1664,6 +1681,11 @@ function renderPayroll() {
     return;
   }
 
+  // 고용보험을 쓰는 사람이 없으면 그 열은 숨겨 자리를 아낍니다
+  const useEi = rows.some((r) => r.ei === true);
+  $('thEi').style.display = useEi ? '' : 'none';
+  $('colEi').style.display = useEi ? '' : 'none';
+
   $('payrollTb').innerHTML = rows.map((r, i) => `<tr>
     <td>${esc(r.name)}</td>
     <td><input class="n prGrossIn" data-i="${i}" inputmode="numeric" value="${r.gross || ''}"></td>
@@ -1675,8 +1697,9 @@ function renderPayroll() {
       : `<input class="n prHiIn" data-i="${i}" inputmode="numeric" value="${r.hiAmt || ''}">`}</td>
     <td>${r.hi === false ? '<span class="dim">-</span>'
       : `<input class="n prLtcIn" data-i="${i}" inputmode="numeric" value="${r.ltcAmt || ''}">`}</td>
-    <td>${r.ei !== true ? '<span class="dim">-</span>'
-      : `<input class="n prEiIn" data-i="${i}" inputmode="numeric" value="${r.eiAmt || ''}">`}</td>
+    ${useEi ? `<td>${r.ei !== true ? '<span class="dim">-</span>'
+      : `<input class="n prEiIn" data-i="${i}" inputmode="numeric" value="${r.eiAmt || ''}">`}</td>`
+      : ''}
     <td class="n" id="prNet${i}">-</td>
   </tr>`).join('');
 
