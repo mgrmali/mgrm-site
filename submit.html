@@ -169,13 +169,13 @@
         <h2>서류 사진</h2>
         <label class="req">통장 사본</label>
         <div class="drop" data-for="f_bankbook">📷 촬영하거나 사진을 선택하세요</div>
-        <input type="file" id="f_bankbook" accept="image/*,.heic,.heif,.HEIC,.HEIF" multiple class="hidden">
+        <input type="file" id="f_bankbook" accept="image/*" multiple class="hidden">
         <div class="fileerr" id="err_f_bankbook" style="display:none"></div>
         <div class="thumbs" id="thumb_f_bankbook"></div>
 
         <label class="req">신분증</label>
         <div class="drop" data-for="f_id">📷 촬영하거나 사진을 선택하세요</div>
-        <input type="file" id="f_id" accept="image/*,.heic,.heif,.HEIC,.HEIF" multiple class="hidden">
+        <input type="file" id="f_id" accept="image/*" multiple class="hidden">
         <div class="fileerr" id="err_f_id" style="display:none"></div>
         <div class="thumbs" id="thumb_f_id"></div>
         <div class="hint">촬영해도 되고, 갤러리에 있는 사진을 골라도 됩니다.<br>글씨가 또렷하게 보이도록 밝은 곳에서 찍어주세요.</div>
@@ -230,13 +230,13 @@
         <h2>서류 사진</h2>
         <label class="req">사업자등록증</label>
         <div class="drop" data-for="b_cert">📷 촬영하거나 사진을 선택하세요</div>
-        <input type="file" id="b_cert" accept="image/*,.heic,.heif,.HEIC,.HEIF" multiple class="hidden">
+        <input type="file" id="b_cert" accept="image/*" multiple class="hidden">
         <div class="fileerr" id="err_b_cert" style="display:none"></div>
         <div class="thumbs" id="thumb_b_cert"></div>
 
         <label class="req">통장 사본</label>
         <div class="drop" data-for="b_bankbook">📷 촬영하거나 사진을 선택하세요</div>
-        <input type="file" id="b_bankbook" accept="image/*,.heic,.heif,.HEIC,.HEIF" multiple class="hidden">
+        <input type="file" id="b_bankbook" accept="image/*" multiple class="hidden">
         <div class="fileerr" id="err_b_bankbook" style="display:none"></div>
         <div class="thumbs" id="thumb_b_bankbook"></div>
       </div>
@@ -448,18 +448,37 @@ document.querySelectorAll('.drop').forEach((d) => {
 
 const CANVAS_MAX_PX = 12000000;   // 모바일 캔버스 한계(대략 1600만 화소) 아래로
 
+const BIG_FILE = 3 * 1024 * 1024;   // 이보다 크면 '읽으면서 줄이기'를 먼저 시도
+
 async function decode(file) {
-  if (typeof createImageBitmap === 'function') {
+  const hasBitmap = typeof createImageBitmap === 'function';
+
+  /* 요즘 폰 사진은 1억 화소가 넘기도 합니다.
+     원본 크기로 펼치면 메모리가 모자라 조용히 실패하므로,
+     큰 파일은 '읽는 단계에서 바로 축소'해 메모리를 아낍니다. */
+  if (hasBitmap && file.size > BIG_FILE) {
+    try {
+      return await createImageBitmap(file, {
+        imageOrientation: 'from-image', resizeWidth: MAX_EDGE * 2, resizeQuality: 'medium',
+      });
+    } catch (e) { /* 다음 방법으로 */ }
+  }
+
+  if (hasBitmap) {
     try {
       return await createImageBitmap(file, { imageOrientation: 'from-image' });
-    } catch (e) { /* ② 로 */ }
+    } catch (e) { /* 다음 방법으로 */ }
   }
+
   return new Promise((res, rej) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
-    const done = (fn) => { URL.revokeObjectURL(url); fn(); };
-    img.onload = () => done(() => res(img));
-    img.onerror = () => done(() => rej(new Error('decode')));
+    let settled = false;
+    const done = (fn) => { if (settled) return; settled = true; URL.revokeObjectURL(url); fn(); };
+    // 안드로이드에서 클라우드 사진은 응답이 아예 없는 경우가 있어 시간 제한을 둡니다
+    const timer = setTimeout(() => done(() => rej(new Error('timeout'))), 20000);
+    img.onload = () => { clearTimeout(timer); done(() => res(img)); };
+    img.onerror = () => { clearTimeout(timer); done(() => rej(new Error('decode'))); };
     img.src = url;
   });
 }
@@ -474,18 +493,32 @@ function fileToDataUrl(file) {
 }
 
 async function shrink(file) {
+  // 안드로이드에서 클라우드에만 있는 사진(기기에 원본이 없는 경우) 걸러내기
+  if (!file.size) {
+    throw new Error(
+      '사진이 휴대폰에 저장되어 있지 않은 것 같습니다.\n' +
+      '갤러리에서 해당 사진을 먼저 내려받은 뒤 다시 선택해 주세요.');
+  }
+
   let src;
   try {
     src = await decode(file);
   } catch (e) {
     // ③ 축소는 못 하지만 원본이 작으면 그대로 보냅니다
     if (file.size <= 2.5 * 1024 * 1024) {
-      return { name: file.name, type: file.type || 'image/jpeg',
-               data: await fileToDataUrl(file), raw: true };
+      try {
+        return { name: file.name, type: file.type || 'image/jpeg',
+                 data: await fileToDataUrl(file), raw: true };
+      } catch (e2) { /* 아래 안내로 */ }
     }
+    const mb = (file.size / 1024 / 1024).toFixed(1);
     throw new Error(
-      '이 사진 형식을 읽지 못했습니다.\n' +
-      '사진 앱에서 한 번 열어 저장하거나, 직접 촬영해 올려주세요.');
+      (e.message === 'timeout'
+        ? '사진을 불러오는 데 너무 오래 걸립니다.\n'
+        : '이 사진을 읽지 못했습니다.\n') +
+      '갤러리에서 사진을 한 번 편집(자르기 등)해 저장한 뒤 올리거나,\n' +
+      '직접 촬영해 주세요.\n' +
+      `(형식 ${file.type || '알 수 없음'} · 용량 ${mb}MB)`);
   }
 
   const w0 = src.width, h0 = src.height;
