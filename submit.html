@@ -49,7 +49,14 @@
   .thumb img{width:100%;height:100%;object-fit:cover}
   .thumb button{position:absolute;top:2px;right:2px;width:20px;height:20px;border:0;
     border-radius:50%;background:rgba(0,0,0,.72);color:#fff;font-size:13px;cursor:pointer;
-    line-height:20px;padding:0}
+    line-height:20px;padding:0;z-index:2}
+  .thumb{width:auto;min-width:72px}
+  .thumb .tag{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.66);
+    color:#cfd4dd;font-size:9px;text-align:center;padding:2px 0;line-height:1.3}
+  .thumb.bad{border-color:var(--bad);width:112px;height:auto}
+  .thumb .ph{padding:14px 6px;text-align:center;color:var(--bad);font-size:10px;
+    line-height:1.5;background:#1a1214}
+  .thumb .ph small{color:var(--dim);font-size:9px}
   .agree{display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:13px}
   .agree input{width:20px;height:20px;margin-top:2px;flex:none;accent-color:var(--accent)}
   details{margin-top:10px;font-size:12px;color:var(--dim)}
@@ -450,6 +457,21 @@ const CANVAS_MAX_PX = 12000000;   // 모바일 캔버스 한계(대략 1600만 �
 
 const BIG_FILE = 3 * 1024 * 1024;   // 이보다 크면 '읽으면서 줄이기'를 먼저 시도
 
+/* 안드로이드 일부 갤러리·파일앱은 형식 정보를 비워서 넘깁니다.
+   그러면 브라우저가 이미지로 인식하지 못해 미리보기가 깨집니다.
+   확장자로 형식을 추정해 다시 포장합니다. */
+function guessType(file) {
+  const t = (file.type || '').toLowerCase();
+  if (t.startsWith('image/')) return t;
+  const ext = (file.name || '').toLowerCase().split('.').pop();
+  return ({ png: 'image/png', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp',
+            heic: 'image/heic', heif: 'image/heif' })[ext] || 'image/jpeg';
+}
+
+function retype(file) {
+  return new Blob([file], { type: guessType(file) });
+}
+
 async function decode(file) {
   const hasBitmap = typeof createImageBitmap === 'function';
 
@@ -470,9 +492,17 @@ async function decode(file) {
     } catch (e) { /* 다음 방법으로 */ }
   }
 
-  return new Promise((res, rej) => {
+  // 형식을 바로잡아 한 번 더
+  const fixed = retype(file);
+  if (hasBitmap && fixed.type !== file.type) {
+    try {
+      return await createImageBitmap(fixed, { imageOrientation: 'from-image' });
+    } catch (e) { /* 다음 방법으로 */ }
+  }
+
+  const viaImg = (blob) => new Promise((res, rej) => {
     const img = new Image();
-    const url = URL.createObjectURL(file);
+    const url = URL.createObjectURL(blob);
     let settled = false;
     const done = (fn) => { if (settled) return; settled = true; URL.revokeObjectURL(url); fn(); };
     // 안드로이드에서 클라우드 사진은 응답이 아예 없는 경우가 있어 시간 제한을 둡니다
@@ -481,6 +511,9 @@ async function decode(file) {
     img.onerror = () => { clearTimeout(timer); done(() => rej(new Error('decode'))); };
     img.src = url;
   });
+
+  try { return await viaImg(file); } catch (e) { /* 마지막 시도 */ }
+  return viaImg(fixed);
 }
 
 function fileToDataUrl(file) {
@@ -507,8 +540,9 @@ async function shrink(file) {
     // ③ 축소는 못 하지만 원본이 작으면 그대로 보냅니다
     if (file.size <= 2.5 * 1024 * 1024) {
       try {
-        return { name: file.name, type: file.type || 'image/jpeg',
-                 data: await fileToDataUrl(file), raw: true };
+        // FileReader 는 blob 의 형식을 그대로 쓰므로, 비어 있으면 이미지로 인식되지 않습니다
+        return { name: file.name, type: guessType(file), raw: true,
+                 data: await fileToDataUrl(retype(file)) };
       } catch (e2) { /* 아래 안내로 */ }
     }
     const mb = (file.size / 1024 / 1024).toFixed(1);
@@ -548,7 +582,8 @@ async function shrink(file) {
     data = c2.toDataURL('image/jpeg', 0.65);
   }
   if (!data || data.length < 200) throw new Error('사진을 처리하지 못했습니다.');
-  return { name: file.name, type: 'image/jpeg', data };
+  return { name: file.name, type: 'image/jpeg', data,
+           info: `${w}×${h} · ${(data.length / 1365).toFixed(0)}KB` };
 }
 
 function renderThumbs(id) {
@@ -557,16 +592,33 @@ function renderThumbs(id) {
   (files[id] || []).forEach((f, i) => {
     const d = document.createElement('div');
     d.className = 'thumb';
-    d.innerHTML = `<img src="${f.data}" alt=""><button type="button">×</button>`;
-    d.querySelector('button').onclick = () => {
+    // 미리보기가 깨지면 어떤 사진이 왜 그런지 화면에 남깁니다
+    d.innerHTML =
+      '<img src="' + f.data + '" alt="">' +
+      '<button type="button" class="del">×</button>' +
+      '<span class="tag">' + (f.info || (f.raw ? '원본' : '')) + '</span>';
+    const img = d.querySelector('img');
+    img.onerror = () => {
+      d.classList.add('bad');
+      img.remove();
+      const p = document.createElement('div');
+      p.className = 'ph';
+      p.innerHTML = '미리보기 실패<br><small>' +
+        (f.type || '형식없음') + '<br>' +
+        Math.round((f.data || '').length / 1365) + 'KB</small>';
+      d.insertBefore(p, d.firstChild);
+    };
+    d.querySelector('.del').onclick = () => {
       files[id].splice(i, 1); renderThumbs(id); check();
     };
     box.appendChild(d);
   });
+
   const drop = document.querySelector(`.drop[data-for="${id}"]`);
   const n = (files[id] || []).length;
   drop.classList.toggle('has', n > 0);
-  drop.textContent = n ? `✓ ${n}장 선택됨 — 더 추가하려면 누르세요` : '📷 촬영하거나 사진을 선택하세요';
+  drop.textContent = n ? `✓ ${n}장 선택됨 — 더 추가하려면 누르세요`
+                       : '📷 촬영하거나 사진을 선택하세요';
 }
 
 // ---------- 검증 ----------
