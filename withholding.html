@@ -276,7 +276,7 @@
       <div class="note" style="border-left-color:var(--bad)">
         <b>요율은 매년 바뀌고, 자료마다 값이 다릅니다.</b><br>
         2026년 국민연금 인상(9% → 9.5%) 반영 여부에 따라 근로자 부담이
-        4.5% 또는 4.75% 로 갈립니다. 장기요양도 12.95% / 13.14% 로 자료가 엇갈립니다.<br><br>
+        4.5% 또는 4.75% 로 갈립니다.<br><br>
         <b>공단 고지서 금액이 정답입니다.</b> 여기 요율은 참고용 계산이며,
         급여 표에서 고지서 금액으로 직접 고칠 수 있습니다.
       </div>
@@ -287,6 +287,13 @@
       <div class="row r2">
         <div><label>장기요양 (건강보험료의 %)</label><input id="rtLtc" inputmode="decimal"></div>
         <div><label>고용보험 (%)</label><input id="rtEi" inputmode="decimal"></div>
+      </div>
+      <label>절사 단위 (원)</label>
+      <select id="rtUnit"><option value="10">10원 미만 버림 (공단 방식)</option>
+        <option value="1">1원 단위</option></select>
+      <div class="dim" style="font-size:11.5px;margin-top:5px">
+        계산값이 고지서와 몇 원 어긋나면 이 단위를 바꿔보세요.
+        그래도 다르면 급여 표에서 고지서 금액으로 직접 고치면 됩니다.
       </div>
       <div class="bar" style="margin-top:14px">
         <button class="b" id="rtSave">요율 저장</button>
@@ -1892,7 +1899,8 @@ $('cfPreview').onclick = () => {
 
 // ═══════════════ 4대보험 요율 설정
 const RT_MAP = [['rtNp', '요율_국민연금'], ['rtHi', '요율_건강보험'],
-                ['rtLtc', '요율_장기요양'], ['rtEi', '요율_고용보험']];
+                ['rtLtc', '요율_장기요양'], ['rtEi', '요율_고용보험'],
+                ['rtUnit', '요율_절사단위']];
 
 function renderRates() {
   const r = WCT.data.rates || {};
@@ -1918,14 +1926,16 @@ $('rtSave').onclick = async () => {
 $('rtTest').onclick = () => {
   const out = $('rtOut');
   out.classList.remove('hide');
-  const g = 1000000;
+  const g = 2500000;
   const n = (id) => Number($(id).value) || 0;
-  const np = Math.floor(g * n('rtNp') / 100);
-  const hi = Math.floor(g * n('rtHi') / 100);
-  const ltc = Math.floor(hi * n('rtLtc') / 100);
-  const ei = Math.floor(g * n('rtEi') / 100);
+  const u = Math.max(1, Number($('rtUnit').value) || 10);
+  const f = (v) => Math.floor(v / u) * u;
+  const np = f(g * n('rtNp') / 100);
+  const hi = f(g * n('rtHi') / 100);
+  const ltc = f(hi * n('rtLtc') / 100);
+  const ei = f(g * n('rtEi') / 100);
   out.textContent = [
-    '월 급여 1,000,000원 기준 (근로자 부담)', '',
+    '월 급여 2,500,000원 기준 (근로자 부담)', '',
     `  국민연금  ${won(np).padStart(10)}원   (${n('rtNp')}%)`,
     `  건강보험  ${won(hi).padStart(10)}원   (${n('rtHi')}%)`,
     `  장기요양  ${won(ltc).padStart(10)}원   (건강보험료의 ${n('rtLtc')}%)`,

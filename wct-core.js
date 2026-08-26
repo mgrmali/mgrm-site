@@ -317,11 +317,13 @@ function calcInsurance(gross, opt = {}) {
   const g = Math.round(Number(gross) || 0);
   const r = (WCT.data && WCT.data.rates) || {};
   const num = (k, d) => Number(r[k] != null ? r[k] : d) || 0;
-  const floor = (v) => Math.floor(v);   // 공단은 원 단위로 부과합니다
+  // 공단은 통상 10원 미만을 버립니다. 고지서와 다르면 설정에서 단위를 바꾸세요.
+  const unit = Math.max(1, num('요율_절사단위', 10));
+  const floor = (v) => Math.floor(v / unit) * unit;
 
   const np = opt.np === false ? 0 : floor(g * num('요율_국민연금', 4.75) / 100);
   const hi = opt.hi === false ? 0 : floor(g * num('요율_건강보험', 3.595) / 100);
-  const ltc = hi ? floor(hi * num('요율_장기요양', 12.95) / 100) : 0;
+  const ltc = hi ? floor(hi * num('요율_장기요양', 13.14) / 100) : 0;
   const ei = opt.ei === true ? floor(g * num('요율_고용보험', 0.9) / 100) : 0;
   return { np, hi, ltc, ei, total: np + hi + ltc + ei };
 }
