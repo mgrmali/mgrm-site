@@ -256,6 +256,16 @@ header.scrolled{border-bottom-color:var(--line)}
   display:inline-block;font-family:var(--display);font-size:10px;font-weight:700;
   letter-spacing:.12em;text-transform:uppercase;color:var(--ci-a);margin-bottom:5px;
 }
+.works .t a{
+  color:inherit;text-decoration:none;
+  border-bottom:1px solid var(--line);
+  transition:border-color .25s;
+}
+.works .t a:hover{border-color:var(--ci-a)}
+.works .t a::after{
+  content:"↗";font-size:.78em;margin-left:4px;
+  color:var(--ink-faint);vertical-align:super;
+}
 @media(max-width:760px){
   .works thead{display:none}
   .works tr{display:block;border-bottom:1px solid var(--line);padding-block:16px}
@@ -495,6 +505,30 @@ footer{padding-block:40px;border-top:1px solid var(--line)}
           <td class="m">—</td>
           <td class="m">S-Log3 / S-Gamut3.Cine</td>
           <td class="y">2026</td>
+        </tr>
+        <tr>
+          <td class="t"><span class="role">Color Grading</span><br>인수인계</td>
+          <td class="m">김지은</td>
+          <td class="m">—</td>
+          <td class="m">S-Log3 / S-Gamut3.Cine</td>
+          <td class="y">2025</td>
+        </tr>
+        <tr>
+          <td class="t"><span class="role">Color Grading</span><br>탈피</td>
+          <td class="m">이정은</td>
+          <td class="m">—</td>
+          <td class="m">S-Log3 / S-Gamut3.Cine</td>
+          <td class="y">2025</td>
+        </tr>
+        <tr>
+          <td class="t">
+            <span class="role">Color Grading</span><br>
+            <a href="https://youtu.be/AVfA_acWxuA" target="_blank" rel="noopener">효성TNC 크레오라 브랜드 영상</a>
+          </td>
+          <td class="m">김규범</td>
+          <td class="m">—</td>
+          <td class="m">S-Log3 / S-Gamut3.Cine</td>
+          <td class="y">2025</td>
         </tr>
         <tr>
           <td class="t"><span class="role">DIT</span><br>SK-II</td>
