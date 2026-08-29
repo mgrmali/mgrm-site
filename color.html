@@ -180,16 +180,22 @@ header.scrolled{border-bottom-color:var(--line)}
   background:linear-gradient(150deg,#16161C,#22222B);
   display:grid;place-items:center;position:relative;
 }
-.reel-frame::after{
-  content:"Vimeo Reel Embed";
-  font-family:var(--display);font-size:11px;font-weight:700;letter-spacing:.2em;
-  text-transform:uppercase;color:var(--ink-faint);
+.reel-frame video{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;
+  background:#0B0B0E;
 }
 .play{
   position:absolute;width:64px;height:64px;border-radius:50%;background:var(--ci);
   display:grid;place-items:center;box-shadow:0 10px 34px -10px rgba(232,68,120,.7);
   transform:translateY(-22px);
+  border:0;padding:0;cursor:pointer;z-index:2;
+  transition:transform .25s ease,opacity .25s ease,box-shadow .25s ease;
 }
+.play:hover{transform:translateY(-22px) scale(1.07);box-shadow:0 14px 40px -10px rgba(232,68,120,.85)}
+.play:focus-visible{outline:2px solid var(--ci);outline-offset:6px}
+.reel-frame.playing .play{opacity:0;pointer-events:none}
+.reel-frame.playing{cursor:default}
+@media(prefers-reduced-motion:reduce){.play{transition:none}}
 .play::before{
   content:"";border-style:solid;border-width:9px 0 9px 15px;
   border-color:transparent transparent transparent #fff;margin-left:4px;
@@ -417,7 +423,15 @@ footer{padding-block:40px;border-top:1px solid var(--line)}
 <!-- ══ REEL ══ -->
 <section class="sect" id="reel">
   <div class="wrap">
-    <div class="reel-frame rise"><span class="play"></span></div>
+    <div class="reel-frame rise" id="reelBox">
+      <video id="reelVideo"
+        poster="/assets/img/reel-di-poster.jpg"
+        playsinline preload="none" controls
+        aria-label="맹그라미 DI 센터 릴 영상">
+        <source src="https://cdn.mgrm.kr/reel-di-full.mp4" type="video/mp4">
+      </video>
+      <button class="play" type="button" id="reelPlay" aria-label="릴 영상 재생"></button>
+    </div>
   </div>
 </section>
 
@@ -1023,6 +1037,23 @@ document.querySelectorAll('[data-ba]').forEach(ba=>{
   addEventListener('keydown',function(e){
     if(e.key==='Escape'&&lb.classList.contains('open')) close();
   });
+})();
+</script>
+
+<script>
+/* 릴 영상 — 재생 버튼 제어 */
+(function(){
+  var box=document.getElementById('reelBox');
+  var vid=document.getElementById('reelVideo');
+  var btn=document.getElementById('reelPlay');
+  if(!box||!vid||!btn) return;
+  btn.addEventListener('click',function(){
+    var p=vid.play();
+    if(p&&p.catch) p.catch(function(){ vid.controls=true; });
+  });
+  vid.addEventListener('play',function(){box.classList.add('playing');});
+  vid.addEventListener('pause',function(){box.classList.remove('playing');});
+  vid.addEventListener('ended',function(){box.classList.remove('playing');});
 })();
 </script>
 </body>
