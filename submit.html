@@ -1,4 +1,7 @@
 <!DOCTYPE html>
+<!-- submit.html · v1.2.0 · 2026-09-01
+     원천징수 자료 제출 폼 (스태프·거래처용)
+     변경: 계좌번호를 숫자만 저장하도록 정규화, 입력 안내 문구 추가 -->
 <html lang="ko">
 <head>
 <meta charset="utf-8">
@@ -189,7 +192,8 @@
           </div>
         </div>
         <label class="req">계좌번호</label>
-        <input type="tel" id="f_acc" inputmode="numeric" placeholder="'-' 포함해도 됩니다">
+        <input type="tel" id="f_acc" inputmode="numeric" placeholder="'-' 넣으셔도 됩니다">
+        <div class="hint">은행명은 위에서 고르셨으니 번호만 적어주세요. 숫자만 저장됩니다.</div>
       </div>
 
       <div class="card">
@@ -259,7 +263,8 @@
           <div><label class="req">예금주</label><input type="text" id="b_holder"></div>
         </div>
         <label class="req">계좌번호</label>
-        <input type="tel" id="b_acc" inputmode="numeric">
+        <input type="tel" id="b_acc" inputmode="numeric" placeholder="'-' 넣으셔도 됩니다">
+        <div class="hint">은행명은 위에서 고르셨으니 번호만 적어주세요. 숫자만 저장됩니다.</div>
       </div>
 
       <div class="card">
@@ -323,6 +328,11 @@ let PUBLIC_KEY_B64 = '';   // 서버에서 자동으로 받아옵니다
 const BANKS = ['국민','신한','우리','하나','농협','기업','카카오뱅크','토스뱅크',
   '새마을금고','우체국','SC제일','부산','대구','경남','광주','전북','수협','케이뱅크','신협','산업'];
 const MAX_EDGE = 1600, JPEG_Q = 0.72, MAX_TOTAL = 6 * 1024 * 1024;
+
+/* 계좌번호는 숫자만 저장합니다.
+   화면에는 치신 그대로 보이지만, 은행명이나 하이픈이 섞여 있으면
+   나중에 은행 홈페이지에 붙여넣을 때 거부되므로 보낼 때 걸러냅니다. */
+const accDigits = (v) => String(v || '').replace(/\D/g, '');
 
 const $ = (id) => document.getElementById(id);
 const token = new URLSearchParams(location.search).get('t') || '';
@@ -683,7 +693,7 @@ function collect() {
       kind, name: $('f_name').value.trim(), rrn: $('f_rrn').value.trim(),
       phone: $('f_phone').value.trim(), address: $('f_addr').value.trim(),
       role: $('f_role').value.trim(), bank_name: $('f_bank').value,
-      account: $('f_acc').value.trim(), account_holder: $('f_holder').value.trim(),
+      account: accDigits($('f_acc').value), account_holder: $('f_holder').value.trim(),
       files: { bankbook: files.f_bankbook || [], id_card: files.f_id || [] },
     };
   }
@@ -693,7 +703,7 @@ function collect() {
     biz_item: $('b_item').value.trim(), address: $('b_addr').value.trim(),
     manager: $('b_manager').value.trim(), phone: $('b_phone').value.trim(),
     email: $('b_email').value.trim(), bank_name: $('b_bank').value,
-    account: $('b_acc').value.trim(), account_holder: $('b_holder').value.trim(),
+    account: accDigits($('b_acc').value), account_holder: $('b_holder').value.trim(),
     files: { cert: files.b_cert || [], bankbook: files.b_bankbook || [] },
   };
 }

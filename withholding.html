@@ -1,4 +1,8 @@
 <!DOCTYPE html>
+<!-- withholding.html · v1.2.0 · 2026-09-01
+     원천징수 자료관리 — 관리자 화면
+     v1.2.0 계좌번호 숫자만 복사 · 인력/거래처 계좌 15초 보기 토글
+     v1.1.0 거래처(사업자) 은행·계좌·예금주 표시 및 계좌 복사 추가 -->
 <html lang="ko">
 <head>
 <meta charset="utf-8">
@@ -530,7 +534,7 @@
     <div><label>업종코드</label><input id="pIndustry" value="940909"></div>
   </div>
   <label>계좌번호</label>
-  <input id="pAcc" inputmode="numeric" placeholder="'-' 포함해도 됩니다">
+  <input id="pAcc" inputmode="numeric" placeholder="'-' 넣어도 됩니다 · 숫자만 저장됩니다">
 
   <label>동의일</label>
   <input type="date" id="pConsent">
@@ -652,8 +656,10 @@ function renderPeople() {
       ${p.envFileId ? `<button class="g sm" style="margin-left:6px;padding:3px 8px"
         onclick="showRrn(${p.id}, this)">보기</button>` : ''}</td>
     <td>${p.role || '-'}</td><td>${p.bank || '-'}</td>
-    <td class="dim">${p.accMask || '-'}
+    <td class="dim"><span id="acc${p.id}">${p.accMask || '-'}</span>
       ${p.envFileId ? `<button class="g sm" style="margin-left:6px;padding:3px 8px"
+        onclick="showAcc('p', ${p.id}, this)">보기</button>
+      <button class="g sm" style="margin-left:4px;padding:3px 8px"
         onclick="copyAccount(${p.id})">복사</button>` : ''}</td>
     <td>${p.industry}</td>
     <td class="dim">${p.consentDate || '-'}</td>
@@ -665,8 +671,10 @@ function renderPeople() {
     <td>${esc(v.company)}</td><td>${v.bizNo}</td><td>${esc(v.ceo)}</td>
     <td>${esc(v.manager)}</td><td class="dim">${esc(v.email)}</td>
     <td>${esc(v.bank || '-')}</td>
-    <td class="dim">${v.accMask || '-'}
+    <td class="dim"><span id="accv${i}">${v.accMask || '-'}</span>
       ${v.envFileId ? `<button class="g sm" style="margin-left:6px;padding:3px 8px"
+        onclick="showAcc('v', ${i}, this)">보기</button>
+      <button class="g sm" style="margin-left:4px;padding:3px 8px"
         onclick="copyVendorAccount(${i})">복사</button>` : ''}</td>
     <td>${esc(v.holder || '-')}${v.holder && v.company && v.holder !== v.company
       ? ' <span class="pill">상호와 다름</span>' : ''}</td></tr>`).join('')
@@ -1431,10 +1439,11 @@ window.copyAccount = async (personId) => {
   if (!p) return;
   try {
     const d = await WCT.reveal(p);
-    const line = d.account || '';
+    // 은행명·하이픈이 섞여 저장된 건이 있어 숫자만 남겨 복사합니다
+    const line = accDigits(d.account);
     if (!line) return toast('저장된 계좌가 없습니다.', true);
     const okc = await copyText(line);
-    toast(okc ? `${p.name} · ${accountLine(d.bank_name, d.account, d.account_holder)} 복사됨`
+    toast(okc ? `${p.name} · ${accountLine(d.bank_name, line, d.account_holder)} 복사됨`
               : '복사에 실패했습니다.', !okc);
   } catch (e) { toast(e.message, true); }
 };
@@ -1446,10 +1455,10 @@ window.copyVendorAccount = async (i) => {
   if (!v) return;
   try {
     const d = await WCT.reveal(v);
-    const line = d.account || '';
+    const line = accDigits(d.account);
     if (!line) return toast('저장된 계좌가 없습니다.', true);
     const okc = await copyText(line);
-    toast(okc ? `${v.company} · ${accountLine(d.bank_name, d.account, d.account_holder)} 복사됨`
+    toast(okc ? `${v.company} · ${accountLine(d.bank_name, line, d.account_holder)} 복사됨`
               : '복사에 실패했습니다.', !okc);
   } catch (e) { toast(e.message, true); }
 };
@@ -1490,7 +1499,8 @@ $('btnTransfer').onclick = async () => {
     let bank = '', acc = '', holder = '';
     try {
       const d = await WCT.reveal(person);
-      bank = d.bank_name || ''; acc = d.account || ''; holder = d.account_holder || '';
+      bank = d.bank_name || ''; acc = accDigits(d.account); holder = d.account_holder || '';
+      if (!acc) acc = '(계좌 없음)';
     } catch (e) { acc = '(열지 못함)'; }
     rows.push(Object.assign(r, { bank, acc, holder }));
   }
@@ -1530,8 +1540,71 @@ $('trCopyAll').onclick = async () => {
 };
 
 
+// ═══════════════ 계좌번호 — 눌러야 잠깐 보이고 15초 뒤 다시 가려집니다
+/* 은행 홈페이지가 붙여넣기를 막는 경우가 있어, 눈으로 보고 직접 칠 수 있게
+   전체 번호를 잠깐 띄웁니다. 시트에는 여전히 암호화된 채로 있습니다. */
+const accTimers = {};
+
+/** scope: 'p' 인력(id=personId) · 'v' 거래처(id=목록 순번) */
+window.showAcc = async (scope, id, btn) => {
+  const key = scope + id;
+  const el = $(scope === 'p' ? 'acc' + id : 'accv' + id);
+  const src = scope === 'p'
+    ? WCT.data.people.find((x) => x.id === id)
+    : WCT.data.vendors[id];
+  if (!src || !el) return;
+
+  // 이미 보이는 상태면 바로 가린다
+  if (accTimers[key]) {
+    clearTimeout(accTimers[key]);
+    delete accTimers[key];
+    el.textContent = src.accMask || '-';
+    el.style.color = '';
+    btn.textContent = '보기';
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const d = await WCT.reveal(src);
+    const raw = accDigits(d.account);
+    if (!raw) { toast('저장된 계좌가 없습니다.', true); return; }
+    el.textContent = raw;
+    el.style.color = 'var(--fg)';
+    btn.textContent = '가림';
+    toast(`${src.name || src.company} · ${ACC_SHOW_MS / 1000}초 뒤 가려집니다`);
+
+    accTimers[key] = setTimeout(() => {
+      el.textContent = src.accMask || '-';
+      el.style.color = '';
+      btn.textContent = '보기';
+      delete accTimers[key];
+    }, ACC_SHOW_MS);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+function hideAllAcc() {
+  Object.keys(accTimers).forEach((key) => {
+    clearTimeout(accTimers[key]);
+    delete accTimers[key];
+    const scope = key[0];
+    const id = Number(key.slice(1));
+    const el = $(scope === 'p' ? 'acc' + id : 'accv' + id);
+    const src = scope === 'p'
+      ? WCT.data.people.find((x) => x.id === id)
+      : WCT.data.vendors[id];
+    if (el) { el.textContent = (src && src.accMask) || '-'; el.style.color = ''; }
+  });
+}
+
+
 // ═══════════════ 주민등록번호 — 눌러야 잠깐 보이고 15초 뒤 다시 가려집니다
 const RRN_SHOW_MS = 15000;
+const ACC_SHOW_MS = 15000;
 const rrnTimers = {};
 
 window.showRrn = async (personId, btn) => {
@@ -1576,6 +1649,7 @@ window.showRrn = async (personId, btn) => {
 
 // 다른 탭으로 옮기거나 화면을 벗어나면 즉시 가린다
 function hideAllRrn() {
+  hideAllAcc();
   Object.keys(rrnTimers).forEach((id) => {
     clearTimeout(rrnTimers[id]);
     delete rrnTimers[id];
@@ -1738,7 +1812,7 @@ $('pSave').onclick = async () => {
   btn.disabled = true; btn.textContent = '저장 중…';
   try {
     const type = $('pType').value;
-    const acc = $('pAcc').value.trim();
+    const acc = accDigits($('pAcc').value);
     const env = await WCT.seal({
       kind: type === 'other' ? 'other' : 'freelancer',
       name, rrn, address: $('pAddr').value.trim(), phone: $('pPhone').value.trim(),
