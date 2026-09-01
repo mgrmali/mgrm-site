@@ -96,7 +96,8 @@
     <div class="card">
       <h2>거래처 (사업자 · 계산서)</h2>
       <table><thead><tr>
-        <th>상호</th><th>사업자번호</th><th>대표자</th><th>담당자</th><th>이메일</th></tr></thead>
+        <th>상호</th><th>사업자번호</th><th>대표자</th><th>담당자</th><th>이메일</th>
+        <th>은행</th><th>계좌</th><th>예금주</th></tr></thead>
         <tbody id="venTb"></tbody></table>
     </div>
   </section>
@@ -660,10 +661,16 @@ function renderPeople() {
     </tr>`).join('')
     || '<tr><td colspan="9" class="dim">등록된 인력이 없습니다. [＋ 직접 등록] 으로 넣을 수 있습니다.</td></tr>';
 
-  $('venTb').innerHTML = WCT.data.vendors.map((v) => `<tr>
-    <td>${v.company}</td><td>${v.bizNo}</td><td>${v.ceo}</td>
-    <td>${v.manager}</td><td class="dim">${v.email}</td></tr>`).join('')
-    || '<tr><td colspan="5" class="dim">등록된 거래처가 없습니다.</td></tr>';
+  $('venTb').innerHTML = WCT.data.vendors.map((v, i) => `<tr>
+    <td>${esc(v.company)}</td><td>${v.bizNo}</td><td>${esc(v.ceo)}</td>
+    <td>${esc(v.manager)}</td><td class="dim">${esc(v.email)}</td>
+    <td>${esc(v.bank || '-')}</td>
+    <td class="dim">${v.accMask || '-'}
+      ${v.envFileId ? `<button class="g sm" style="margin-left:6px;padding:3px 8px"
+        onclick="copyVendorAccount(${i})">복사</button>` : ''}</td>
+    <td>${esc(v.holder || '-')}${v.holder && v.company && v.holder !== v.company
+      ? ' <span class="pill">상호와 다름</span>' : ''}</td></tr>`).join('')
+    || '<tr><td colspan="8" class="dim">등록된 거래처가 없습니다.</td></tr>';
 }
 
 function renderPay() {
@@ -1428,6 +1435,21 @@ window.copyAccount = async (personId) => {
     if (!line) return toast('저장된 계좌가 없습니다.', true);
     const okc = await copyText(line);
     toast(okc ? `${p.name} · ${accountLine(d.bank_name, d.account, d.account_holder)} 복사됨`
+              : '복사에 실패했습니다.', !okc);
+  } catch (e) { toast(e.message, true); }
+};
+
+// 거래처(사업자)도 같은 방식으로 봉투를 열어 계좌를 꺼냅니다.
+// WCT.reveal 은 envFileId 만 보므로 거래처 객체를 그대로 넣어도 됩니다.
+window.copyVendorAccount = async (i) => {
+  const v = WCT.data.vendors[i];
+  if (!v) return;
+  try {
+    const d = await WCT.reveal(v);
+    const line = d.account || '';
+    if (!line) return toast('저장된 계좌가 없습니다.', true);
+    const okc = await copyText(line);
+    toast(okc ? `${v.company} · ${accountLine(d.bank_name, d.account, d.account_holder)} 복사됨`
               : '복사에 실패했습니다.', !okc);
   } catch (e) { toast(e.message, true); }
 };
