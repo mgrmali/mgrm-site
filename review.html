@@ -65,6 +65,7 @@ video{width:100%;height:auto;display:block;background:#000}
 .btn:hover{color:var(--text);border-color:var(--accent)}
 .btn-fill{background:var(--ci);border-color:transparent;color:#fff}
 .btn-fill:hover{filter:brightness(1.1)}
+.btn-link{display:inline-flex;align-items:center;text-decoration:none}
 .note{font-size:13.5px;color:var(--muted);margin:0}
 
 /* 코멘트 패널 */
@@ -150,6 +151,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent)}
         <button class="btn" data-seek="-1">◀ 1프레임</button>
         <button class="btn" data-seek="1">1프레임 ▶</button>
         <button class="btn" id="markBtn">이 시점에 코멘트</button>
+        <a class="btn btn-link" id="dlvBtn" style="display:none">납품 파일</a>
       </div>
     </div>
 
@@ -270,6 +272,12 @@ async function enter(pw){
       id: c.id || '', sec: Number(c.sec) || 0, tc: c.tc, txt: c.txt, who: c.who
     }));
     render();
+    /* 납품 페이지 — 시트 '납품허용' 이 켜진 프로젝트만 */
+    if(r.delivery){
+      const a = $('#dlvBtn');
+      a.href = 'delivery.html?p=' + encodeURIComponent(key);
+      a.style.display = 'inline-flex';
+    }
     v.src = r.src;
     $('#gate').classList.add('off');
   }catch(e){
