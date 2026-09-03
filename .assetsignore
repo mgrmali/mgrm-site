@@ -1,2 +1,4 @@
 .git
 .wrangler
+/src/
+wrangler.json
