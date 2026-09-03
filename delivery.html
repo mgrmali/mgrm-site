@@ -60,7 +60,7 @@ a{color:inherit}
 .who{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);
   border-radius:12px;padding:12px 16px;margin:0 0 14px}
 .who label{font-size:13.5px;color:var(--muted-2);flex:1;min-width:200px}
-.who input{width:240px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;
+.who input{width:170px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;
   color:var(--text);padding:9px 12px;font-family:inherit;font-size:14px}
 .who.ok{border-color:var(--accent)}
 .btn.is-off{opacity:.4;cursor:not-allowed}
@@ -93,18 +93,9 @@ a{color:inherit}
 .btn[disabled]{opacity:.45;cursor:default;pointer-events:none}
 button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-/* 수령 확인 */
-.confirm{margin-top:28px;padding-top:22px;border-top:1px solid var(--line)}
-.confirm h2{margin:0 0 4px;font-size:14px;font-weight:700}
-.confirm p{margin:0 0 12px;font-size:13px;color:var(--muted)}
-.confirm__row{display:flex;gap:9px;flex-wrap:wrap}
-.confirm input{flex:1;min-width:160px;background:var(--panel);border:1px solid var(--line);border-radius:9px;
-  color:var(--text);padding:10px 12px;font-family:inherit;font-size:14px}
-input:focus{outline:none;border-color:var(--accent)}
-::placeholder{color:#6E6A79}
 .status{margin:9px 0 0;font-size:13px;color:var(--muted);min-height:18px}
 .status.err{color:var(--accent)}
-.status.ok{color:var(--muted-2)}
+::placeholder{color:#6E6A79}
 .contact{margin-top:28px;font-size:12.5px;color:var(--muted);font-family:var(--mono);letter-spacing:.04em}
 .empty{color:var(--muted);font-size:13.5px;text-align:center;padding:36px 10px;line-height:1.7}
 
@@ -157,22 +148,15 @@ input:focus{outline:none;border-color:var(--accent)}
   <p class="banner" id="banner"></p>
 
   <div class="who" id="whoBox">
-    <label for="who">이름과 소속을 적으면 내려받기가 열립니다. 누가 받았는지 기록하기 위한 것입니다.</label>
-    <input type="text" id="who" placeholder="이름 / 소속" autocomplete="name">
+    <label for="who">이름과 소속을 적으면 내려받기가 열립니다. 내려받는 순간 수령으로 기록됩니다.</label>
+    <input type="text" id="who" placeholder="이름" autocomplete="name">
+    <input type="text" id="org" placeholder="소속" autocomplete="organization">
   </div>
 
   <div class="files" id="files">
     <p class="empty">등록된 파일이 없습니다.</p>
   </div>
 
-  <section class="confirm">
-    <h2>파일 수령 확인</h2>
-    <p>모든 파일을 정상적으로 받으셨으면 확인을 눌러주세요. 위에 적은 이름으로 납품 완료가 기록됩니다.</p>
-    <div class="confirm__row">
-      <button class="btn btn-fill" id="confirmBtn">수령 확인</button>
-    </div>
-    <p class="status" id="status"></p>
-  </section>
 
   <p class="contact">문의 · wlsdnr601@mgrm.kr · 010-9982-6230</p>
 </main>
@@ -264,11 +248,10 @@ async function enter(pw){
     $('#exp').innerHTML = r.expires ? '링크 만료 <b>' + r.expires + '</b>' : '';
     $('#note').textContent = r.note || '';
     if(r.received){
-      const b = $('#banner');
-      b.innerHTML = '<b>' + escape_(r.received.who) + '</b> 님이 ' + escape_(r.received.at) + ' 에 수령 확인하셨습니다.';
+      const b = $('#banner'), rc = r.received;
+      b.innerHTML = '<b>' + escape_(rc.who) + (rc.org ? ' (' + escape_(rc.org) + ')' : '') + '</b> 님이 '
+        + escape_(rc.at) + ' 에 마지막으로 받았습니다.' + (rc.files ? '<br>받은 파일: ' + escape_(rc.files) : '');
       b.style.display = 'block';
-      $('#confirmBtn').setAttribute('disabled', '');
-      $('#confirmBtn').textContent = '수령 확인됨';
     }
     renderFiles(r.files || []);
     $('#gate').classList.add('off');
@@ -338,10 +321,10 @@ function renderFiles(files){
       }
       // 기록만 남기고 다운로드는 그대로 진행 (실패해도 막지 않음)
       post({ '_폼종류':'납품기록', '프로젝트키':key, '작품명':P ? P.title : '',
-             '이름':$('#who').value.trim(), '작업':'다운로드', '파일명':f.name });
+             '이름':$('#who').value.trim(), '소속':$('#org').value.trim(), '파일명':f.name });
       let done = d.querySelector('.file__done');
       if(!done){ done = document.createElement('span'); done.className = 'file__done'; meta.appendChild(done); }
-      done.textContent = '받기 시작 ' + new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'});
+      done.textContent = '수령 기록 ' + new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'});
     });
 
     row.append(meta, dl);
@@ -352,35 +335,19 @@ function renderFiles(files){
 }
 
 /* 이름을 적어야 내려받기가 열린다 */
-function hasName(){ return $('#who').value.trim().length > 0; }
+function hasName(){ return $('#who').value.trim().length > 0 && $('#org').value.trim().length > 0; }
 function gateDownloads(){
   const ok = hasName();
   $('#whoBox').classList.toggle('ok', ok);
   document.querySelectorAll('a.dl').forEach(a => {
     a.classList.toggle('is-off', !ok);
     a.setAttribute('aria-disabled', ok ? 'false' : 'true');
-    a.title = ok ? '' : '이름과 소속을 먼저 적어주세요';
+      a.title = ok ? '' : '이름과 소속을 먼저 적어주세요';
   });
 }
 $('#who').addEventListener('input', gateDownloads);
+$('#org').addEventListener('input', gateDownloads);
 
-/* 수령 확인 */
-$('#confirmBtn').addEventListener('click', async () => {
-  const who = $('#who').value.trim();
-  const st = $('#status');
-  if(!who){ st.className = 'status err'; st.textContent = '위에 이름과 소속을 먼저 적어주세요.'; $('#who').focus(); return; }
-  if(!confirm('모든 파일을 정상적으로 받으셨습니까?\n납품 완료로 기록됩니다.')) return;
-  st.className = 'status'; st.textContent = '기록 중…';
-  const ok = await post({ '_폼종류':'납품기록', '프로젝트키':key, '작품명':P ? P.title : '',
-                          '이름':who, '작업':'수령확인', '파일명':'' });
-  if(ok){
-    st.className = 'status ok'; st.textContent = '수령 확인이 기록되었습니다. 감사합니다.';
-    $('#confirmBtn').setAttribute('disabled', '');
-    $('#confirmBtn').textContent = '수령 확인됨';
-  }else{
-    st.className = 'status err'; st.textContent = '기록에 실패했습니다. 다시 시도해주세요.';
-  }
-});
 </script>
 </body>
 </html>
