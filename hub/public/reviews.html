@@ -32,6 +32,14 @@
   .filelist td{vertical-align:middle}
   .small{font-size:12px;color:var(--dim)}
   .copy{cursor:pointer;text-decoration:underline dotted}
+  .up{border:1.5px dashed var(--line);border-radius:12px;padding:16px;text-align:center;cursor:pointer;
+    background:var(--soft);transition:border-color .15s,background .15s}
+  .up:hover,.up.over{border-color:var(--ci-b);background:var(--tint)}
+  .up.busy{cursor:default;border-style:solid;border-color:var(--ci-b);background:#fff}
+  .up.done{border-style:solid;border-color:var(--ok);background:var(--ok-bg)}
+  .upname{font-weight:700;font-size:13px;word-break:break-all;margin-bottom:8px}
+  .upbar{height:8px;border-radius:6px;background:var(--line);overflow:hidden}
+  .upbar i{display:block;height:100%;width:0;background:var(--ci);transition:width .2s}
 </style>
 </head>
 <body>
@@ -53,8 +61,8 @@
         <button class="b" id="btnNewProj">＋ 새 프로젝트</button>
       </div>
       <div class="note">
-        영상은 NAS <b>review</b> 폴더에 올리고, 여기엔 <b>파일 이름만</b> 적으면 됩니다
-        (예: <code>lucky7_v2.mp4</code>). 전체 주소를 적어도 됩니다.<br>
+        <b>새 프로젝트 → 영상 파일을 끌어다 놓으면</b> NAS 리뷰 폴더에 올라가고 리뷰 링크까지 바로 만들어져요.
+        NAS에 이미 있는 영상은 목록에서 고르면 됩니다. (권장: H.264 mp4)<br>
         리뷰 링크와 납품 링크는 자동으로 만들어져요. 클라이언트에게는 링크와 비밀번호만 보내면 됩니다.
       </div>
       <label style="display:flex;align-items:center;gap:7px;color:var(--dim);font-size:12.5px;margin:0 0 12px">
@@ -122,8 +130,24 @@
     <div><label>작품명</label><input id="pName" placeholder="예: 럭키세븐 TVC"></div>
     <div><label>버전</label><input id="pVer" placeholder="예: v2"></div>
   </div>
-  <label>영상 (파일명 또는 전체 주소)</label>
-  <input id="pSrc" placeholder="lucky7_v2.mp4">
+  <label>리뷰 영상</label>
+  <div class="up" id="upBox">
+    <input type="file" id="upFile" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm" class="hide">
+    <div id="upIdle">
+      <b>영상 파일을 끌어다 놓거나 눌러서 고르기</b>
+      <div class="small">mp4 · mov · m4v · webm — NAS 리뷰 폴더에 저장되고 그 파일로 리뷰 링크가 만들어져요</div>
+    </div>
+    <div id="upRun" class="hide">
+      <div class="upname" id="upName"></div>
+      <div class="upbar"><i id="upBar"></i></div>
+      <div class="small" id="upTxt"></div>
+      <button class="g sm" id="upCancel" type="button" style="margin-top:8px">취소</button>
+    </div>
+  </div>
+  <div class="row r2" style="margin-top:8px">
+    <div><select id="pPick"><option value="">NAS 리뷰 폴더에 이미 있는 영상에서 고르기…</option></select></div>
+    <div><input id="pSrc" placeholder="또는 파일명·전체 주소 직접 입력"></div>
+  </div>
   <div class="row r3">
     <div><label>비밀번호 (비우면 없음)</label><input id="pPw" autocomplete="off"></div>
     <div><label>리뷰 만료일</label><input id="pUntil" type="date"></div>
@@ -262,11 +286,122 @@ function openProj(key) {
   $('pDeliver').checked = !!p.deliver; $('pDuntil').value = p.duntil || ''; $('pDnote').value = p.dnote; $('pMemo').value = p.memo;
   $('pDelete').classList.toggle('hide', !key);
   $('pMsg').className = 'msg hide';
+  upReset();
+  loadVideos(p.src);
   $('pDlg').showModal();
 }
+
+/* ══ 리뷰 영상 올리기 ══ */
+const CHUNK = 48 * 1024 * 1024;            // Cloudflare 한 번 한도(100MB) 아래로 나눠 보냅니다
+let UP = null;                              // { id, cancel }
+async function loadVideos(cur) {
+  const sel = $('pPick');
+  sel.innerHTML = '<option value="">NAS 리뷰 폴더에 이미 있는 영상에서 고르기…</option>';
+  try {
+    const r = await WCT.api('review.videos');
+    sel.innerHTML += r.videos.map((v) => `<option value="${esc(v.name)}" ${v.name === cur ? 'selected' : ''}>${esc(v.name)} · ${fmtSize(v.size)}</option>`).join('');
+  } catch {}
+}
+$('pPick').onchange = () => { if ($('pPick').value) $('pSrc').value = $('pPick').value; };
+function fmtSize(n) { return n >= 1073741824 ? (n / 1073741824).toFixed(2) + 'GB' : (n / 1048576).toFixed(1) + 'MB'; }
+function upReset() {
+  UP = null; $('upFile').value = '';
+  $('upBox').className = 'up'; $('upIdle').classList.remove('hide'); $('upRun').classList.add('hide');
+  $('upCancel').classList.remove('hide');
+}
+$('upBox').onclick = (e) => { if (!UP && !e.target.closest('#upRun')) $('upFile').click(); };
+$('upBox').ondragover = (e) => { e.preventDefault(); if (!UP) $('upBox').classList.add('over'); };
+$('upBox').ondragleave = () => $('upBox').classList.remove('over');
+$('upBox').ondrop = (e) => { e.preventDefault(); $('upBox').classList.remove('over'); if (!UP && e.dataTransfer.files[0]) startUpload(e.dataTransfer.files[0]); };
+$('upFile').onchange = () => { if ($('upFile').files[0]) startUpload($('upFile').files[0]); };
+$('upCancel').onclick = async (e) => {
+  e.stopPropagation();
+  if (!UP) return;
+  UP.cancel = true;
+  if (UP.xhr) UP.xhr.abort();
+  if (UP.id) { try { await upPost(`op=cancel&id=${UP.id}`); } catch {} }
+  upReset(); toast('올리기를 취소했습니다.');
+};
+function upPost(qs, blob, onProg) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    if (UP) UP.xhr = x;
+    x.open('POST', '/api/upload?' + qs);
+    x.withCredentials = true;
+    x.responseType = 'json';
+    if (onProg) x.upload.onprogress = (e) => onProg(e.loaded);
+    x.onload = () => {
+      const j = x.response || {};
+      if (x.status === 401) { reject(new Error('로그인이 끊겼어요. 다시 로그인 후 올려 주세요.')); return; }
+      if (x.status >= 500 && !j.ok) { reject(new Error(j.error || 'NAS에 연결할 수 없어요')); return; }
+      resolve(j);
+    };
+    x.onerror = () => reject(new Error('net'));
+    x.onabort = () => reject(new Error('abort'));
+    x.send(blob || null);
+  });
+}
+async function startUpload(file) {
+  const ext = (file.name.match(/\.[^.]+$/) || [''])[0].toLowerCase();
+  if (!['.mp4', '.mov', '.m4v', '.webm'].includes(ext)) return toast('mp4 · mov · m4v · webm 영상만 올릴 수 있어요.', true);
+  if (ext === '.mov') toast('mov는 브라우저에 따라 재생이 안 될 수 있어요. 가능하면 H.264 mp4를 권장합니다.');
+  UP = { id: '', cancel: false };
+  $('upBox').className = 'up busy'; $('upIdle').classList.add('hide'); $('upRun').classList.remove('hide');
+  $('upName').textContent = `${file.name} · ${fmtSize(file.size)}`;
+  const bar = $('upBar'), txt = $('upTxt'); bar.style.width = '0%'; txt.textContent = '준비 중…';
+  const t0 = Date.now();
+  try {
+    const st = await upPost(`op=start&name=${encodeURIComponent(file.name)}&size=${file.size}`);
+    if (!st.ok) throw new Error(st.error);
+    UP.id = st.id;
+    let off = 0;
+    while (off < file.size) {
+      if (UP.cancel) return;
+      const end = Math.min(off + CHUNK, file.size);
+      let j = null, tries = 0;
+      while (true) {
+        try {
+          j = await upPost(`op=chunk&id=${UP.id}&offset=${off}`, file.slice(off, end), (n) => {
+            const done = off + n, pct = done / file.size * 100;
+            const sec = (Date.now() - t0) / 1000, spd = done / Math.max(sec, 1);
+            const left = (file.size - done) / Math.max(spd, 1);
+            bar.style.width = pct.toFixed(1) + '%';
+            txt.textContent = `${pct.toFixed(0)}% · ${fmtSize(done)} / ${fmtSize(file.size)} · ${(spd / 1048576).toFixed(1)}MB/s · 남은 시간 약 ${left > 90 ? Math.ceil(left / 60) + '분' : Math.ceil(left) + '초'}`;
+          });
+          if (j.ok) break;
+          if (j.error === 'offset') { off = j.have; break; }
+          throw new Error(j.error);
+        } catch (e) {
+          if (UP.cancel || e.message === 'abort') return;
+          if (/로그인/.test(e.message) || ++tries > 3) throw e.message === 'net' ? new Error('네트워크가 끊겼어요. 다시 올려 주세요.') : e;
+          txt.textContent = `연결이 잠깐 끊겼어요 — 다시 보내는 중 (${tries}/3)…`;
+          await new Promise((r) => setTimeout(r, 2000 * tries));
+        }
+      }
+      if (j && j.ok) off = j.have;
+    }
+    txt.textContent = '마무리하는 중…';
+    const fin = await upPost(`op=finish&id=${UP.id}`);
+    if (!fin.ok) throw new Error(fin.error);
+    UP = null;
+    $('pSrc').value = fin.name;
+    if (!$('pName').value.trim()) $('pName').value = fin.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
+    $('upBox').className = 'up done'; $('upCancel').classList.add('hide'); bar.style.width = '100%';
+    txt.textContent = `올렸습니다 → ${fin.name}`;
+    loadVideos(fin.name);
+    $('pSave').click();                       // 바로 저장해서 리뷰 링크를 만듭니다
+  } catch (e) {
+    if (UP && UP.id) { try { await upPost(`op=cancel&id=${UP.id}`); } catch {} }
+    UP = null; $('upBox').className = 'up'; txt.textContent = '';
+    $('upIdle').classList.remove('hide'); $('upRun').classList.add('hide');
+    toast(e.message, true);
+  }
+}
+window.addEventListener('beforeunload', (e) => { if (UP) { e.preventDefault(); e.returnValue = ''; } });
 $('pSave').onclick = async () => {
   const m = $('pMsg'); m.className = 'msg hide';
   if (!$('pName').value.trim()) { m.className = 'msg bad'; m.textContent = '작품명을 적어주세요.'; return; }
+  if (UP) { m.className = 'msg bad'; m.textContent = '영상을 올리는 중이에요. 끝나면 자동으로 저장됩니다.'; return; }
   $('pSave').disabled = true;
   try {
     const r = await WCT.api('review.project.save', { key: EDIT_KEY || undefined, title: $('pName').value.trim(), ver: $('pVer').value.trim(),
@@ -274,7 +409,9 @@ $('pSave').onclick = async () => {
       active: $('pActive').checked, deliver: $('pDeliver').checked, duntil: $('pDuntil').value, dnote: $('pDnote').value.trim(),
       memo: $('pMemo').value.trim() });
     await WCT.load(true); renderAll();
-    m.className = 'msg ok'; m.textContent = `저장했습니다. 리뷰 링크: ${r.link}`;
+    m.className = 'msg ok';
+    m.innerHTML = `저장했습니다. 리뷰 링크: <a href="${esc(r.link)}" target="_blank" style="text-decoration:underline">${esc(r.link)}</a>
+      <button class="g sm" type="button" style="margin-left:6px" onclick="copyText('${esc(r.link)}').then(()=>toast('링크를 복사했습니다.'))">복사</button>`;
     if (!EDIT_KEY) { EDIT_KEY = r.key; $('pTitle').textContent = `편집 · ${$('pName').value.trim()} (${r.key})`; $('pDelete').classList.remove('hide'); }
   } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
   finally { $('pSave').disabled = false; }
@@ -282,8 +419,12 @@ $('pSave').onclick = async () => {
 $('pDelete').onclick = async () => {
   if (!EDIT_KEY) return;
   if (!confirm('이 프로젝트를 삭제할까요? 코멘트·납품 파일·수령 기록도 함께 지워집니다.')) return;
-  await WCT.api('review.project.delete', { key: EDIT_KEY, withData: true });
-  await WCT.load(true); renderAll(); $('pDlg').close(); toast('삭제했습니다.');
+  const p = proj(EDIT_KEY);
+  const local = p && p.src && !/[\/]|^https?:/i.test(p.src);
+  const withVideo = local && confirm(`NAS 리뷰 폴더의 영상 파일(${p.src})도 지울까요?\n\n[확인] 영상도 삭제  [취소] 영상은 남겨 두기`);
+  const r = await WCT.api('review.project.delete', { key: EDIT_KEY, withData: true, withVideo });
+  await WCT.load(true); renderAll(); $('pDlg').close();
+  toast(withVideo ? (r.videoRemoved ? '프로젝트와 영상을 삭제했습니다.' : '프로젝트를 삭제했습니다. (다른 프로젝트도 쓰는 영상이라 남겨 뒀어요)') : '삭제했습니다.');
 };
 
 /* ══ 납품 파일 ══ */

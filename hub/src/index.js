@@ -53,6 +53,7 @@ async function handle(req, env, ctx) {
 
   if (p === '/api/rpc' && req.method === 'POST') return rpc(req, env, who);
   if (p === '/api/export') return exportCsv(req, env, who, url);
+  if (p === '/api/upload' && req.method === 'POST') return uploadRelay(req, env, who, url);
   if ((p === '/api/import' || p === '/api/initkeys') && req.method === 'POST') return relay(req, env, who, p.replace('/api', ''));
   if (p.startsWith('/api/')) return json({ ok: false, error: 'not found' }, 404);
 
@@ -116,6 +117,23 @@ async function relay(req, env, who, path) {
   b._who = who; b._ip = req.headers.get('cf-connecting-ip') || '';
   try { return json(await (await store(env, path, b)).json()); }
   catch { return json(NAS_DOWN, 503); }
+}
+
+/* 리뷰 영상 조각을 NAS 로 그대로 흘려보냅니다 (본문을 읽지 않고 스트림 전달) */
+async function uploadRelay(req, env, who, url) {
+  if (who.role !== 'admin') return json({ ok: false, error: '관리자만 할 수 있습니다.' }, 403);
+  let r;
+  try {
+    r = await fetch(env.STORE_URL.replace(/\/$/, '') + '/upload' + url.search, {
+      method: 'POST', body: req.body,
+      headers: { 'x-store-token': env.STORE_TOKEN, 'x-hub-who': JSON.stringify(who),
+        'content-type': 'application/octet-stream' },
+    });
+  } catch { return json(NAS_DOWN, 503); }
+  if ([502, 503, 504, 530].includes(r.status)) return json(NAS_DOWN, 503);
+  // 큰 파일은 오래 걸리니 조각마다 로그인 유지 시간을 늘려 줍니다
+  return new Response(r.body, { status: r.status, headers: { 'content-type': 'application/json; charset=utf-8',
+    'set-cookie': cookie(await makeToken(env, who, who.iat), IDLE) } });
 }
 
 async function exportCsv(req, env, who, url) {

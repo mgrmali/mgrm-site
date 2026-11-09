@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.1.1';
+const VERSION = 'hub-store 1.2.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -115,6 +115,9 @@ const SHEETS = {
   '문의':   ['접수번호', '접수시각', '이름/회사', '이메일', '문의 분야', '내용', '_유입경로', '진행 상태', '읽음', '메모'],
 };
 const VIDEO_BASE = process.env.VIDEO_BASE || 'https://mgrm.myqnapcloud.com:8081/review/';
+/* 리뷰 영상 올리기: 허브에서 올린 파일을 이 폴더에 저장합니다.
+   QNAP 웹 서버가 이 폴더를 VIDEO_BASE 주소로 내보내야 합니다 (예: Web 공유 폴더의 review). */
+const REVIEW_DIR = process.env.REVIEW_DIR || '/web/review';
 const REVIEW_BASE = process.env.REVIEW_BASE || 'https://mgrm.kr/review.html?p=';
 const DELIVERY_BASE = process.env.DELIVERY_BASE || 'https://mgrm.kr/delivery.html?p=';
 
@@ -600,7 +603,7 @@ const PD_ALLOWED = [
   'bootstrap', 'me', 'project.add', 'project.update', 'project.delete',
   'task.add', 'task.set', 'task.delete', 'board.add', 'board.delete', 'board.pin',
 ];
-const READ_ONLY = ['bootstrap', 'me', 'envelope', 'envelopes', 'unlock', 'user.list',
+const READ_ONLY = ['bootstrap', 'me', 'review.videos', 'envelope', 'envelopes', 'unlock', 'user.list',
                    'recovery.status', 'calendar.check', 'log.list'];
 
 async function rpc_(b) {
@@ -973,13 +976,23 @@ function admin_(a, b, who) {
     case 'review.project.delete': {
       const key = String(b.key || '').trim();
       const r = rows_('리뷰프로젝트').find((x) => String(x['키']).trim() === key);
+      let videoRemoved = false;
+      if (r && b.withVideo) {
+        // 이 프로젝트만 쓰는, 리뷰 폴더 안의 파일일 때만 지웁니다
+        const src = String(r['영상주소'] || '').trim();
+        const others = rows_('리뷰프로젝트').filter((x) => x !== r && String(x['영상주소'] || '').trim() === src);
+        if (src && !/[\/]|^https?:/i.test(src) && !others.length) {
+          try { fs.unlinkSync(path.join(REVIEW_DIR, src)); videoRemoved = true; } catch {}
+        }
+      }
       if (r) remove_(r);
       if (b.withData) {
         ['리뷰코멘트', '납품파일', '납품기록'].forEach((n) =>
           rows_(n).filter((x) => String(x['프로젝트키']).trim() === key).forEach(remove_));
       }
-      return { ok: true };
+      return { ok: true, videoRemoved };
     }
+    case 'review.videos': return { ok: true, videos: reviewFiles_(), base: VIDEO_BASE };
     case 'review.file.save': {
       const r = b.id ? byId_('납품파일', b.id) : null;
       const set = { '프로젝트키': b.key, '파일명': b.name, '구분': b.kind, '규격': b.spec, '용량': b.size,
@@ -1225,6 +1238,93 @@ function backup_() {
 }
 setInterval(backup_, 60 * 60e3); setTimeout(backup_, 10e3);
 
+// ══════════════════════════════════════════ 리뷰 영상 올리기 (조각 업로드)
+/* Cloudflare 는 한 번에 100MB 까지만 받으므로 브라우저가 조각(약 50MB)으로 나눠 보냅니다.
+   start → chunk(여러 번, offset 순서대로) → finish. 끊겨도 같은 offset 부터 다시 보내면 이어집니다. */
+const UPLOADS = new Map();                      // id → { name, size, part, at }
+function safeName_(n) {
+  const ext = (String(n).match(/\.[A-Za-z0-9]{1,6}$/) || [''])[0].toLowerCase();
+  let base = String(n).slice(0, String(n).length - ext.length)
+    .normalize('NFC').replace(/[\\/:*?"<>|#%&{}$!'`@+=]+/g, '').replace(/\s+/g, '_').replace(/^\.+/, '');
+  base = base.slice(0, 80) || 'review';
+  return base + ext;
+}
+function freeName_(n) {
+  let name = safeName_(n), i = 1;
+  const ext = path.extname(name), base = name.slice(0, name.length - ext.length);
+  while (fs.existsSync(path.join(REVIEW_DIR, name)) || [...UPLOADS.values()].some((u) => u.name === name)) {
+    name = `${base}_${++i}${ext}`;
+  }
+  return name;
+}
+const VIDEO_EXT = ['.mp4', '.mov', '.m4v', '.webm'];
+async function upload_(req, res, url, who) {
+  if (roleOf_(who.user || '') !== 'admin') return send(res, 403, { ok: false, error: '관리자만 할 수 있습니다.' });
+  const op = url.searchParams.get('op');
+  const now = Date.now();
+  for (const [k, u] of UPLOADS) if (now - u.at > 6 * 3600e3) { try { fs.unlinkSync(u.part); } catch {} UPLOADS.delete(k); }
+
+  if (op === 'start') {
+    const name = url.searchParams.get('name') || '';
+    const size = Number(url.searchParams.get('size') || 0);
+    if (!VIDEO_EXT.includes(path.extname(name).toLowerCase())) {
+      return send(res, 200, { ok: false, error: 'mp4 · mov · m4v · webm 영상만 올릴 수 있어요.' });
+    }
+    if (!(size > 0)) return send(res, 200, { ok: false, error: '파일 크기를 알 수 없어요.' });
+    try { fs.mkdirSync(REVIEW_DIR, { recursive: true }); fs.accessSync(REVIEW_DIR, fs.constants.W_OK); }
+    catch { return send(res, 200, { ok: false, error: `NAS 영상 폴더(${REVIEW_DIR})에 쓸 수 없어요. 컨테이너 설정을 확인해 주세요.` }); }
+    const id = crypto.randomBytes(9).toString('hex');
+    const fname = freeName_(name);
+    const part = path.join(REVIEW_DIR, `.${id}.part`);
+    fs.writeFileSync(part, '');
+    UPLOADS.set(id, { name: fname, size, part, at: now });
+    return send(res, 200, { ok: true, id, name: fname });
+  }
+  const id = url.searchParams.get('id') || '';
+  const u = UPLOADS.get(id);
+  if (!u) return send(res, 200, { ok: false, error: '올리기가 끊겼어요. 처음부터 다시 올려 주세요.' });
+  u.at = now;
+
+  if (op === 'chunk') {
+    const offset = Number(url.searchParams.get('offset') || 0);
+    const have = fs.statSync(u.part).size;
+    if (offset > have) return send(res, 200, { ok: false, error: 'offset', have });
+    if (offset < have) fs.truncateSync(u.part, offset);
+    await new Promise((resolve, reject) => {
+      const ws = fs.createWriteStream(u.part, { flags: 'a' });
+      let n = 0;
+      req.on('data', (c) => { n += c.length; if (n > 96 * 1024 * 1024) { req.destroy(); reject(new Error('조각이 너무 큽니다')); } });
+      req.pipe(ws);
+      ws.on('finish', resolve); ws.on('error', reject); req.on('error', reject);
+    });
+    return send(res, 200, { ok: true, have: fs.statSync(u.part).size });
+  }
+  if (op === 'finish') {
+    const have = fs.statSync(u.part).size;
+    if (have !== u.size) return send(res, 200, { ok: false, error: `크기가 맞지 않아요 (${have} / ${u.size})`, have });
+    const dst = path.join(REVIEW_DIR, u.name);
+    fs.renameSync(u.part, dst);
+    try { fs.chmodSync(dst, 0o644); } catch {}
+    UPLOADS.delete(id);
+    console.log(`[upload] ${who.user} → ${dst} (${(have / 1048576).toFixed(1)}MB)`);
+    return send(res, 200, { ok: true, name: u.name, url: VIDEO_BASE + encodeURI(u.name) });
+  }
+  if (op === 'cancel') {
+    try { fs.unlinkSync(u.part); } catch {}
+    UPLOADS.delete(id);
+    return send(res, 200, { ok: true });
+  }
+  return send(res, 400, { ok: false, error: 'op' });
+}
+/** 리뷰 폴더의 영상 목록 (관리 화면에서 고르기용) */
+function reviewFiles_() {
+  try {
+    return fs.readdirSync(REVIEW_DIR).filter((n) => !n.startsWith('.') && VIDEO_EXT.includes(path.extname(n).toLowerCase()))
+      .map((n) => { const st = fs.statSync(path.join(REVIEW_DIR, n)); return { name: n, size: st.size, at: st.mtimeMs }; })
+      .sort((a, b) => b.at - a.at);
+  } catch { return []; }
+}
+
 // ══════════════════════════════════════════ HTTP
 function okToken(req) {
   const a = Buffer.from(String(req.headers['x-store-token'] || ''));
@@ -1258,6 +1358,9 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, exportCsv_(url.searchParams.get('sheet') || ''), 'text/csv; charset=utf-8');
     }
     if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'method' });
+    if (url.pathname === '/upload') {
+      return await upload_(req, res, url, JSON.parse(String(req.headers['x-hub-who'] || '{}')));
+    }
 
     const limit = url.pathname === '/import' ? 400 * 1024 * 1024 : 12 * 1024 * 1024;
     const b = JSON.parse(await readBody(req, limit) || '{}');
@@ -1276,5 +1379,7 @@ const server = http.createServer(async (req, res) => {
 });
 server.listen(PORT, () => {
   const gf = GROUP_FILES.find((p) => { try { fs.accessSync(p); return true; } catch { return false; } });
-  console.log(`${VERSION} — :${PORT}, 데이터 ${DATA}, QNAP ${QNAP_URL || '(미설정)'}, 그룹 파일 ${gf || '(없음!)'}`);
+  let rv = '(없음!)';
+  try { fs.accessSync(REVIEW_DIR, fs.constants.W_OK); rv = REVIEW_DIR; } catch {}
+  console.log(`${VERSION} — :${PORT}, 데이터 ${DATA}, QNAP ${QNAP_URL || '(미설정)'}, 그룹 파일 ${gf || '(없음!)'}, 리뷰 영상 폴더 ${rv}`);
 });
