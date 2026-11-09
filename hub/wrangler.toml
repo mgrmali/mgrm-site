@@ -17,7 +17,7 @@ html_handling = "none"
 [[d1_databases]]
 binding = "DB"
 database_name = "mgrm-hub"
-database_id = "여기에_D1_데이터베이스_ID_붙여넣기"
+database_id = "dd20c8eb-a9e3-47d5-abc9-a33a4236a04a"
 
 # 10분마다 밀린 제출물을 NAS 로 넘깁니다
 [triggers]
