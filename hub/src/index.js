@@ -32,7 +32,14 @@ async function handle(req, env, ctx) {
 
   if (p === '/api/login' && req.method === 'POST') return login(req, env);
   if (p === '/api/logout') return json({ ok: true }, 200, { 'set-cookie': cookie('', 0) });
-  if (p === '/api/public' && req.method === 'POST') return pub(req, env, ctx);
+  // 회사 홈페이지(mgrm.kr)의 리뷰·납품·문진·문의 폼이 여기로 보냅니다 → 교차 출처 허용
+  if (p === '/api/public' && req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(req) });
+  if (p === '/api/public' && req.method === 'POST') {
+    const r = await pub(req, env, ctx);
+    const out = new Response(r.body, r);
+    Object.entries(cors(req)).forEach(([k, v]) => out.headers.set(k, v));
+    return out;
+  }
   if (p === '/api/health') return health(env);
   if (p === '/' ) return Response.redirect(new URL('/admin.html', url).toString(), 302);
   if (p === '/login') return env.ASSETS.fetch(new Request(new URL('/login.html', url), req));
@@ -122,11 +129,31 @@ async function exportCsv(req, env, who, url) {
   } catch { return json(NAS_DOWN, 503); }
 }
 
-/* ───────── 외부 공개 (정산 정보 제출 폼) */
+const ALLOWED_ORIGINS = ['https://mgrm.kr', 'https://www.mgrm.kr', 'https://hub.mgrm.kr', 'https://diary.mgrm.kr'];
+function cors(req) {
+  const o = req.headers.get('origin') || '';
+  const ok = ALLOWED_ORIGINS.includes(o) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o);
+  return ok ? { 'access-control-allow-origin': o, 'access-control-allow-methods': 'POST, OPTIONS',
+    'access-control-allow-headers': 'content-type', 'access-control-max-age': '86400', 'vary': 'origin' } : {};
+}
+// NAS 가 꺼져 있어도 받아 둘 수 있는 요청 (나중에 그대로 다시 보냄)
+const QUEUEABLE = ['submit', 'review.comment', 'delivery.record', 'intake', 'inquiry'];
+function pubAction(b) {
+  if (b.action) return String(b.action);
+  if (b.token && b.envelope) return 'submit';
+  const kind = String(b['_폼종류'] || '');
+  if (kind === '리뷰코멘트') return 'review.comment';
+  if (kind === '납품기록') return 'delivery.record';
+  if (kind === '작업문의') return 'inquiry';
+  if (b['담당자'] || b['프로젝트명']) return 'intake';
+  return '';
+}
+
+/* ───────── 외부 공개 (정산 정보 제출 · 리뷰 · 납품 · 문진 · 문의) */
 async function pub(req, env, ctx) {
   let b = {};
   try { b = await req.json(); } catch {}
-  const a = String(b.action || (b.token && b.envelope ? 'submit' : ''));
+  const a = pubAction(b);
   try {
     const r = await (await store(env, '/public', Object.assign({}, b, { action: a }))).json();
     if (a === 'pubkey' && r.ok && r.pub) ctx.waitUntil(kvSet(env, 'pub', r.pub));
@@ -147,12 +174,13 @@ async function pub(req, env, ctx) {
     const seen = await kvGet(env, 'inv:' + b.t);
     return json(seen ? { ok: true, label: '', role: '', offline: true } : NAS_DOWN);
   }
-  if (a === 'submit') {
-    if (!b.token || !b.envelope || !b.envelope.ct) return json({ ok: false, error: '제출 형식이 올바르지 않습니다.' });
-    const body = JSON.stringify({ action: 'submit', token: b.token, envelope: b.envelope, receivedAt: kstNow() });
+  if (QUEUEABLE.includes(a)) {
+    if (a === 'submit' && (!b.token || !b.envelope || !b.envelope.ct)) return json({ ok: false, error: '제출 형식이 올바르지 않습니다.' });
+    const body = JSON.stringify(Object.assign({}, b, { action: a, receivedAt: kstNow() }));
     if (body.length > 9.5 * 1024 * 1024) return json({ ok: false, error: '첨부 용량이 너무 큽니다. 사진 장수를 줄여주세요.' });
     await env.DB.prepare('INSERT INTO pending (at, body) VALUES (?, ?)').bind(kstNow(), body).run();
-    return json({ ok: true, queued: true });
+    // 문진·문의는 접수번호를 바로 못 주니 임시 번호를 돌려줍니다
+    return json({ ok: true, queued: true, no: a === 'intake' || a === 'inquiry' ? '접수 대기' : undefined });
   }
   return json(NAS_DOWN);
 }

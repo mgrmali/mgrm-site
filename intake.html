@@ -655,7 +655,7 @@ footer a:hover{border-bottom-color:var(--accent-text)}
    ══════════════════════════════════════════════ */
 const CONFIG = {
   // 구글 앱스스크립트 웹앱 주소 (배포 후 받은 /exec 로 끝나는 URL)
-  endpoint: "https://script.google.com/macros/s/AKfycbxMgNVVuNMrzjTKSyXSd_lG4YI2BcBD0QI7-rh25Jv0J1xZr2qEB7PTS9CEzkes7bAF5g/exec",
+  endpoint: "https://hub.mgrm.kr/api/public",
   // endpoint가 비어 있을 때 메일이 열릴 주소
   email: "",
   // 첨부는 폼에서 받지 않고, 접수 후 전용 업로드 경로로 안내합니다.
@@ -876,9 +876,10 @@ form.addEventListener('submit', async e=>{
 
   /* text/plain 으로 보내면 사전 요청(preflight)이 발생하지 않아
      앱스스크립트에서 그대로 받을 수 있습니다. */
+  payload['action'] = 'intake';
   const opts = {
     method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    headers:{'Content-Type':'application/json'},
     body: JSON.stringify(payload)
   };
 

@@ -165,39 +165,31 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 /* ═══════════════════════════════════════════
    설정은 이 한 줄뿐입니다. review.html 과 같은 주소를 씁니다.
    ═══════════════════════════════════════════ */
-const ENDPOINT = "https://script.google.com/macros/s/AKfycbxMgNVVuNMrzjTKSyXSd_lG4YI2BcBD0QI7-rh25Jv0J1xZr2qEB7PTS9CEzkes7bAF5g/exec";
+const ENDPOINT = "https://hub.mgrm.kr/api/public";   // 업무 허브(NAS 저장)
 
 const $ = s => document.querySelector(s);
 const key = new URLSearchParams(location.search).get('p') || '';
 let P = null;
 
-/* 앱스스크립트 호출 (JSONP — review.html 과 동일) */
+/* 업무 허브 호출 */
 function ask(params){
-  return new Promise((resolve, reject) => {
-    const cb = 'cb_' + Math.random().toString(36).slice(2);
-    const t = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 15000);
-    function cleanup(){ clearTimeout(t); delete window[cb]; sc.remove(); }
-    window[cb] = data => { cleanup(); resolve(data); };
-    const q = Object.entries(params).map(([k, val]) =>
-      encodeURIComponent(k) + '=' + encodeURIComponent(val)).join('&');
-    const sc = document.createElement('script');
-    sc.src = ENDPOINT + '?' + q + '&callback=' + cb;
-    sc.onerror = () => { cleanup(); reject(new Error('load')); };
-    document.head.appendChild(sc);
-  });
+  const map = { meta:'review.meta', open:'review.open', dmeta:'delivery.meta', dopen:'delivery.open' };
+  const body = Object.assign({}, params, { action: map[params.mode] || params.mode });
+  delete body.mode;
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), 15000);
+  return fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body), signal: ac.signal })
+    .then(r => r.json()).finally(() => clearTimeout(t));
 }
 
 async function post(payload){
-  const opts = {
-    method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify(payload)
-  };
-  try{ await fetch(ENDPOINT, opts); return true; }
-  catch(e){
-    try{ await fetch(ENDPOINT, {...opts, mode:'no-cors'}); return true; }
-    catch(e2){ return false; }
-  }
+  try{
+    const r = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload) });
+    const j = await r.json();
+    return !!j.ok;
+  }catch(e){ return false; }
 }
 
 /* 진입 */

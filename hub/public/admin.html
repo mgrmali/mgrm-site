@@ -70,6 +70,12 @@
       <div class="ds">매출 · 매입 · 부가세 · 미수금</div>
       <div id="badgeInv"></div>
     </a>
+    <a class="tile adminOnly" href="reviews.html">
+      <div class="ic">🎞️</div>
+      <div class="tt">리뷰 · 납품</div>
+      <div class="ds">컬러리버브 리뷰 링크 · 코멘트 · 납품 · 문진 · 문의</div>
+      <div id="badgeRev"></div>
+    </a>
     <a class="tile" href="https://diary.mgrm.kr/">
       <div class="ic">🎨</div>
       <div class="tt">컬러 다이어리</div>
@@ -147,7 +153,7 @@ async function showHub() {
       $('todayLine').textContent += ` · ${D.company}`;
     }
     renderDue(D); renderStat(D); renderProj(D); renderInv(D);
-    renderVault(D); renderBoard(D); renderSub(D);
+    renderVault(D); renderBoard(D); renderSub(D); renderRev(D);
   };
   try {
     await WCT.loadThenRefresh(draw);   // 캐시로 먼저 그리고 뒤에서 갱신
@@ -256,6 +262,31 @@ function renderProj(D) {
   $('badgeProj').innerHTML = soon.length
     ? `<span class="badge ${over ? 'bad' : 'hot'}">${over ? '마감 초과' : `마감 임박 ${soon.length}건`}</span>`
     : `<span class="badge">진행 ${act.length}건</span>`;
+}
+
+function renderSub(D) {
+  if (!WCT.isAdmin()) return;
+  const list = (D.submissions || []).filter((s) => s.status === '대기').slice(0, 5);
+  $('wSub').innerHTML = list.length
+    ? '<table><thead><tr><th>수신</th><th>구분</th><th>라벨</th><th></th></tr></thead><tbody>' +
+      list.map((s) => `<tr><td class="dim">${esc(s.at)}</td><td>${esc(s.kind)}</td>
+        <td>${esc(s.label || '-')}</td><td style="text-align:right">
+        <a class="pill wait" href="withholding.html">확인하기</a></td></tr>`).join('') +
+      '</tbody></table>'
+    : '<div class="dim">확인할 새 제출이 없습니다.</div>';
+}
+
+function renderRev(D) {
+  const u = (D.reviews && D.reviews.unread) || {};
+  const parts = [];
+  if (u.comments) parts.push(`코멘트 ${u.comments}`);
+  if (u.records) parts.push(`수령 ${u.records}`);
+  if (u.intakes) parts.push(`문진 ${u.intakes}`);
+  if (u.inquiries) parts.push(`문의 ${u.inquiries}`);
+  const open = ((D.reviews && D.reviews.projects) || []).filter((p) => p.active).length;
+  $('badgeRev').innerHTML = parts.length
+    ? `<span class="badge hot">새 ${parts.join(' · ')}</span>`
+    : (open ? `<span class="badge">리뷰 ${open}건 열림</span>` : '');
 }
 
 function renderVault(D) {

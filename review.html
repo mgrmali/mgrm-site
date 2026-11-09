@@ -187,29 +187,25 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent)}
 <script>
 /* ═══════════════════════════════════════════
    설정은 이 한 줄뿐입니다.
-   프로젝트는 구글 시트 '리뷰프로젝트' 탭에서 관리합니다.
+   프로젝트는 업무 허브(hub.mgrm.kr) → 리뷰·납품 화면에서 관리합니다.
    ═══════════════════════════════════════════ */
-const ENDPOINT = "https://script.google.com/macros/s/AKfycbxMgNVVuNMrzjTKSyXSd_lG4YI2BcBD0QI7-rh25Jv0J1xZr2qEB7PTS9CEzkes7bAF5g/exec";
+const ENDPOINT = "https://hub.mgrm.kr/api/public";   // 업무 허브(NAS 저장)
 
 const $ = s => document.querySelector(s);
 const key = new URLSearchParams(location.search).get('p') || '';
 const v = $('#v');
 let FPS = 24, P = null, comments = [];
 
-/* 앱스스크립트 호출 (JSONP — 도메인이 달라도 안전하게 동작) */
+/* 업무 허브 호출 */
 function ask(params){
-  return new Promise((resolve, reject) => {
-    const cb = 'cb_' + Math.random().toString(36).slice(2);
-    const t = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 15000);
-    function cleanup(){ clearTimeout(t); delete window[cb]; sc.remove(); }
-    window[cb] = data => { cleanup(); resolve(data); };
-    const q = Object.entries(params).map(([k, val]) =>
-      encodeURIComponent(k) + '=' + encodeURIComponent(val)).join('&');
-    const sc = document.createElement('script');
-    sc.src = ENDPOINT + '?' + q + '&callback=' + cb;
-    sc.onerror = () => { cleanup(); reject(new Error('network')); };
-    document.body.appendChild(sc);
-  });
+  const map = { meta:'review.meta', open:'review.open', dmeta:'delivery.meta', dopen:'delivery.open' };
+  const body = Object.assign({}, params, { action: map[params.mode] || params.mode });
+  delete body.mode;
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), 15000);
+  return fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body), signal: ac.signal })
+    .then(r => r.json()).finally(() => clearTimeout(t));
 }
 
 /* 타임코드 */
@@ -389,16 +385,12 @@ function editItem(box, c, txEl, actEl) {
 
 /* 코멘트 전송 */
 async function post(payload){
-  const opts = {
-    method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify(payload)
-  };
-  try{ await fetch(ENDPOINT, opts); return true; }
-  catch(e){
-    try{ await fetch(ENDPOINT, {...opts, mode:'no-cors'}); return true; }
-    catch(e2){ return false; }
-  }
+  try{
+    const r = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload) });
+    const j = await r.json();
+    return !!j.ok;
+  }catch(e){ return false; }
 }
 
 $('#send').addEventListener('click', async () => {

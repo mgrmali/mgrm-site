@@ -884,7 +884,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeYt(); });
 <script>
 /* 작업 문의 폼 → 구글 시트 수신 */
 (function(){
-  var EP = "https://script.google.com/macros/s/AKfycbxMgNVVuNMrzjTKSyXSd_lG4YI2BcBD0QI7-rh25Jv0J1xZr2qEB7PTS9CEzkes7bAF5g/exec";
+  var EP = "https://hub.mgrm.kr/api/public";
   var btn  = document.getElementById('f-send');
   var note = document.getElementById('f-note');
   if(!btn) return;
@@ -923,7 +923,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeYt(); });
 
     var opts = {
       method:'POST',
-      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      headers:{'Content-Type':'application/json'},
       body: JSON.stringify(payload)
     };
 
@@ -936,16 +936,13 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeYt(); });
     }
 
     try{
-      await fetch(EP, opts);
+      var res = await fetch(EP, opts);
+      var j = await res.json();
+      if(!j.ok) throw new Error(j.error || 'fail');
       done();
     }catch(e){
-      try{
-        await fetch(EP, Object.assign({}, opts, {mode:'no-cors'}));
-        done();
-      }catch(e2){
-        btn.disabled = false;
-        say('전송에 실패했습니다. wlsdnr601@mgrm.kr 로 보내주세요.', true);
-      }
+      btn.disabled = false;
+      say('전송에 실패했습니다. wlsdnr601@mgrm.kr 로 보내주세요.', true);
     }
   });
 })();

@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.0.1';
+const VERSION = 'hub-store 1.1.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -88,7 +88,25 @@ const SHEETS = {
              '근로소득인원', '근로소득지급액', '근로소득세', '소득세합계', '지방소득세',
              '홈택스신고일', '위택스신고일', '메모', '기록일',
              '기타소득인원', '기타소득지급액', '기타소득세'],
+  // ── 컬러리버브 리뷰·납품·문진·문의 (예전 앱스스크립트 v2.4 와 같은 열)
+  '리뷰프로젝트': ['키', '작품명', '버전', '영상주소', '비밀번호', '만료일', 'FPS', '활성',
+             '납품허용', '납품안내', '납품만료', '메모', '등록일'],
+  '리뷰코멘트': ['접수시각', '프로젝트키', '작품명', '버전', '타임코드', '초', '작성자', '내용', '처리', '코멘트ID', '읽음'],
+  '납품파일': ['ID', '프로젝트키', '파일명', '구분', '규격', '용량', '체크섬', '링크', '활성'],
+  '납품기록': ['최근수령', '프로젝트키', '작품명', '이름', '소속', '받은파일', '횟수', '최초수령', '읽음'],
+  '문진':   ['접수번호', '접수시각', '담당자', '회사명', '연락처', '이메일',
+             '프로젝트명', '영상 종류', '러닝타임', '컷 수', '게재처', '편집 상태',
+             '납품 희망일', '중간 확인일', '카메라 기종', '촬영 포맷', '프레임레이트', '해상도',
+             '현장 LUT', '멀티 카메라', '편집본 형태', '자막·CG', '촬영 담당자 연락처',
+             '레퍼런스 링크', '레퍼런스에서 좋았던 점', '피하고 싶은 느낌',
+             '피부톤', '브랜드색', '브랜드색 기준', '기존 시리즈', '기존 영상 링크',
+             '최종 전달처', '규격서', '추가 버전', '최종 결정권자', '피드백 담당자', '감수 방식', '리뷰 환경', '기타 참고사항',
+             '동의: 소스 보관', '동의: 수정 범위', '_유입경로', '_lang', '진행 상태', '읽음', '메모'],
+  '문의':   ['접수번호', '접수시각', '이름/회사', '이메일', '문의 분야', '내용', '_유입경로', '진행 상태', '읽음', '메모'],
 };
+const VIDEO_BASE = process.env.VIDEO_BASE || 'https://mgrm.myqnapcloud.com:8081/review/';
+const REVIEW_BASE = process.env.REVIEW_BASE || 'https://mgrm.kr/review.html?p=';
+const DELIVERY_BASE = process.env.DELIVERY_BASE || 'https://mgrm.kr/delivery.html?p=';
 
 const Q = {
   all: db.prepare('SELECT pos, data FROM rows WHERE sheet = ? ORDER BY pos'),
@@ -392,7 +410,159 @@ function public_(b) {
   }
   if (a === 'check') return checkToken_(b.t);
   if (a === 'submit' || (!a && b.token && b.envelope)) return tx_(() => submit_(b));
+  // 컬러리버브 — 예전 폼은 action 없이 '_폼종류' 로 구분해 보냈습니다
+  const kind = String(b['_폼종류'] || '');
+  const ra = a || (kind === '리뷰코멘트' ? 'review.comment' : kind === '납품기록' ? 'delivery.record'
+                : kind === '작업문의' ? 'inquiry' : (b['담당자'] || b['프로젝트명']) ? 'intake' : '');
+  if (ra === 'review.meta') return metaProject_(b.p);
+  if (ra === 'review.open') return openProject_(b.p, b.pw);
+  if (ra === 'review.comment') return tx_(() => handleReview_(b));
+  if (ra === 'delivery.meta') return deliveryMeta_(b.p);
+  if (ra === 'delivery.open') return deliveryOpen_(b.p, b.pw);
+  if (ra === 'delivery.record') return tx_(() => handleDelivery_(b));
+  if (ra === 'intake') return tx_(() => handleIntake_(b));
+  if (ra === 'inquiry') return tx_(() => handleInquiry_(b));
   return { ok: false, error: 'unknown action' };
+}
+
+// ══════════════════════════════════════════ 컬러리버브: 리뷰 · 납품 (공개)
+function isOn_(v) {
+  if (v === true) return true;
+  if (v === false || v == null) return false;
+  const t = String(v).trim().toLowerCase();
+  if (!t) return false;
+  return ['false', '0', 'x', 'no', 'n', 'off', '아니오', '아니요', '꺼짐', '중지'].indexOf(t) < 0;
+}
+function resolveSrc_(v) {
+  const t = String(v || '').trim();
+  if (!t) return '';
+  if (/^https?:\/\//i.test(t)) return t;
+  return VIDEO_BASE + t.replace(/^\/+/, '');
+}
+function isExpired_(v) {
+  if (!v) return false;
+  const d = new Date(String(v).length <= 10 ? String(v) + 'T23:59:59+09:00' : v);
+  if (isNaN(d.getTime())) return false;
+  return d < new Date();
+}
+function findProject_(key) {
+  const r = rows_('리뷰프로젝트').find((x) => String(x['키']).trim() === String(key || '').trim());
+  if (!r) return null;
+  return { row: r, key: String(r['키']).trim(), title: String(r['작품명'] || ''), ver: String(r['버전'] || ''),
+    src: resolveSrc_(r['영상주소']), pw: String(r['비밀번호'] || '').trim(), until: r['만료일'] || '',
+    fps: Number(r['FPS']) || 24, on: isOn_(r['활성']), deliver: isOn_(r['납품허용']),
+    dnote: String(r['납품안내'] || '').trim(), duntil: r['납품만료'] || r['만료일'] || '' };
+}
+function checkProject_(key) {
+  const r = findProject_(key);
+  if (!r) return { ok: false, error: 'none' };
+  if (!r.on) return { ok: false, error: 'off', title: r.title };
+  if (isExpired_(r.until)) return { ok: false, error: 'expired', title: r.title };
+  return { ok: true, row: r };
+}
+function metaProject_(key) {
+  const c = checkProject_(key);
+  if (!c.ok) return c;
+  return { ok: true, title: c.row.title, ver: c.row.ver, need: !!c.row.pw };
+}
+function openProject_(key, pw) {
+  const c = checkProject_(key);
+  if (!c.ok) return c;
+  const r = c.row;
+  if (r.pw && String(pw || '').trim() !== r.pw) return { ok: false, error: 'pw' };
+  const list = rows_('리뷰코멘트').filter((x) => String(x['프로젝트키']).trim() === r.key)
+    .map((x) => ({ id: x['코멘트ID'], tc: x['타임코드'], sec: x['초'], who: x['작성자'], txt: x['내용'] }));
+  return { ok: true, title: r.title, ver: r.ver, src: r.src, fps: r.fps, comments: list,
+    delivery: r.deliver && !isExpired_(r.duntil) };
+}
+function handleReview_(d) {
+  const job = d['작업'] || '등록';
+  const id = String(d['코멘트ID'] || '').trim();
+  if ((job === '수정' || job === '삭제') && id) {
+    const r = rows_('리뷰코멘트').find((x) => String(x['코멘트ID']).trim() === id);
+    if (!r) return { ok: false, error: 'notfound' };
+    if (job === '삭제') remove_(r);
+    else patch_(r, { '내용': d['내용'] || '', '처리': '수정됨 ' + nowStr_().slice(5), '읽음': false });
+    return { ok: true };
+  }
+  // 프로젝트가 실제로 있는지만 확인 (아무 키로나 쌓이지 않게)
+  if (!findProject_(d['프로젝트키'])) return { ok: false, error: 'none' };
+  append_('리뷰코멘트', [nowStr_(), String(d['프로젝트키'] || '').trim(), d['프로젝트'] || '', d['버전'] || '',
+    d['타임코드'] || '', d['초'] || '', d['작성자'] || '', d['내용'] || '', '', id, false]);
+  return { ok: true };
+}
+function checkDelivery_(key) {
+  const r = findProject_(key);
+  if (!r) return { ok: false, error: 'none' };
+  if (!r.on) return { ok: false, error: 'off', title: r.title };
+  if (!r.deliver) return { ok: false, error: 'notready', title: r.title };
+  if (isExpired_(r.duntil)) return { ok: false, error: 'expired', title: r.title };
+  return { ok: true, row: r };
+}
+function deliveryMeta_(key) {
+  const c = checkDelivery_(key);
+  if (!c.ok) return c;
+  return { ok: true, title: c.row.title, ver: c.row.ver, need: !!c.row.pw };
+}
+function listFiles_(key) {
+  return rows_('납품파일').filter((x) => String(x['프로젝트키']).trim() === key && isOn_(x['활성']) && String(x['링크'] || '').trim())
+    .map((x) => ({ name: String(x['파일명'] || ''), kind: String(x['구분'] || ''), spec: String(x['규격'] || ''),
+      size: String(x['용량'] || ''), hash: String(x['체크섬'] || ''), url: String(x['링크'] || '').trim() }));
+}
+function lastReceipt_(key) {
+  const list = rows_('납품기록').filter((x) => String(x['프로젝트키']).trim() === key)
+    .sort((a, b) => String(b['최근수령']).localeCompare(String(a['최근수령'])));
+  if (!list.length) return null;
+  const r = list[0];
+  return { who: String(r['이름'] || ''), org: String(r['소속'] || ''), files: String(r['받은파일'] || ''), at: fmt_(r['최근수령']) };
+}
+function deliveryOpen_(key, pw) {
+  const c = checkDelivery_(key);
+  if (!c.ok) return c;
+  const r = c.row;
+  if (r.pw && String(pw || '').trim() !== r.pw) return { ok: false, error: 'pw' };
+  return { ok: true, title: r.title, ver: r.ver, expires: ymd_(r.duntil), note: r.dnote,
+    files: listFiles_(r.key), received: lastReceipt_(r.key) };
+}
+function handleDelivery_(d) {
+  const key = String(d['프로젝트키'] || '').trim(), title = String(d['작품명'] || '').trim();
+  const who = String(d['이름'] || '').trim(), org = String(d['소속'] || '').trim(), file = String(d['파일명'] || '').trim();
+  if (!key || !who) return { ok: false, error: 'noname' };
+  if (!findProject_(key)) return { ok: false, error: 'none' };
+  const r = rows_('납품기록').find((x) => String(x['프로젝트키']).trim() === key &&
+    String(x['이름']).trim() === who && String(x['소속']).trim() === org);
+  if (r) {
+    const files = String(r['받은파일'] || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const isNew = file && files.indexOf(file) < 0;
+    if (isNew) files.push(file);
+    patch_(r, { '최근수령': nowStr_(), '받은파일': files.join(', '), '횟수': (Number(r['횟수']) || 0) + 1,
+      '최초수령': r['최초수령'] || nowStr_(), '읽음': isNew ? false : r['읽음'] });
+  } else {
+    append_('납품기록', [nowStr_(), key, title, who, org, file, 1, nowStr_(), false]);
+  }
+  return { ok: true };
+}
+
+// ══════════════════════════════════════════ 컬러리버브: 문진 · 문의 (공개)
+function ticket_(sheet, prefix) {
+  const pre = prefix + kst_().slice(2, 10).replace(/-/g, '') + '-';
+  const n = rows_(sheet).filter((r) => String(r['접수번호']).indexOf(pre) === 0).length;
+  return pre + ('0' + (n + 1)).slice(-2);
+}
+function handleIntake_(d) {
+  const o = {};
+  SHEETS['문진'].forEach((h) => { o[h] = d[h] === undefined ? '' : String(d[h]).slice(0, 4000); });
+  o['접수번호'] = ticket_('문진', 'MGRM-'); o['접수시각'] = nowStr_(); o['진행 상태'] = '접수'; o['읽음'] = false;
+  append_('문진', o);
+  return { ok: true, no: o['접수번호'] };
+}
+function handleInquiry_(d) {
+  const o = {};
+  SHEETS['문의'].forEach((h) => { o[h] = d[h] === undefined ? '' : String(d[h]).slice(0, 4000); });
+  if (!o['내용'] && !o['이메일']) return { ok: false, error: '내용이 비어 있습니다.' };
+  o['접수번호'] = ticket_('문의', 'MGRM-Q-'); o['접수시각'] = nowStr_(); o['진행 상태'] = '접수'; o['읽음'] = false;
+  append_('문의', o);
+  return { ok: true, no: o['접수번호'] };
 }
 
 function submit_(b) {
@@ -775,6 +945,72 @@ function admin_(a, b, who) {
       return { ok: true, updated: false };
     }
 
+    // ── 컬러리버브 관리 (관리자)
+    case 'review.project.save': {
+      let key = String(b.key || '').trim();
+      const r = key ? rows_('리뷰프로젝트').find((x) => String(x['키']).trim() === key) : null;
+      const set = { '작품명': b.title, '버전': b.ver, '영상주소': b.src, '비밀번호': b.pw, '만료일': b.until,
+        'FPS': b.fps, '활성': b.active, '납품허용': b.deliver, '납품안내': b.dnote, '납품만료': b.duntil, '메모': b.memo };
+      if (r) { patch_(r, set); return { ok: true, key, link: REVIEW_BASE + key, dlink: DELIVERY_BASE + key }; }
+      if (!key) {
+        do { key = crypto.randomBytes(4).toString('base64url').replace(/[^a-z0-9]/gi, '').slice(0, 6).toLowerCase(); }
+        while (key.length < 5 || rows_('리뷰프로젝트').some((x) => String(x['키']).trim() === key));
+      }
+      append_('리뷰프로젝트', [key, b.title || '', b.ver || '', b.src || '', b.pw || '', b.until || '',
+        Number(b.fps) || 24, b.active !== false, !!b.deliver, b.dnote || '', b.duntil || '', b.memo || '', nowStr_()]);
+      return { ok: true, key, link: REVIEW_BASE + key, dlink: DELIVERY_BASE + key };
+    }
+    case 'review.project.delete': {
+      const key = String(b.key || '').trim();
+      const r = rows_('리뷰프로젝트').find((x) => String(x['키']).trim() === key);
+      if (r) remove_(r);
+      if (b.withData) {
+        ['리뷰코멘트', '납품파일', '납품기록'].forEach((n) =>
+          rows_(n).filter((x) => String(x['프로젝트키']).trim() === key).forEach(remove_));
+      }
+      return { ok: true };
+    }
+    case 'review.file.save': {
+      const r = b.id ? byId_('납품파일', b.id) : null;
+      const set = { '프로젝트키': b.key, '파일명': b.name, '구분': b.kind, '규격': b.spec, '용량': b.size,
+        '체크섬': b.hash, '링크': b.url, '활성': b.active };
+      if (r) { patch_(r, set); return { ok: true, id: r.ID }; }
+      const id = nextId_('납품파일');
+      append_('납품파일', [id, b.key, b.name || '', b.kind || '', b.spec || '', b.size || '', b.hash || '', b.url || '', b.active !== false]);
+      return { ok: true, id };
+    }
+    case 'review.file.delete': { const r = byId_('납품파일', b.id); if (r) remove_(r); return { ok: true }; }
+    case 'review.comment.set': {
+      const r = rows_('리뷰코멘트').find((x) => String(x['코멘트ID']) === String(b.id));
+      if (r) patch_(r, { '처리': b.done === undefined ? undefined : (b.done ? '완료 ' + nowStr_().slice(5) : ''), '읽음': b.read });
+      return { ok: true };
+    }
+    case 'review.comment.delete': {
+      const r = rows_('리뷰코멘트').find((x) => String(x['코멘트ID']) === String(b.id));
+      if (r) remove_(r);
+      return { ok: true };
+    }
+    case 'review.markRead': {
+      const map = { comments: '리뷰코멘트', records: '납품기록', intakes: '문진', inquiries: '문의' };
+      (b.kinds || Object.keys(map)).forEach((k) => {
+        if (!map[k]) return;
+        rows_(map[k]).forEach((r) => { if (!isTrue_(r['읽음'])) patch_(r, { '읽음': true }); });
+      });
+      return { ok: true };
+    }
+    case 'intake.set': {
+      const r = rows_('문진').find((x) => String(x['접수번호']) === String(b.no));
+      if (r) patch_(r, { '진행 상태': b.status, '메모': b.memo, '읽음': b.read });
+      return { ok: true };
+    }
+    case 'intake.delete': { const r = rows_('문진').find((x) => String(x['접수번호']) === String(b.no)); if (r) remove_(r); return { ok: true }; }
+    case 'inquiry.set': {
+      const r = rows_('문의').find((x) => String(x['접수번호']) === String(b.no));
+      if (r) patch_(r, { '진행 상태': b.status, '메모': b.memo, '읽음': b.read });
+      return { ok: true };
+    }
+    case 'inquiry.delete': { const r = rows_('문의').find((x) => String(x['접수번호']) === String(b.no)); if (r) remove_(r); return { ok: true }; }
+
     case 'company.set':
       if (b.company !== undefined) cfgSet_('회사명', b.company);
       ['사업자번호', '대표자', '사업장주소', '업태', '종목', '계산서이메일', '계산서안내',
@@ -861,11 +1097,38 @@ function bootstrapAdmin_(who) {
       wageGross: Number(r['근로소득지급액']) || 0, wageTax: Number(r['근로소득세']) || 0,
       totalTax: Number(r['소득세합계']) || 0, localTax: Number(r['지방소득세']) || 0,
       hometax: fmt_(r['홈택스신고일']), wetax: fmt_(r['위택스신고일']), memo: String(r['메모'] || '') })),
+    reviews: reviewsBundle_(),
     company: cfgGet_('회사명') || COMPANY_DEFAULT['회사명'],
     companyInfo: companyInfo_(),
     rates: rates_(),
     role: 'admin',
     me: { name: who.name || who.user, userId: who.user } };
+}
+
+function reviewsBundle_() {
+  const projects = rows_('리뷰프로젝트').map((r) => ({ key: String(r['키']).trim(), title: String(r['작품명'] || ''),
+    ver: String(r['버전'] || ''), src: String(r['영상주소'] || ''), srcFull: resolveSrc_(r['영상주소']),
+    pw: String(r['비밀번호'] || ''), until: ymd_(r['만료일']), fps: Number(r['FPS']) || 24, active: isOn_(r['활성']),
+    deliver: isOn_(r['납품허용']), dnote: String(r['납품안내'] || ''), duntil: ymd_(r['납품만료']),
+    memo: String(r['메모'] || ''), createdAt: fmt_(r['등록일']),
+    link: REVIEW_BASE + String(r['키']).trim(), dlink: DELIVERY_BASE + String(r['키']).trim() }));
+  const comments = rows_('리뷰코멘트').map((r) => ({ id: String(r['코멘트ID'] || ''), at: fmt_(r['접수시각']),
+    key: String(r['프로젝트키'] || '').trim(), title: String(r['작품명'] || ''), ver: String(r['버전'] || ''),
+    tc: String(r['타임코드'] || ''), sec: r['초'], who: String(r['작성자'] || ''), txt: String(r['내용'] || ''),
+    done: String(r['처리'] || ''), read: isTrue_(r['읽음']) }));
+  const files = rows_('납품파일').map((r) => ({ id: Number(r['ID']), key: String(r['프로젝트키'] || '').trim(),
+    name: String(r['파일명'] || ''), kind: String(r['구분'] || ''), spec: String(r['규격'] || ''), size: String(r['용량'] || ''),
+    hash: String(r['체크섬'] || ''), url: String(r['링크'] || ''), active: isOn_(r['활성']) }));
+  const records = rows_('납품기록').map((r) => ({ at: fmt_(r['최근수령']), key: String(r['프로젝트키'] || '').trim(),
+    title: String(r['작품명'] || ''), who: String(r['이름'] || ''), org: String(r['소속'] || ''),
+    files: String(r['받은파일'] || ''), count: Number(r['횟수']) || 0, first: fmt_(r['최초수령']), read: isTrue_(r['읽음']) }));
+  const intakes = rows_('문진').map((r) => { const o = {}; SHEETS['문진'].forEach((h) => { o[h] = r[h] == null ? '' : r[h]; });
+    o['읽음'] = isTrue_(r['읽음']); return o; });
+  const inquiries = rows_('문의').map((r) => { const o = {}; SHEETS['문의'].forEach((h) => { o[h] = r[h] == null ? '' : r[h]; });
+    o['읽음'] = isTrue_(r['읽음']); return o; });
+  return { projects, comments, files, records, intakes, inquiries,
+    unread: { comments: comments.filter((c) => !c.read).length, records: records.filter((c) => !c.read).length,
+              intakes: intakes.filter((c) => !c['읽음']).length, inquiries: inquiries.filter((c) => !c['읽음']).length } };
 }
 
 function bootstrapPd_(who) {

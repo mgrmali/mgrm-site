@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>리뷰·납품 · 맹그라미</title>
+<link rel="stylesheet" href="wct-style.css">
+<style>
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .tabs button{padding:8px 14px;background:var(--card);border:1px solid var(--line);
+    border-radius:20px;color:var(--dim);font-size:12.5px;font-family:inherit;cursor:pointer;position:relative}
+  .tabs button.on{border-color:var(--accent);color:var(--accent);background:#1e1a10}
+  .tabs .n{display:inline-block;min-width:16px;padding:0 5px;margin-left:6px;border-radius:10px;
+    background:var(--bad);color:#fff;font-size:10.5px;line-height:16px;text-align:center}
+  .proj{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+  .proj.off{opacity:.55}
+  .proj .hd{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .proj .tt{font-weight:700;font-size:15px}
+  .proj .key{font-family:monospace;color:var(--dim);font-size:12px}
+  .proj .meta{color:var(--dim);font-size:12px;margin-top:4px;line-height:1.7}
+  .proj .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .cm{padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .cm:last-child{border-bottom:0}
+  .cm.unread{border-left:3px solid var(--warn);padding-left:10px}
+  .cm .tc{font-family:monospace;color:var(--accent);margin-right:8px}
+  .cm .who{color:var(--dim);font-size:12px}
+  .cm .txt{white-space:pre-wrap;margin-top:4px;line-height:1.6}
+  .cm .done{color:var(--ok);font-size:11.5px}
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:4px 12px;font-size:13px;line-height:1.6}
+  .kv b{color:var(--dim);font-weight:500}
+  .filelist td{vertical-align:middle}
+  .small{font-size:12px;color:var(--dim)}
+  .copy{cursor:pointer;text-decoration:underline dotted}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="tabs">
+    <button class="on" data-tab="projects">리뷰 프로젝트</button>
+    <button data-tab="comments">코멘트<span class="n hide" id="nComments"></span></button>
+    <button data-tab="records">수령 기록<span class="n hide" id="nRecords"></span></button>
+    <button data-tab="intakes">문진<span class="n hide" id="nIntakes"></span></button>
+    <button data-tab="inquiries">문의<span class="n hide" id="nInquiries"></span></button>
+  </div>
+
+  <!-- ══ 프로젝트 ══ -->
+  <section id="tab-projects">
+    <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">리뷰 프로젝트</h2>
+        <button class="b" id="btnNewProj">＋ 새 프로젝트</button>
+      </div>
+      <div class="note">
+        영상은 NAS <b>review</b> 폴더에 올리고, 여기엔 <b>파일 이름만</b> 적으면 됩니다
+        (예: <code>lucky7_v2.mp4</code>). 전체 주소를 적어도 됩니다.<br>
+        리뷰 링크와 납품 링크는 자동으로 만들어져요. 클라이언트에게는 링크와 비밀번호만 보내면 됩니다.
+      </div>
+      <label style="display:flex;align-items:center;gap:7px;color:var(--dim);font-size:12.5px;margin:0 0 12px">
+        <input type="checkbox" id="showOff" style="width:auto"> 닫힌 프로젝트도 보기
+      </label>
+      <div id="projList"></div>
+    </div>
+  </section>
+
+  <!-- ══ 코멘트 ══ -->
+  <section id="tab-comments" class="hide">
+    <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">리뷰 코멘트</h2>
+        <select id="cmFilter" style="width:auto"></select>
+        <button class="g" id="btnReadComments">모두 읽음</button>
+      </div>
+      <div id="cmList"></div>
+    </div>
+  </section>
+
+  <!-- ══ 수령 기록 ══ -->
+  <section id="tab-records" class="hide">
+    <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">납품 수령 기록</h2>
+        <button class="g" id="btnReadRecords">모두 읽음</button>
+      </div>
+      <div class="note">클라이언트가 납품 페이지에서 "내려받기"를 누르면 여기 남습니다. 이름·소속이 같으면 한 줄로 합쳐집니다.</div>
+      <table><thead><tr><th>최근 수령</th><th>작품</th><th>이름 (소속)</th><th>받은 파일</th><th>횟수</th></tr></thead>
+        <tbody id="recTb"></tbody></table>
+    </div>
+  </section>
+
+  <!-- ══ 문진 ══ -->
+  <section id="tab-intakes" class="hide">
+    <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">색보정 사전 문진</h2>
+        <button class="g" id="btnReadIntakes">모두 읽음</button>
+      </div>
+      <div id="intakeList"></div>
+    </div>
+  </section>
+
+  <!-- ══ 문의 ══ -->
+  <section id="tab-inquiries" class="hide">
+    <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">홈페이지 작업 문의</h2>
+        <button class="g" id="btnReadInquiries">모두 읽음</button>
+      </div>
+      <div id="inquiryList"></div>
+    </div>
+  </section>
+</div>
+
+<!-- 프로젝트 편집 -->
+<dialog id="pDlg" style="max-width:640px;width:95vw">
+  <div style="display:flex;gap:12px;align-items:center">
+    <h2 style="flex:1;margin:0" id="pTitle">새 리뷰 프로젝트</h2>
+    <button class="g sm" onclick="$('pDlg').close()">닫기</button>
+  </div>
+  <div class="row r2" style="margin-top:14px">
+    <div><label>작품명</label><input id="pName" placeholder="예: 럭키세븐 TVC"></div>
+    <div><label>버전</label><input id="pVer" placeholder="예: v2"></div>
+  </div>
+  <label>영상 (파일명 또는 전체 주소)</label>
+  <input id="pSrc" placeholder="lucky7_v2.mp4">
+  <div class="row r3">
+    <div><label>비밀번호 (비우면 없음)</label><input id="pPw" autocomplete="off"></div>
+    <div><label>리뷰 만료일</label><input id="pUntil" type="date"></div>
+    <div><label>FPS</label><input id="pFps" inputmode="decimal" placeholder="24"></div>
+  </div>
+  <div class="bar" style="margin:10px 0 0">
+    <label style="margin:0;display:flex;align-items:center;gap:7px"><input type="checkbox" id="pActive" checked style="width:auto"> 리뷰 열기</label>
+    <label style="margin:0;display:flex;align-items:center;gap:7px"><input type="checkbox" id="pDeliver" style="width:auto"> 납품 허용</label>
+  </div>
+  <div class="row r2">
+    <div><label>납품 만료일 (비우면 리뷰 만료일)</label><input id="pDuntil" type="date"></div>
+    <div><label>납품 안내 문구</label><input id="pDnote" placeholder="예: 원본 2종, 체크섬 확인 후 사용"></div>
+  </div>
+  <label>메모 (내부용)</label>
+  <input id="pMemo">
+  <div class="bar" style="margin-top:16px">
+    <button class="b" id="pSave">저장</button>
+    <button class="g" id="pDelete" style="margin-left:auto;color:var(--bad)">삭제</button>
+  </div>
+  <div class="msg hide" id="pMsg"></div>
+</dialog>
+
+<!-- 납품 파일 -->
+<dialog id="fDlg" style="max-width:720px;width:95vw">
+  <div style="display:flex;gap:12px;align-items:center">
+    <h2 style="flex:1;margin:0" id="fTitle">납품 파일</h2>
+    <button class="g sm" onclick="$('fDlg').close()">닫기</button>
+  </div>
+  <div class="note" style="margin-top:12px">NAS 에서 파일 공유 링크를 만들어 <b>링크</b> 칸에 붙여넣으세요. 링크가 없는 줄은 클라이언트에게 보이지 않습니다.</div>
+  <table class="filelist"><thead><tr><th>파일명</th><th>구분</th><th>규격</th><th>용량</th><th>링크</th><th>공개</th><th></th></tr></thead>
+    <tbody id="fTb"></tbody></table>
+  <div class="row r3" style="margin-top:12px">
+    <div><label>파일명</label><input id="fName" placeholder="lucky7_master_ProRes422HQ.mov"></div>
+    <div><label>구분</label><input id="fKind" placeholder="마스터 / 웹용 / 자막"></div>
+    <div><label>규격</label><input id="fSpec" placeholder="3840×2160 · ProRes 422 HQ · 23.976"></div>
+  </div>
+  <div class="row r3">
+    <div><label>용량</label><input id="fSize" placeholder="12.4 GB"></div>
+    <div><label>체크섬 (선택)</label><input id="fHash" placeholder="xxh64 …"></div>
+    <div><label>링크</label><input id="fUrl" placeholder="https://mgrm.myqnapcloud.com/share.cgi?..."></div>
+  </div>
+  <div class="bar" style="margin-top:12px"><button class="b" id="fAdd">파일 추가</button></div>
+  <div class="msg hide" id="fMsg"></div>
+</dialog>
+
+<!-- 문진 상세 -->
+<dialog id="iDlg" style="max-width:720px;width:95vw">
+  <div style="display:flex;gap:12px;align-items:center">
+    <h2 style="flex:1;margin:0" id="iTitle">문진</h2>
+    <button class="g sm" onclick="$('iDlg').close()">닫기</button>
+  </div>
+  <div class="bar" style="margin:12px 0">
+    <select id="iStatus" style="width:auto"><option>접수</option><option>검토 중</option><option>견적 발송</option><option>진행</option><option>완료</option><option>보류</option></select>
+    <input id="iMemo" placeholder="내부 메모" style="flex:1">
+    <button class="b sm" id="iSave">저장</button>
+    <button class="g sm" id="iDelete" style="color:var(--bad)">삭제</button>
+  </div>
+  <div class="kv" id="iBody"></div>
+</dialog>
+
+<script src="wct-core.js"></script>
+<script>
+(async function boot() {
+  if (!await WCT.requireAuth(true)) return;
+  mountHeader('리뷰 · 납품');
+  await WCT.loadThenRefresh(renderAll);
+  window.__onReload = renderAll;
+})();
+
+const R = () => (WCT.data && WCT.data.reviews) || { projects: [], comments: [], files: [], records: [], intakes: [], inquiries: [], unread: {} };
+let TAB = 'projects', EDIT_KEY = '', FILE_KEY = '', INTAKE_NO = '', INTAKE_KIND = 'intake';
+
+document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
+  TAB = b.dataset.tab;
+  document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
+  ['projects', 'comments', 'records', 'intakes', 'inquiries'].forEach((t) => $('tab-' + t).classList.toggle('hide', t !== TAB));
+});
+if (location.hash) { const b = document.querySelector(`.tabs button[data-tab="${location.hash.slice(1)}"]`); if (b) b.click(); }
+
+function renderAll() {
+  const u = R().unread || {};
+  [['nComments', u.comments], ['nRecords', u.records], ['nIntakes', u.intakes], ['nInquiries', u.inquiries]].forEach(([id, n]) => {
+    $(id).textContent = n || ''; $(id).classList.toggle('hide', !n);
+  });
+  renderProjects(); renderComments(); renderRecords(); renderIntakes(); renderInquiries();
+}
+
+/* ══ 프로젝트 ══ */
+$('showOff').onchange = renderProjects;
+function renderProjects() {
+  const list = R().projects.slice().reverse().filter((p) => $('showOff').checked || p.active);
+  const cms = R().comments, recs = R().records, files = R().files;
+  $('projList').innerHTML = list.length ? list.map((p) => {
+    const nc = cms.filter((c) => c.key === p.key).length, nu = cms.filter((c) => c.key === p.key && !c.read).length;
+    const nf = files.filter((f) => f.key === p.key && f.active).length;
+    const nr = recs.filter((r) => r.key === p.key).length;
+    const exp = p.until && new Date(p.until + 'T23:59:59') < new Date();
+    return `<div class="proj ${p.active ? '' : 'off'}">
+      <div class="hd"><span class="tt">${esc(p.title || '(제목 없음)')}</span><span class="dim">${esc(p.ver)}</span>
+        <span class="key">${esc(p.key)}</span>
+        ${p.active ? (exp ? '<span class="pill bad">만료</span>' : '<span class="pill done">열림</span>') : '<span class="pill">닫힘</span>'}
+        ${p.deliver ? '<span class="pill wait">납품 허용</span>' : ''}
+        ${p.pw ? '' : '<span class="pill">비밀번호 없음</span>'}</div>
+      <div class="meta">영상: ${esc(p.src || '-')}${p.until ? ' · 만료 ' + esc(p.until) : ''} · ${p.fps}fps
+        · 코멘트 ${nc}${nu ? ` <b style="color:var(--warn)">(새 ${nu})</b>` : ''} · 납품 파일 ${nf} · 수령 ${nr}건
+        ${p.memo ? '<br>메모: ' + esc(p.memo) : ''}</div>
+      <div class="acts">
+        <button class="g sm" onclick="copyLink('${esc(p.key)}','review')">리뷰 링크 복사</button>
+        <button class="g sm" onclick="copyLink('${esc(p.key)}','delivery')">납품 링크 복사</button>
+        <button class="g sm" onclick="copyMail('${esc(p.key)}')">안내 문구 복사</button>
+        <a class="g sm" style="text-decoration:none;display:inline-block" href="${esc(p.link)}" target="_blank">열어보기 ↗</a>
+        <span style="flex:1"></span>
+        <button class="g sm" onclick="openFiles('${esc(p.key)}')">납품 파일 (${nf})</button>
+        <button class="g sm" onclick="openProj('${esc(p.key)}')">편집</button>
+      </div></div>`;
+  }).join('') : '<div class="dim">리뷰 프로젝트가 없습니다. "새 프로젝트"로 만들어 보세요.</div>';
+}
+function proj(key) { return R().projects.find((p) => p.key === key); }
+async function copyLink(key, which) {
+  const p = proj(key); if (!p) return;
+  await copyText(which === 'review' ? p.link : p.dlink);
+  toast((which === 'review' ? '리뷰' : '납품') + ' 링크를 복사했습니다.');
+}
+async function copyMail(key) {
+  const p = proj(key); if (!p) return;
+  const body = `${p.title}${p.ver ? ' ' + p.ver : ''} 리뷰 링크입니다.\n\n${p.link}\n${p.pw ? '비밀번호: ' + p.pw + '\n' : ''}\n수정이 필요한 지점에서 코멘트를 남겨주시면 그 시점이 함께 기록됩니다.`;
+  await copyText(body); toast('안내 문구를 복사했습니다.');
+}
+$('btnNewProj').onclick = () => openProj('');
+function openProj(key) {
+  EDIT_KEY = key;
+  const p = proj(key) || { title: '', ver: '', src: '', pw: '', until: '', fps: 24, active: true, deliver: false, duntil: '', dnote: '', memo: '' };
+  $('pTitle').textContent = key ? `편집 · ${p.title} (${key})` : '새 리뷰 프로젝트';
+  $('pName').value = p.title; $('pVer').value = p.ver; $('pSrc').value = p.src; $('pPw').value = p.pw;
+  $('pUntil').value = p.until || ''; $('pFps').value = p.fps || 24; $('pActive').checked = !!p.active;
+  $('pDeliver').checked = !!p.deliver; $('pDuntil').value = p.duntil || ''; $('pDnote').value = p.dnote; $('pMemo').value = p.memo;
+  $('pDelete').classList.toggle('hide', !key);
+  $('pMsg').className = 'msg hide';
+  $('pDlg').showModal();
+}
+$('pSave').onclick = async () => {
+  const m = $('pMsg'); m.className = 'msg hide';
+  if (!$('pName').value.trim()) { m.className = 'msg bad'; m.textContent = '작품명을 적어주세요.'; return; }
+  $('pSave').disabled = true;
+  try {
+    const r = await WCT.api('review.project.save', { key: EDIT_KEY || undefined, title: $('pName').value.trim(), ver: $('pVer').value.trim(),
+      src: $('pSrc').value.trim(), pw: $('pPw').value.trim(), until: $('pUntil').value, fps: Number($('pFps').value) || 24,
+      active: $('pActive').checked, deliver: $('pDeliver').checked, duntil: $('pDuntil').value, dnote: $('pDnote').value.trim(),
+      memo: $('pMemo').value.trim() });
+    await WCT.load(true); renderAll();
+    m.className = 'msg ok'; m.textContent = `저장했습니다. 리뷰 링크: ${r.link}`;
+    if (!EDIT_KEY) { EDIT_KEY = r.key; $('pTitle').textContent = `편집 · ${$('pName').value.trim()} (${r.key})`; $('pDelete').classList.remove('hide'); }
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { $('pSave').disabled = false; }
+};
+$('pDelete').onclick = async () => {
+  if (!EDIT_KEY) return;
+  if (!confirm('이 프로젝트를 삭제할까요? 코멘트·납품 파일·수령 기록도 함께 지워집니다.')) return;
+  await WCT.api('review.project.delete', { key: EDIT_KEY, withData: true });
+  await WCT.load(true); renderAll(); $('pDlg').close(); toast('삭제했습니다.');
+};
+
+/* ══ 납품 파일 ══ */
+function openFiles(key) {
+  FILE_KEY = key; const p = proj(key);
+  $('fTitle').textContent = `납품 파일 · ${p ? p.title : key}`;
+  renderFiles(); $('fMsg').className = 'msg hide'; $('fDlg').showModal();
+}
+function renderFiles() {
+  const list = R().files.filter((f) => f.key === FILE_KEY);
+  $('fTb').innerHTML = list.length ? list.map((f) => `<tr>
+    <td>${esc(f.name)}</td><td>${esc(f.kind)}</td><td class="small">${esc(f.spec)}</td><td>${esc(f.size)}</td>
+    <td class="small">${f.url ? `<a href="${esc(f.url)}" target="_blank">링크 ↗</a>` : '<span style="color:var(--bad)">없음</span>'}</td>
+    <td><input type="checkbox" ${f.active ? 'checked' : ''} onchange="toggleFile(${f.id}, this.checked)" style="width:auto"></td>
+    <td style="text-align:right"><button class="g sm" onclick="delFile(${f.id})">삭제</button></td></tr>`).join('')
+    : '<tr><td colspan="7" class="dim">등록한 파일이 없습니다.</td></tr>';
+}
+$('fAdd').onclick = async () => {
+  const m = $('fMsg'); m.className = 'msg hide';
+  if (!$('fName').value.trim()) { m.className = 'msg bad'; m.textContent = '파일명을 적어주세요.'; return; }
+  try {
+    await WCT.api('review.file.save', { key: FILE_KEY, name: $('fName').value.trim(), kind: $('fKind').value.trim(),
+      spec: $('fSpec').value.trim(), size: $('fSize').value.trim(), hash: $('fHash').value.trim(), url: $('fUrl').value.trim(), active: true });
+    ['fName', 'fKind', 'fSpec', 'fSize', 'fHash', 'fUrl'].forEach((id) => { $(id).value = ''; });
+    await WCT.load(true); renderFiles(); renderProjects();
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+};
+async function toggleFile(id, on) { await WCT.api('review.file.save', { id, active: on }); WCT.syncLater(); }
+async function delFile(id) { if (!confirm('이 파일 항목을 지울까요?')) return; await WCT.api('review.file.delete', { id }); await WCT.load(true); renderFiles(); renderProjects(); }
+
+/* ══ 코멘트 ══ */
+function renderComments() {
+  const sel = $('cmFilter'); const cur = sel.value;
+  sel.innerHTML = '<option value="">전체 프로젝트</option>' + R().projects.slice().reverse()
+    .map((p) => `<option value="${esc(p.key)}">${esc(p.title)} ${esc(p.ver)}</option>`).join('');
+  sel.value = cur;
+  const list = R().comments.filter((c) => !sel.value || c.key === sel.value).slice().reverse();
+  $('cmList').innerHTML = list.length ? list.map((c) => `<div class="cm ${c.read ? '' : 'unread'}">
+    <span class="tc">${esc(c.tc || '—')}</span><b>${esc(c.title)}</b> <span class="dim">${esc(c.ver)}</span>
+    <span class="who"> · ${esc(c.who || '이름 없음')} · ${esc(c.at)}</span>
+    ${c.done ? `<span class="done"> · ${esc(c.done)}</span>` : ''}
+    <div class="txt">${esc(c.txt)}</div>
+    <div class="bar" style="margin:8px 0 0">
+      <button class="g sm" onclick="cmDone('${esc(c.id)}', ${c.done.startsWith('완료') ? 'false' : 'true'})">${c.done.startsWith('완료') ? '완료 취소' : '처리 완료'}</button>
+      <button class="g sm" onclick="cmDel('${esc(c.id)}')">삭제</button></div></div>`).join('')
+    : '<div class="dim">코멘트가 없습니다.</div>';
+}
+$('cmFilter').onchange = renderComments;
+async function cmDone(id, done) { await WCT.api('review.comment.set', { id, done, read: true }); await WCT.load(true); renderAll(); }
+async function cmDel(id) { if (!confirm('이 코멘트를 지울까요?')) return; await WCT.api('review.comment.delete', { id }); await WCT.load(true); renderAll(); }
+$('btnReadComments').onclick = () => markRead(['comments']);
+$('btnReadRecords').onclick = () => markRead(['records']);
+$('btnReadIntakes').onclick = () => markRead(['intakes']);
+$('btnReadInquiries').onclick = () => markRead(['inquiries']);
+async function markRead(kinds) { await WCT.api('review.markRead', { kinds }); await WCT.load(true); renderAll(); }
+
+/* ══ 수령 기록 ══ */
+function renderRecords() {
+  const list = R().records.slice().sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  $('recTb').innerHTML = list.length ? list.map((r) => `<tr style="${r.read ? '' : 'color:var(--warn)'}">
+    <td>${esc(r.at)}</td><td>${esc(r.title || r.key)}</td><td>${esc(r.who)}${r.org ? ' (' + esc(r.org) + ')' : ''}</td>
+    <td class="small">${esc(r.files)}</td><td>${r.count}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="dim">아직 수령 기록이 없습니다.</td></tr>';
+}
+
+/* ══ 문진 · 문의 ══ */
+const INTAKE_MAIN = ['프로젝트명', '담당자', '회사명', '연락처', '이메일', '영상 종류', '러닝타임', '납품 희망일', '진행 상태'];
+function renderIntakes() {
+  const list = R().intakes.slice().reverse();
+  $('intakeList').innerHTML = list.length ? list.map((i) => `<div class="cm ${i['읽음'] ? '' : 'unread'}" style="cursor:pointer" onclick="openIntake('intake','${esc(i['접수번호'])}')">
+    <b>${esc(i['프로젝트명'] || '(제목 없음)')}</b> <span class="pill">${esc(i['진행 상태'] || '접수')}</span>
+    <span class="who"> · ${esc(i['담당자'])}${i['회사명'] ? ' / ' + esc(i['회사명']) : ''} · ${esc(i['접수시각'])} · ${esc(i['접수번호'])}</span>
+    <div class="small" style="margin-top:4px">${esc(i['영상 종류'])}${i['러닝타임'] ? ' · ' + esc(i['러닝타임']) : ''}${i['납품 희망일'] ? ' · 납품 희망 ' + esc(i['납품 희망일']) : ''}</div></div>`).join('')
+    : '<div class="dim">접수된 문진이 없습니다.</div>';
+}
+function renderInquiries() {
+  const list = R().inquiries.slice().reverse();
+  $('inquiryList').innerHTML = list.length ? list.map((i) => `<div class="cm ${i['읽음'] ? '' : 'unread'}" style="cursor:pointer" onclick="openIntake('inquiry','${esc(i['접수번호'])}')">
+    <b>${esc(i['이름/회사'] || '(이름 없음)')}</b> <span class="pill">${esc(i['진행 상태'] || '접수')}</span>
+    <span class="who"> · ${esc(i['문의 분야'])} · ${esc(i['이메일'])} · ${esc(i['접수시각'])}</span>
+    <div class="txt small">${esc(String(i['내용'] || '').slice(0, 200))}</div></div>`).join('')
+    : '<div class="dim">접수된 문의가 없습니다.</div>';
+}
+function openIntake(kind, no) {
+  INTAKE_KIND = kind; INTAKE_NO = no;
+  const src = kind === 'intake' ? R().intakes : R().inquiries;
+  const i = src.find((x) => String(x['접수번호']) === no); if (!i) return;
+  $('iTitle').textContent = (kind === 'intake' ? '문진 · ' : '문의 · ') + no;
+  $('iStatus').value = i['진행 상태'] || '접수'; $('iMemo').value = i['메모'] || '';
+  const skip = ['접수번호', '진행 상태', '읽음', '메모', '_lang'];
+  $('iBody').innerHTML = Object.keys(i).filter((k) => !skip.includes(k) && String(i[k] || '').trim())
+    .map((k) => `<b>${esc(k.replace(/^_/, ''))}</b><span style="white-space:pre-wrap">${esc(i[k])}</span>`).join('');
+  $('iDlg').showModal();
+  if (!i['읽음']) WCT.api(kind + '.set', { no, read: true }).then(() => WCT.syncLater());
+}
+$('iSave').onclick = async () => {
+  await WCT.api(INTAKE_KIND + '.set', { no: INTAKE_NO, status: $('iStatus').value, memo: $('iMemo').value.trim(), read: true });
+  await WCT.load(true); renderAll(); toast('저장했습니다.');
+};
+$('iDelete').onclick = async () => {
+  if (!confirm('이 접수를 삭제할까요?')) return;
+  await WCT.api(INTAKE_KIND + '.delete', { no: INTAKE_NO });
+  await WCT.load(true); renderAll(); $('iDlg').close();
+};
+</script>
+</body>
+</html>
