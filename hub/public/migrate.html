@@ -22,6 +22,16 @@
     <div class="msg hide" id="initMsg"></div>
 
     <hr style="margin:28px 0;border:0;border-top:1px solid var(--line)">
+    <h2>금고만 옮겨 오기 (라이선스 · 계정 정보)</h2>
+    <div class="note">예전 구글 시트 금고에 있던 항목을 <b>새 열쇠로 다시 잠가</b> NAS 금고에 넣습니다.
+      예전 관리자 비밀번호로 예전 열쇠를 꺼내고, 이 브라우저 안에서만 풀었다가 다시 잠급니다. 원본은 지우지 않아요.</div>
+    <label>예전 관리자 비밀번호</label>
+    <input type="password" id="vPw" autocomplete="off">
+    <button class="b" id="btnVault" style="margin-top:10px">금고 가져오기</button>
+    <div id="vProg" class="dim" style="font-size:13px;margin-top:8px"></div>
+    <div class="msg hide" id="vMsg"></div>
+
+    <hr style="margin:28px 0;border:0;border-top:1px solid var(--line)">
     <h2>B. 구글 시트에서 옮겨 오기 (예전 자료가 있을 때만)</h2>
 
     <h2>1. 예전 관리자 비밀번호</h2>
@@ -81,6 +91,72 @@ $('btnInit').onclick = async () => {
     m.className = 'msg ok'; m.textContent = '열쇠를 만들었습니다. 잠시 후 첫 화면으로 갑니다.';
     setTimeout(() => { location.href = 'admin.html'; }, 1200);
   } catch (e) { m.className = 'msg bad'; m.textContent = e.message; $('btnInit').disabled = false; $('btnInit').textContent = '새 열쇠 만들고 시작'; }
+};
+
+/* 예전 열쇠 꺼내기 (B·금고 공용) */
+async function unlockOld(pw) {
+  const st = await (await fetch(GAS_OLD + '?action=status')).json();
+  if (!st.initialized) throw new Error('예전 서버에 설정이 없습니다.');
+  const auth = await WCT.derive(pw, b64d(st.saltAuth), 'auth');
+  const r = await fetch(GAS_OLD, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'unlock', key: auth }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error('비밀번호가 올바르지 않습니다.');
+  const ks = j.keystore;
+  const wrapKey = await WCT.derive(pw, b64d(ks.saltKey), 'key');
+  let pkcs8;
+  try { pkcs8 = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(ks.iv) }, wrapKey, b64d(ks.wrapped)); }
+  catch { throw new Error('비밀번호가 올바르지 않습니다.'); }
+  return { auth, pub: ks.pub, pkcs8 };
+}
+async function oldApi(auth, action, body) {
+  const r = await fetch(GAS_OLD, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(Object.assign({ action, key: auth }, body || {})) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || '예전 서버 요청 실패');
+  return j;
+}
+
+$('btnVault').onclick = async () => {
+  const m = $('vMsg'), p = $('vProg'), pw = $('vPw').value, btn = $('btnVault');
+  m.className = 'msg hide'; p.textContent = '';
+  if (!pw) { m.className = 'msg bad'; m.textContent = '비밀번호를 입력하세요.'; return; }
+  if (!WCT.pub) { m.className = 'msg bad'; m.textContent = '먼저 A에서 새 열쇠를 만들거나, 로그아웃 후 다시 로그인하세요.'; return; }
+  btn.disabled = true; btn.textContent = '가져오는 중…';
+  try {
+    p.textContent = '예전 열쇠 확인 중…';
+    const old = await unlockOld(pw);
+    const oldPriv = await crypto.subtle.importKey('pkcs8', old.pkcs8,
+      { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+    p.textContent = '예전 금고 목록 읽는 중…';
+    const boot = await oldApi(old.auth, 'bootstrap', { fresh: true });
+    const list = (boot.vault || (boot.data && boot.data.vault) || []);
+    if (!list.length) throw new Error('예전 금고에 항목이 없습니다.');
+    // 이미 NAS 에 있는 같은 이름은 건너뜁니다
+    const have = new Set(((await WCT.load(true)).vault || []).map((v) => v.cat + '|' + v.name));
+    let done = 0, skip = 0, fail = [];
+    for (const it of list) {
+      p.textContent = `옮기는 중… ${done + skip + fail.length + 1} / ${list.length} — ${it.name}`;
+      if (have.has((it.cat || '기타') + '|' + it.name)) { skip++; continue; }
+      try {
+        const env = (await oldApi(old.auth, 'envelope', { fileId: it.envFileId })).envelope;
+        const rawAes = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, oldPriv, b64d(env.wk));
+        const aes = await crypto.subtle.importKey('raw', rawAes, 'AES-GCM', false, ['decrypt']);
+        const plain = JSON.parse(new TextDecoder().decode(
+          await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(env.iv) }, aes, b64d(env.ct))));
+        const fresh = await WCT.seal(Object.assign({ kind: 'vault' }, plain));
+        await WCT.api('vault.save', { cat: it.cat || '기타', name: it.name, memo: it.memo || '', envelope: fresh });
+        done++;
+      } catch (e) { fail.push(`${it.name}: ${e.message}`); }
+    }
+    sessionStorage.removeItem('wct_data');
+    p.textContent = '';
+    m.className = fail.length ? 'msg bad' : 'msg ok';
+    m.innerHTML = `옮긴 항목 <b>${done}</b>개` + (skip ? ` · 이미 있어 건너뜀 ${skip}개` : '') +
+      (fail.length ? `<br>실패 ${fail.length}개:<br>${fail.map(esc).join('<br>')}` : '') +
+      `<br><a href="vault.html" style="text-decoration:underline">금고 열어 보기 →</a>`;
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; p.textContent = ''; }
+  finally { btn.disabled = false; btn.textContent = '금고 가져오기'; }
 };
 
 $('btnKey').onclick = async () => {
