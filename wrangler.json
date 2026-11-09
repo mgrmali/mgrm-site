@@ -6,6 +6,25 @@
     "directory": "./",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/color.html", "/intake.html"]
+    "run_worker_first": [
+      "/color.html",
+      "/intake.html",
+      "/admin.html",
+      "/admin",
+      "/board.html",
+      "/board",
+      "/invoices.html",
+      "/invoices",
+      "/projects.html",
+      "/projects",
+      "/submit.html",
+      "/submit",
+      "/vault.html",
+      "/vault",
+      "/withholding.html",
+      "/withholding",
+      "/wct-core.js",
+      "/wct-style.css"
+    ]
   }
 }
