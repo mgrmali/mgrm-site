@@ -39,6 +39,8 @@
 
   <div class="bar">
     <button class="b" id="btnNew">＋ 항목 추가</button>
+    <button class="g" id="btnBulk" title="JSON 파일로 여러 항목 한꺼번에 넣기">파일로 넣기</button>
+    <input type="file" id="bulkFile" accept=".json,application/json" class="hide">
     <input id="q" placeholder="이름·메모 검색" style="max-width:240px">
     <span style="flex:1"></span>
     <span class="dim" id="count"></span>
@@ -218,6 +220,34 @@ window.openItem = async (id) => {
     $('dName').value = ''; $('dMemo').value = '';
   }
   $('dlg').showModal();
+};
+
+/* JSON 파일로 여러 항목 한꺼번에 넣기
+   형식: [{cat, name, memo, id, pw, key, url, note}, ...]  — 이 브라우저에서 잠가 저장합니다 */
+$('btnBulk').onclick = () => $('bulkFile').click();
+$('bulkFile').onchange = async () => {
+  const f = $('bulkFile').files[0]; $('bulkFile').value = '';
+  if (!f) return;
+  let arr;
+  try { arr = JSON.parse(await f.text()); if (!Array.isArray(arr)) throw 0; }
+  catch { return toast('JSON 배열 파일이 아닙니다.', true); }
+  const have = new Set(items().map((v) => v.cat + '|' + v.name));
+  if (!confirm(`${arr.length}개 항목을 금고에 넣습니다. 같은 분류·이름은 건너뜁니다. 계속할까요?`)) return;
+  let done = 0, skip = 0, fail = 0;
+  for (const it of arr) {
+    const cat = CATS.includes(it.cat) && it.cat !== '전체' ? it.cat : '기타';
+    const name = String(it.name || '').trim();
+    if (!name) { fail++; continue; }
+    if (have.has(cat + '|' + name)) { skip++; continue; }
+    try {
+      const env = await WCT.seal({ kind: 'vault', id: it.id || '', pw: it.pw || '',
+        key: it.key || '', url: it.url || '', note: it.note || '' });
+      await WCT.api('vault.save', { cat, name, memo: (it.memo || '').trim(), envelope: env });
+      have.add(cat + '|' + name); done++;
+    } catch (e) { console.error(name, e); fail++; }
+  }
+  await WCT.load(true); render();
+  toast(`넣음 ${done}개 · 건너뜀 ${skip}개` + (fail ? ` · 실패 ${fail}개` : ''), !!fail);
 };
 
 $('dSave').onclick = async () => {
