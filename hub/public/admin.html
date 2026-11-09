@@ -9,7 +9,8 @@
 <style>
   .hero{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
     padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:20px;flex-wrap:wrap}
-  .hero .hi{font-size:22px;font-weight:700;letter-spacing:-.3px}
+  .hero .hi{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .hero .brand img{height:18px}
   .hero .sub{color:var(--dim);font-size:13px;margin-top:4px}
   .due{display:flex;gap:14px;align-items:baseline;padding:8px 0;
     border-bottom:1px solid var(--line)}
@@ -27,12 +28,14 @@
 <body>
 
 <div id="lock" class="center">
+  <a class="brand" href="https://mgrm.kr"><img src="logo.png" alt="맹그라미"></a>
   <h1 style="margin-bottom:8px">맹그라미 업무 허브</h1>
   <p class="dim" id="lockSub">확인 중…</p>
 </div>
 <div id="app" class="wrap hide">
   <div class="hero">
     <div>
+      <div class="brand" style="margin-bottom:12px"><img src="logo.png" alt="맹그라미"><span class="bt">Work Hub</span></div>
       <div class="hi" id="greet">안녕하세요.</div>
       <div class="sub" id="todayLine"></div>
     </div>
@@ -111,6 +114,7 @@
     <h2>확인할 제출</h2>
     <div id="wSub"><span class="dim">불러오는 중…</span></div>
   </div>
+  <p class="wct-foot">(주)맹그라미 · <b>MEDIA CONTENTS GROUP</b> · mgrm.kr</p>
 </div>
 
 <script src="wct-core.js"></script>
@@ -243,7 +247,7 @@ function renderProj(D) {
   }
   const byStage = {};
   act.forEach((p) => { byStage[p.stage || '프리'] = (byStage[p.stage || '프리'] || 0) + 1; });
-  const colors = { '프리': '#5b8dd6', '프로덕션': '#c8a84b', '포스트': '#a06bd0' };
+  const colors = { '프리': '#482583', '프로덕션': '#E84278', '포스트': '#A63285' };
 
   const soon = act.filter((p) => p.due && dday(new Date(p.due + 'T00:00:00')).left <= 7);
   $('wProj').innerHTML =

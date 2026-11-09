@@ -15,20 +15,20 @@
   .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
   .tabs button{padding:9px 16px;background:var(--card);border:1px solid var(--line);
     border-radius:9px;color:var(--dim);font-size:13px;font-family:inherit;cursor:pointer}
-  .tabs button.on{border-color:var(--accent);color:var(--accent);background:#1e1a10}
+  .tabs button.on{border-color:var(--ci-b);color:var(--ci-c);background:var(--tint);font-weight:700}
   tbody tr{cursor:default}
   .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
   .thumbs img{width:100px;height:100px;object-fit:cover;border-radius:8px;
     border:1px solid var(--line);cursor:pointer}
   .thumbbad{width:150px;padding:12px 10px;border-radius:8px;border:1px dashed var(--bad);
-    color:var(--bad);font-size:11px;line-height:1.5;text-align:center;background:#1a1214}
+    color:var(--bad);font-size:11px;line-height:1.5;text-align:center;background:var(--bad-bg)}
   .thumbok{width:150px;padding:12px 10px;border-radius:8px;border:1px solid var(--ok);
-    color:var(--ok);font-size:11px;line-height:1.5;text-align:center;background:#101a15}
+    color:var(--ok);font-size:11px;line-height:1.5;text-align:center;background:var(--ok-bg)}
   .kv{font-size:13px;line-height:2}
   .kv b{color:var(--dim);font-weight:500;display:inline-block;width:120px}
   .reccode{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:24px;
     letter-spacing:2px;text-align:center;padding:22px 12px;margin:16px 0;
-    background:#0d0f14;border:2px dashed var(--accent);border-radius:12px;
+    background:var(--soft);border:2px dashed var(--accent);border-radius:12px;
     color:var(--accent);word-break:break-all;line-height:1.6}
 
   /* 급여 표 — 열이 좁아 글자가 세로로 접히던 문제를 막습니다 */
@@ -179,7 +179,7 @@
       <div class="dim" style="font-size:12px;margin-top:8px">
         근로소득은 아래 [급여] 에서 입력한 값이 자동으로 합산됩니다.</div>
 
-      <div class="card" style="margin:16px 0 0;background:#12141a">
+      <div class="card" style="margin:16px 0 0;background:var(--soft)">
         <div class="bar">
           <h3 style="margin:0;flex:1">급여 <span class="dim" id="payrollYmLabel"></span></h3>
           <button class="g sm" id="btnPayrollPeople">대상자 관리</button>
@@ -231,7 +231,7 @@
       </div>
       <div class="msg hide" id="whtMsg"></div>
       <pre id="whtOut" style="white-space:pre-wrap;font-size:12.5px;line-height:1.8;
-        background:#0d0f14;border:1px solid var(--line);border-radius:9px;
+        background:var(--soft);border:1px solid var(--line);border-radius:9px;
         padding:14px;margin:14px 0 0"></pre>
     </div>
 
@@ -253,7 +253,7 @@
         <button class="g" id="repDone">신고완료 표시</button>
       </div>
       <pre id="repOut" style="white-space:pre-wrap;font-size:12.5px;line-height:1.8;
-        background:#0d0f14;border:1px solid var(--line);border-radius:9px;
+        background:var(--soft);border:1px solid var(--line);border-radius:9px;
         padding:14px;min-height:180px;margin:0"></pre>
     </div>
     <div class="card">

@@ -650,6 +650,7 @@ function mountHeader(title, backTo = 'admin.html') {
   const el = document.createElement('div');
   el.className = 'appbar';
   el.innerHTML = `
+    <a class="brand" href="${backTo}" title="허브 홈"><img src="logo.png" alt="맹그라미"></a>
     <a class="back" href="${backTo}">← 홈</a>
     <span class="apptitle">${esc(title)}</span>
     <button class="g sm" id="__reload">새로고침</button>
