@@ -13,7 +13,7 @@
 | 폴더 | 내용 | 어디에 |
 |---|---|---|
 | `nas/` | NAS 저장 서버 + 컨테이너 설정 | QNAP Container Station |
-| `src/`, `public/`, `wrangler.toml`, `schema.sql` | hub.mgrm.kr Worker 와 화면 | Cloudflare (이 저장소의 `hub` 폴더를 루트로) |
+| `src/`, `public/`, `wrangler.json`, `schema.sql` | hub.mgrm.kr Worker 와 화면 | Cloudflare (이 저장소의 `hub` 폴더를 루트로) |
 
 ---
 
@@ -65,7 +65,7 @@ Zero Trust → Networks → Tunnels → 기존 `color-diary-nas` → Public Host
 ## 4부. Cloudflare Worker (hub.mgrm.kr)
 
 1. **D1** — Storage & Databases → D1 → Create → 이름 `mgrm-hub` → Database ID 복사
-   → `wrangler.toml` 의 `여기에_D1_데이터베이스_ID_붙여넣기` 에 넣고 저장 (GitHub 에 올리기)
+   → `wrangler.json` 의 `여기에_D1_데이터베이스_ID_붙여넣기` 에 넣고 저장 (GitHub 에 올리기)
    → D1 → `mgrm-hub` → Console → `schema.sql` 내용 붙여넣고 실행
 2. **Worker 만들기** — Workers & Pages → Create → Import a repository → `mgrmali/mgrm-site`
    - 프로젝트 이름 `mgrm-hub`
