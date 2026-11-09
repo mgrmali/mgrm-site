@@ -1,0 +1,2445 @@
+<!DOCTYPE html>
+<!-- withholding.html · v1.2.0 · 2026-09-01
+     원천징수 자료관리 — 관리자 화면
+     v1.2.0 계좌번호 숫자만 복사 · 인력/거래처 계좌 15초 보기 토글
+     v1.1.0 거래처(사업자) 은행·계좌·예금주 표시 및 계좌 복사 추가 -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>원천징수 · 맹그라미</title>
+<link rel="stylesheet" href="wct-style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+  .tabs button{padding:9px 16px;background:var(--card);border:1px solid var(--line);
+    border-radius:9px;color:var(--dim);font-size:13px;font-family:inherit;cursor:pointer}
+  .tabs button.on{border-color:var(--accent);color:var(--accent);background:#1e1a10}
+  tbody tr{cursor:default}
+  .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .thumbs img{width:100px;height:100px;object-fit:cover;border-radius:8px;
+    border:1px solid var(--line);cursor:pointer}
+  .thumbbad{width:150px;padding:12px 10px;border-radius:8px;border:1px dashed var(--bad);
+    color:var(--bad);font-size:11px;line-height:1.5;text-align:center;background:#1a1214}
+  .thumbok{width:150px;padding:12px 10px;border-radius:8px;border:1px solid var(--ok);
+    color:var(--ok);font-size:11px;line-height:1.5;text-align:center;background:#101a15}
+  .kv{font-size:13px;line-height:2}
+  .kv b{color:var(--dim);font-weight:500;display:inline-block;width:120px}
+  .reccode{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:24px;
+    letter-spacing:2px;text-align:center;padding:22px 12px;margin:16px 0;
+    background:#0d0f14;border:2px dashed var(--accent);border-radius:12px;
+    color:var(--accent);word-break:break-all;line-height:1.6}
+
+  /* 급여 표 — 열이 좁아 글자가 세로로 접히던 문제를 막습니다 */
+  .payrollWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .payrollTable{font-size:12.5px;min-width:880px;table-layout:fixed}
+  .payrollTable th,.payrollTable td{white-space:nowrap;padding:8px 6px}
+  .payrollTable th{font-size:11.5px}
+  .payrollTable td:first-child{font-weight:600}
+  .payrollTable input{padding:8px 9px;font-size:13px;width:100%;
+    font-variant-numeric:tabular-nums}
+  .payrollTable td.n,.payrollTable th.n{text-align:right}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tabs" id="tabs"></div>
+  <section data-tab="수신함">
+    <div class="card">
+      <h2>제출 링크</h2>
+      <div class="row r2">
+        <div><label>링크 종류</label>
+          <select id="invKind">
+            <option value="1">1회용 — 한 사람에게 보냄</option>
+            <option value="n">다회용 — 여러 명이 함께 사용</option>
+          </select></div>
+        <div><label id="invLabelName">보낼 사람 (라벨)</label>
+          <input id="invLabel" placeholder="홍길동 촬영감독"></div>
+      </div>
+      <div class="row r3">
+        <div><label>역할 (미리 채워둘 값)</label><input id="invRole" placeholder="보조출연"></div>
+        <div id="invCapBox" class="hide"><label>제출 인원</label>
+          <input id="invCap" type="number" value="10" min="2" max="200"></div>
+        <div><label>유효기간(일)</label><input id="invDays" type="number" value="7"></div>
+      </div>
+      <div class="note" id="invHint" style="margin-top:12px">
+        한 사람이 제출하면 링크가 자동으로 닫힙니다. 개별 스태프에게 보낼 때 쓰세요.
+      </div>
+      <button class="b" id="mkInvite">링크 만들어 복사</button>
+      <div class="msg hide" id="invMsg"></div>
+      <table style="margin-top:16px"><thead><tr>
+        <th>라벨</th><th>역할</th><th>종류</th><th>제출</th><th>만료</th><th>상태</th><th></th>
+        </tr></thead><tbody id="invTb"></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>받은 제출</h2>
+      <div class="note">열어서 확인하면 사진을 내려받을 수 있습니다.
+        등록하면 <b>세무에 필요한 항목만</b> 새 봉투로 다시 저장하고, 사진이 든 원본은 지웁니다.</div>
+      <table><thead><tr>
+        <th>수신</th><th>구분</th><th>라벨</th><th>크기</th><th>상태</th><th></th></tr></thead>
+        <tbody id="subTb"></tbody></table>
+    </div>
+  </section>
+  <section data-tab="인력" class="hide">
+    <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">프리랜서 (원천징수 대상)</h2>
+        <button class="b" id="btnNewPerson">＋ 직접 등록</button>
+      </div>
+      <div class="note">
+        제출 링크를 쓰지 않고 직접 넣을 수 있습니다. 과거 지급분을 소급 입력할 때 쓰세요.<br>
+        주민등록번호·계좌는 여기서도 암호화되어 저장됩니다.
+      </div>
+      <table><thead><tr>
+        <th>성명</th><th>구분</th><th>주민등록번호</th><th>역할</th><th>은행</th>
+        <th>계좌</th><th>업종</th><th>동의일</th><th></th></tr></thead>
+        <tbody id="perTb"></tbody></table>
+    </div>
+    <div class="card">
+      <h2>거래처 (사업자 · 계산서)</h2>
+      <table><thead><tr>
+        <th>상호</th><th>사업자번호</th><th>대표자</th><th>담당자</th><th>이메일</th>
+        <th>은행</th><th>계좌</th><th>예금주</th></tr></thead>
+        <tbody id="venTb"></tbody></table>
+    </div>
+  </section>
+  <section data-tab="지급" class="hide">
+    <div class="card">
+      <h2>지급 등록</h2>
+      <div class="row r3">
+        <div><label>소득자</label><select id="payPerson"></select></div>
+        <div><label>프로젝트</label>
+          <select id="payProject"></select></div>
+        <div><label>역할</label><input id="payRole"></div>
+      </div>
+      <div class="row r3" style="margin-top:4px">
+        <div><label>지급일</label><input type="date" id="payDate"></div>
+        <div><label>귀속월</label><input type="month" id="payYm"></div>
+        <div><label>금액 기준</label>
+          <select id="payMode">
+            <option value="gross">세전 지급액</option>
+            <option value="net">실지급액(역산)</option>
+          </select></div>
+      </div>
+      <div class="row r2" style="margin-top:4px">
+        <div><label>금액</label><input id="payAmt" inputmode="numeric" placeholder="예) 1000000"></div>
+        <div><label>메모</label><input id="payMemo"></div>
+      </div>
+      <div id="payCalc" class="note" style="margin-top:14px">금액을 입력하세요.</div>
+      <div class="bar">
+        <button class="b" id="addPay">지급 등록</button>
+        <button class="g" id="newProject">＋ 프로젝트 추가</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">지급 내역</h2>
+        <select id="payFilter" style="width:150px"></select>
+        <button class="g" id="btnTransfer">이체 목록</button>
+        <button class="g" id="dlLedger">지급대장 받기</button>
+      </div>
+      <table><thead><tr>
+        <th>지급일</th><th>귀속</th><th>프로젝트</th><th>성명</th>
+        <th class="n">지급액</th><th class="n">소득세</th><th class="n">지방세</th>
+        <th class="n">실지급</th><th>상태</th><th></th></tr></thead>
+        <tbody id="payTb"></tbody></table>
+      <div id="paySum" class="dim" style="text-align:right;margin-top:10px"></div>
+    </div>
+  </section>
+  <section data-tab="원천세" class="hide">
+    <div class="card">
+      <h2>원천징수이행상황신고서 (매월 10일)</h2>
+      <div class="note">
+        원천세는 <b>실제로 지급한 달</b> 기준입니다. 간이지급명세서(귀속월 기준)와 다를 수 있습니다.<br>
+        국세(소득세)는 <b>홈택스</b>, 지방소득세는 <b>위택스</b>에서 따로 냅니다. 둘 다 해야 끝납니다.
+      </div>
+      <div class="bar">
+        <span class="dim">지급연월</span>
+        <select id="whtYm" style="width:150px"></select>
+        <span id="whtDue" class="dim"></span>
+      </div>
+
+      <table style="margin-top:6px"><thead><tr>
+        <th>소득 종류</th><th>코드</th><th class="n">인원</th>
+        <th class="n">총지급액</th><th class="n">소득세</th></tr></thead>
+      <tbody>
+        <tr><td>사업소득 (프리랜서 3.3%)</td><td class="dim">A25</td>
+          <td class="n" id="whtBizCount">0</td><td class="n" id="whtBizGross">0</td>
+          <td class="n" id="whtBizTax">0</td></tr>
+        <tr><td>기타소득 (일반·학생 8.8%)</td><td class="dim">A40</td>
+          <td class="n" id="whtOthCount">0</td><td class="n" id="whtOthGross">0</td>
+          <td class="n" id="whtOthTax">0</td></tr>
+        <tr><td>근로소득 (대표 보수·급여)</td><td class="dim">A01</td>
+          <td class="n" id="whtWageCount">0</td><td class="n" id="whtWageGross">0</td>
+          <td class="n" id="whtWageTax">0</td></tr>
+      </tbody></table>
+      <div class="dim" style="font-size:12px;margin-top:8px">
+        근로소득은 아래 [급여] 에서 입력한 값이 자동으로 합산됩니다.</div>
+
+      <div class="card" style="margin:16px 0 0;background:#12141a">
+        <div class="bar">
+          <h3 style="margin:0;flex:1">급여 <span class="dim" id="payrollYmLabel"></span></h3>
+          <button class="g sm" id="btnPayrollPeople">대상자 관리</button>
+        </div>
+        <div class="note" style="margin-bottom:10px">
+          소득세는 <b>간이세액표</b>를 봐야 나옵니다. 급여액과 부양가족 수에 따라 달라집니다.<br>
+          월 급여가 <b>106만원 미만이면 소득세 0원</b>입니다(2026년 기준). 0원이어도 신고는 해야 합니다.<br>
+          <a href="https://hometax.go.kr" target="_blank" rel="noopener"
+             style="color:var(--accent)">홈택스 → 근로소득 간이세액표 조회 →</a>
+        </div>
+        <div class="payrollWrap">
+          <table class="payrollTable"><colgroup>
+            <col style="width:78px"><col style="width:118px"><col style="width:100px">
+            <col style="width:78px"><col style="width:100px"><col style="width:100px">
+            <col style="width:92px"><col id="colEi" style="width:92px">
+            <col style="width:110px">
+          </colgroup><thead><tr>
+            <th>성명</th><th class="n">지급액</th><th class="n">소득세</th><th class="n">지방세</th>
+            <th class="n">연금</th><th class="n">건강</th><th class="n">요양</th>
+            <th class="n" id="thEi">고용</th><th class="n">실지급</th>
+          </tr></thead><tbody id="payrollTb"></tbody></table>
+        </div>
+        <div class="dim" style="font-size:11.5px;margin-top:8px">
+          보험료는 요율로 계산한 <b>참고치</b>입니다. 공단 고지서 금액이 다르면 그대로 고치세요.<br>
+          ※ 4대보험은 원천세 신고서(A01)에 들어가지 않습니다. 실지급액 계산용입니다.
+        </div>
+        <div class="bar" style="margin:12px 0 0">
+          <button class="b" id="btnPayrollSave">이 달 급여 저장</button>
+          <span class="dim" id="payrollSum" style="flex:1;text-align:right"></span>
+        </div>
+        <div class="msg hide" id="payrollMsg"></div>
+      </div>
+
+      <div class="row r2" style="margin-top:16px">
+        <div class="note" style="border-left-color:var(--ok);margin:0">
+          <div style="font-size:12px">홈택스 납부 (소득세)</div>
+          <div class="dl" id="whtNational" style="color:var(--fg)">0원</div>
+        </div>
+        <div class="note" style="border-left-color:var(--warn);margin:0">
+          <div style="font-size:12px">위택스 납부 (지방소득세)</div>
+          <div class="dl" id="whtLocal" style="color:var(--fg)">0원</div>
+        </div>
+      </div>
+
+      <div class="bar" style="margin-top:16px">
+        <button class="g" id="whtGuide">신고 순서 보기</button>
+        <button class="g" id="whtDetail">지급 내역 확인</button>
+        <button class="b" id="whtSave">신고 완료로 기록</button>
+      </div>
+      <div class="msg hide" id="whtMsg"></div>
+      <pre id="whtOut" style="white-space:pre-wrap;font-size:12.5px;line-height:1.8;
+        background:#0d0f14;border:1px solid var(--line);border-radius:9px;
+        padding:14px;margin:14px 0 0"></pre>
+    </div>
+
+    <div class="card">
+      <h2>신고 이력</h2>
+      <table><thead><tr>
+        <th>지급연월</th><th class="n">인원</th><th class="n">총지급액</th>
+        <th class="n">소득세</th><th class="n">지방세</th><th>홈택스</th><th>위택스</th></tr></thead>
+        <tbody id="whtTb"></tbody></table>
+    </div>
+  </section>
+  <section data-tab="월별 신고" class="hide">
+    <div class="card">
+      <h2>간이지급명세서</h2>
+      <div class="bar">
+        <select id="repYm" style="width:150px"></select>
+        <button class="g" id="repCheck">검증</button>
+        <button class="b" id="repMake">엑셀 만들기</button>
+        <button class="g" id="repDone">신고완료 표시</button>
+      </div>
+      <pre id="repOut" style="white-space:pre-wrap;font-size:12.5px;line-height:1.8;
+        background:#0d0f14;border:1px solid var(--line);border-radius:9px;
+        padding:14px;min-height:180px;margin:0"></pre>
+    </div>
+    <div class="card">
+      <h2>원천징수영수증</h2>
+      <div class="bar">
+        <select id="rcpPerson" style="width:180px"></select>
+        <input id="rcpYear" style="width:110px" placeholder="2026">
+        <button class="b" id="rcpMake">영수증 열기 (인쇄→PDF)</button>
+      </div>
+    </div>
+  </section>
+  <!-- 설정 -->
+  <section data-tab="설정" class="hide">
+    <div class="card">
+      <h2>세금계산서 발행 정보</h2>
+      <div class="note">
+        사업자가 제출 폼을 열면 이 정보가 표시됩니다. 계산서를 발행하는 데 필요한 항목입니다.<br>
+        법인등록번호와 법인통장은 계산서 발행에 필요하지 않아 넣지 않았습니다.
+      </div>
+      <div class="row r2">
+        <div><label>상호</label><input id="cfName"></div>
+        <div><label>사업자등록번호</label><input id="cfBizNo"></div>
+      </div>
+      <label>대표자</label>
+      <input id="cfCeo">
+      <label>사업장 주소</label>
+      <input id="cfAddr">
+      <div class="row r2">
+        <div><label>업태</label><input id="cfType"></div>
+        <div><label>종목</label><input id="cfItem"></div>
+      </div>
+      <label>계산서 수신 이메일</label>
+      <input id="cfEmail" inputmode="email">
+      <label>발행 안내 문구</label>
+      <input id="cfNotice" placeholder="용역 완료 후 7일 이내에 발행 부탁드립니다.">
+      <div class="bar" style="margin-top:16px">
+        <button class="b" id="cfSave">저장</button>
+        <button class="g" id="cfPreview">제출 폼에서 보이는 모습</button>
+      </div>
+      <div class="msg hide" id="cfMsg"></div>
+      <pre class="out hide" id="cfOut" style="margin-top:12px"></pre>
+    </div>
+
+    <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">구글 캘린더 연동</h2>
+        <button class="g" id="btnCalCheck">연결 확인</button>
+        <button class="b" id="btnCalSync">캘린더로 보내기</button>
+      </div>
+      <div class="note">
+        세무 마감과 프로젝트 마감을 <b>MGRM스케줄</b> 캘린더에 종일 일정으로 넣습니다.<br>
+        도구 → 캘린더 <b>한 방향</b>으로만 보냅니다. 캘린더에서 고친 것은 다음에 덮어씁니다.<br>
+        여러 번 눌러도 일정이 늘어나지 않고, 도구에서 사라진 일정은 캘린더에서도 지웁니다.
+      </div>
+      <div id="calStatus" class="dim" style="font-size:13px"></div>
+      <pre class="out hide" id="calOut" style="margin-top:12px"></pre>
+    </div>
+
+    <div class="card">
+      <h2>열쇠 보관</h2>
+      <div class="note">
+        주민등록번호·계좌를 여는 개인키는 <b>NAS 안에 잠겨 보관</b>되고,
+        <b>관리자 그룹(hub-admin)</b>으로 로그인한 사람에게만 내려옵니다.<br>
+        따로 외울 비밀번호나 복구 코드가 없습니다. NAS 백업(매일, 30일)에 함께 들어 있습니다.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="bar">
+        <h2 style="margin:0;flex:1">계정 관리</h2>
+        <button class="g" id="btnNewUser">목록 새로고침</button>
+      </div>
+      <div class="note">
+        계정은 <b>NAS(QNAP) 제어판 → 사용자</b>에서 관리합니다.<br>
+        <b>hub-admin</b> 그룹 = 관리자(전부), <b>hub-staff</b> 그룹 = 조연출·제작PD(프로젝트·게시판만).<br>
+        그룹에서 빼거나 계정을 비활성화하면 바로 허브에 못 들어옵니다.
+        원천징수·세금계산서는 화면을 숨기는 것이 아니라 <b>서버가 자료를 내려주지 않습니다.</b>
+      </div>
+      <table><thead><tr>
+        <th>아이디</th><th>권한</th><th>마지막 접속</th></tr></thead>
+        <tbody id="userTb"></tbody></table>
+      <div class="msg hide" id="userMsg"></div>
+    </div>
+
+    <div class="card">
+      <h2>4대보험 요율 (근로자 부담)</h2>
+      <div class="note" style="border-left-color:var(--bad)">
+        <b>요율은 매년 바뀌고, 자료마다 값이 다릅니다.</b><br>
+        2026년 국민연금 인상(9% → 9.5%) 반영 여부에 따라 근로자 부담이
+        4.5% 또는 4.75% 로 갈립니다.<br><br>
+        <b>공단 고지서 금액이 정답입니다.</b> 여기 요율은 참고용 계산이며,
+        급여 표에서 고지서 금액으로 직접 고칠 수 있습니다.
+      </div>
+      <div class="row r2">
+        <div><label>국민연금 (%)</label><input id="rtNp" inputmode="decimal"></div>
+        <div><label>건강보험 (%)</label><input id="rtHi" inputmode="decimal"></div>
+      </div>
+      <div class="row r2">
+        <div><label>장기요양 (건강보험료의 %)</label><input id="rtLtc" inputmode="decimal"></div>
+        <div><label>고용보험 (%)</label><input id="rtEi" inputmode="decimal"></div>
+      </div>
+      <label>절사 단위 (원)</label>
+      <select id="rtUnit"><option value="10">10원 미만 버림 (공단 방식)</option>
+        <option value="1">1원 단위</option></select>
+      <div class="dim" style="font-size:11.5px;margin-top:5px">
+        계산값이 고지서와 몇 원 어긋나면 이 단위를 바꿔보세요.
+        그래도 다르면 급여 표에서 고지서 금액으로 직접 고치면 됩니다.
+      </div>
+      <div class="bar" style="margin-top:14px">
+        <button class="b" id="rtSave">요율 저장</button>
+        <button class="g" id="rtTest">100만원 기준 시험 계산</button>
+      </div>
+      <div class="msg hide" id="rtMsg"></div>
+      <pre class="out hide" id="rtOut" style="margin-top:12px"></pre>
+    </div>
+
+    <div class="card">
+      <h2>확인해 두실 것</h2>
+      <div class="note" style="border-left-color:var(--warn)">
+        사업자등록증의 <b>전자세금계산서 전용 전자우편주소</b> 칸이 비어 있습니다.<br><br>
+        홈택스에 등록해 두면 상대가 사업자번호만 입력해도 이메일이 자동으로 채워집니다.
+        지금은 상대가 직접 물어봐야 합니다.<br><br>
+        홈택스 → 전자세금계산서 → 이메일 관리 에서 등록할 수 있습니다.
+      </div>
+    </div>
+  </section>
+</div>
+
+<dialog id="recDlg">
+  <div style="display:flex;gap:12px">
+    <h2 style="flex:1;margin:0">복구 코드</h2>
+    <button class="g sm" id="recClose">닫기</button>
+  </div>
+  <div id="recStep1">
+    <div class="note" style="margin-top:14px;border-left-color:var(--bad)">
+      새 코드를 발급하면 <b>이전 코드는 즉시 무효</b>가 됩니다.<br>
+      발급 후 바로 인쇄하거나 종이에 적어 두세요. 이 화면을 닫으면 다시 볼 수 없습니다.
+    </div>
+    <label>확인을 위해 관리자 비밀번호를 다시 입력하세요</label>
+    <input type="password" id="recPw" autocomplete="current-password">
+    <div class="bar" style="margin-top:14px">
+      <button class="b" id="recMake">발급하기</button>
+    </div>
+    <div class="msg hide" id="recMsg"></div>
+  </div>
+
+  <div id="recStep2" class="hide">
+    <div class="reccode" id="recCode"></div>
+    <div class="note" style="border-left-color:var(--ok)">
+      · 이 코드로도 자료를 열 수 있습니다<br>
+      · 인쇄하거나 종이에 적어 금고·서류철에 보관하세요<br>
+      · 사진 촬영, 카톡 전송, 클라우드 저장은 피하세요<br>
+      · 이 창을 닫으면 다시 볼 수 없습니다 (재발급은 가능)
+    </div>
+    <div class="bar">
+      <button class="b" id="recPrint">인쇄하기</button>
+      <button class="g" id="recCopy">복사</button>
+      <span style="flex:1"></span>
+      <button class="g" id="recDone">보관했습니다</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="uDlg">
+  <div style="display:flex;gap:12px">
+    <h2 id="uTitle" style="flex:1;margin:0">계정 만들기</h2>
+    <button class="g sm" onclick="$('uDlg').close()">닫기</button>
+  </div>
+  <div class="row r2" style="margin-top:14px">
+    <div><label>아이디 *</label>
+      <input id="uId" autocapitalize="off" spellcheck="false" placeholder="jo1"></div>
+    <div><label>이름 *</label><input id="uName" placeholder="김조연"></div>
+  </div>
+  <label>메모</label>
+  <input id="uMemo" placeholder="예: 뱀,꽃 조연출">
+  <div class="note" style="margin-top:14px">
+    초기 비밀번호는 자동으로 만들어집니다.<br>
+    본인이 처음 로그인할 때 바꾸도록 되어 있습니다.
+  </div>
+  <div class="bar" style="margin-top:14px">
+    <button class="b" id="uSave">만들기</button>
+  </div>
+  <div class="msg hide" id="uMsg"></div>
+  <div id="uResult" class="hide" style="margin-top:16px">
+    <div class="note" style="border-left-color:var(--ok)">
+      <div style="font-size:12px;margin-bottom:8px">아래 내용을 본인에게 전달하세요.
+        이 화면을 닫으면 비밀번호를 다시 볼 수 없습니다.</div>
+      <pre class="out" id="uResultText" style="margin:0"></pre>
+    </div>
+    <button class="b" id="uCopy" style="width:100%;margin-top:10px">전달 내용 복사</button>
+  </div>
+</dialog>
+
+<dialog id="prDlg">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <h2 style="flex:1;margin:0">급여 대상자</h2>
+    <button class="g sm" onclick="$('prDlg').close()">닫기</button>
+  </div>
+  <div class="note" style="margin-top:14px">
+    대표·직원을 등록해 두면 매월 급여 입력이 간편해집니다.<br>
+    기본 급여와 기본 소득세를 넣어두면 매달 자동으로 채워집니다.
+  </div>
+  <table><thead><tr>
+    <th>성명</th><th>구분</th><th class="n">기본급여</th><th class="n">기본소득세</th>
+    <th>4대보험</th><th>상태</th><th></th></tr></thead><tbody id="prTb"></tbody></table>
+
+  <h3 style="margin:18px 0 0" id="prFormTitle">＋ 새 대상자</h3>
+  <div class="row r2">
+    <div><label>성명 *</label><input id="prName"></div>
+    <div><label>구분</label>
+      <select id="prKind"><option>대표</option><option>직원</option></select></div>
+  </div>
+  <div class="row r2">
+    <div><label>기본 급여 (월)</label><input id="prGross" inputmode="numeric" placeholder="2500000"></div>
+    <div><label>기본 소득세</label><input id="prTax" inputmode="numeric" placeholder="0"></div>
+  </div>
+  <label>4대보험 가입</label>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;padding:6px 0">
+    <label style="display:flex;align-items:center;gap:7px;margin:0;color:var(--fg)">
+      <input type="checkbox" id="prNp" checked style="width:auto"> 국민연금</label>
+    <label style="display:flex;align-items:center;gap:7px;margin:0;color:var(--fg)">
+      <input type="checkbox" id="prHi" checked style="width:auto"> 건강보험 (+장기요양)</label>
+    <label style="display:flex;align-items:center;gap:7px;margin:0;color:var(--fg)">
+      <input type="checkbox" id="prEi" style="width:auto"> 고용보험</label>
+  </div>
+  <div class="dim" style="font-size:11.5px">
+    법인 대표는 통상 <b>국민연금·건강보험만</b> 가입합니다. 고용·산재는 대상이 아닙니다.<br>
+    직원을 등록할 때는 고용보험도 켜세요. 산재보험은 회사가 전액 부담해 급여에서 공제되지 않습니다.
+  </div>
+  <div class="bar" style="margin-top:14px">
+    <button class="b" id="prSave">저장</button>
+    <button class="g hide" id="prCancel">취소</button>
+    <span style="flex:1"></span>
+    <button class="g hide" id="prDelete">삭제</button>
+  </div>
+  <div class="msg hide" id="prMsg"></div>
+</dialog>
+
+<dialog id="pDlg">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <h2 id="pTitle" style="flex:1;margin:0">인력 직접 등록</h2>
+    <button class="g sm" onclick="$('pDlg').close()">닫기</button>
+  </div>
+
+  <div class="row r2" style="margin-top:14px">
+    <div><label>성명 *</label><input id="pName" placeholder="주민등록상 이름"></div>
+    <div><label>소득구분 *</label>
+      <select id="pType">
+        <option value="biz">프리랜서 · 사업소득 3.3%</option>
+        <option value="other">일반·학생 · 기타소득 8.8%</option>
+      </select></div>
+  </div>
+
+  <label>주민등록번호 *</label>
+  <div style="display:flex;gap:8px">
+    <input id="pRrn" inputmode="numeric" maxlength="14" placeholder="000000-0000000" style="flex:1">
+    <button class="g" id="pRrnEye" style="width:70px">보기</button>
+  </div>
+  <div class="dim" id="pRrnHint" style="font-size:12px;margin-top:5px">
+    신고에 쓰이므로 정확히 입력하세요. 자동으로 형식을 검사합니다.</div>
+
+  <div class="row r2">
+    <div><label>연락처</label><input id="pPhone" inputmode="tel" placeholder="010-0000-0000"></div>
+    <div><label>역할</label><input id="pRole" placeholder="촬영감독"></div>
+  </div>
+  <label>주소</label>
+  <input id="pAddr" placeholder="도로명 주소">
+
+  <div class="row r3">
+    <div><label>은행</label><select id="pBank"></select></div>
+    <div><label>예금주</label><input id="pHolder"></div>
+    <div><label>업종코드</label><input id="pIndustry" value="940909"></div>
+  </div>
+  <label>계좌번호</label>
+  <input id="pAcc" inputmode="numeric" placeholder="'-' 넣어도 됩니다 · 숫자만 저장됩니다">
+
+  <label>동의일</label>
+  <input type="date" id="pConsent">
+
+  <div class="msg hide" id="pMsg"></div>
+  <div class="bar" style="margin-top:16px">
+    <button class="b" id="pSave">저장</button>
+    <span style="flex:1"></span>
+    <button class="g hide" id="pDelete">삭제</button>
+  </div>
+</dialog>
+
+<dialog id="trDlg">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <div style="flex:1">
+      <h2 style="margin-bottom:4px">이체 목록</h2>
+      <div class="dim" id="trSub" style="font-size:12.5px"></div>
+    </div>
+    <button class="g sm" onclick="$('trDlg').close()">닫기</button>
+  </div>
+  <div class="note" style="margin-top:14px">
+    계좌는 이 화면에서만 잠깐 풀어서 보여줍니다. 시트에는 암호화된 채로 남아 있습니다.
+  </div>
+  <div id="trBody"><span class="dim">불러오는 중…</span></div>
+  <div class="bar" style="margin-top:14px">
+    <button class="g" id="trCopyAll">전체 복사 (엑셀 붙여넣기용)</button>
+    <span class="dim" id="trSum" style="flex:1;text-align:right"></span>
+  </div>
+</dialog>
+
+<dialog id="dlg">
+  <h2 id="dlgTitle">제출 내용</h2>
+  <div id="dlgBody" class="kv"></div>
+  <div class="thumbs" id="dlgThumbs"></div>
+  <div class="dim" style="font-size:11.5px;margin-top:6px">
+    미리보기가 안 되는 형식(HEIC 등)은 파일 자체는 정상입니다.
+    내려받아 사진 앱으로 열면 보이며, 계좌번호는 위 항목에서도 확인할 수 있습니다.
+  </div>
+  <div class="bar" style="margin:16px 0 0">
+    <button class="g" id="dlgDownload">사진 내려받기</button>
+    <button class="b" id="dlgRegister">등록하기</button>
+    <button class="g" id="dlgClose">닫기</button>
+  </div>
+  <div class="msg hide" id="dlgMsg"></div>
+</dialog>
+
+<script src="wct-core.js"></script>
+<script>
+const TABS = ['수신함', '인력', '지급', '원천세', '월별 신고', '설정'];
+
+(async function init() {
+  if (!await WCT.requireAuth(true)) return;   // 관리자 전용
+  window.__onReload = () => refreshAll(false);
+  mountHeader('원천징수');
+
+  TABS.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.textContent = t;
+    if (i === 0) b.className = 'on';
+    b.onclick = () => {
+      document.querySelectorAll('#tabs button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      document.querySelectorAll('section[data-tab]').forEach((s) =>
+        s.classList.toggle('hide', s.dataset.tab !== t));
+    };
+    $('tabs').appendChild(b);
+  });
+
+  $('payDate').value = today();
+  $('payYm').value = thisYm();
+  await refreshAll(false);
+})();
+
+async function refreshAll(force) {
+  await WCT.load(force);
+  renderInbox(); renderPeople(); renderPay(); renderWht(); renderPayroll();
+  renderReport(); renderSettings(); renderRates(); renderUsers(); renderRecovery(); renderCalendar();
+}
+
+
+function renderInbox() {
+  $('invTb').innerHTML = WCT.data.invites.map((i) => {
+    const cap = i.cap || 1;
+    const cnt = i.count || 0;
+    const full = cnt >= cap;
+    const expired = i.expires && new Date(i.expires) < new Date();
+    const state = i.closed ? '<span class="pill bad">닫힘</span>'
+      : full ? '<span class="pill done">완료</span>'
+      : expired ? '<span class="pill bad">기간만료</span>'
+      : '<span class="pill wait">열림</span>';
+    return `<tr>
+      <td>${esc(i.label || '-')}</td><td>${esc(i.role || '-')}</td>
+      <td>${cap > 1 ? `<span class="pill">다회용</span>` : '1회용'}</td>
+      <td class="n">${cap > 1 ? `${cnt} / ${cap}` : (cnt ? '완료' : '-')}</td>
+      <td class="dim">${esc(String(i.expires || '-').slice(0, 16))}</td>
+      <td>${state}</td>
+      <td style="text-align:right">
+        <button class="g sm" onclick="copyLink('${i.token}')">복사</button>
+        ${(!i.closed && !full) ? `<button class="g sm" onclick="closeInvite('${i.token}')">닫기</button>` : ''}
+        <button class="g sm" onclick="delInvite('${i.token}')">삭제</button></td></tr>`;
+  }).join('') || '<tr><td colspan="7" class="dim">발급한 링크가 없습니다.</td></tr>';
+
+  $('subTb').innerHTML = WCT.data.submissions.map((s) => `<tr>
+    <td class="dim">${s.at}</td><td>${s.kind}</td><td>${s.label || '-'}</td>
+    <td class="n">${Math.round(s.size / 1024).toLocaleString()} KB</td>
+    <td><span class="pill ${s.status === '대기' ? 'wait' : 'done'}">${s.status}</span></td>
+    <td style="text-align:right"><button class="b" onclick="openSub('${s.fileId}','${s.kind}')">
+      열기</button></td></tr>`).join('')
+    || '<tr><td colspan="6" class="dim">받은 제출이 없습니다.</td></tr>';
+}
+
+function renderPeople() {
+  $('perTb').innerHTML = WCT.data.people.map((p) => `<tr>
+    <td>${esc(p.name)}${p.active ? '' : ' <span class="dim">(비활성)</span>'}${
+      WCT.data.people.filter((x) => x.name === p.name).length > 1
+        ? ` <span class="pill">#${p.id}</span>` : ''}</td>
+    <td><span class="pill">${(p.incomeType || 'biz') === 'other' ? '8.8%' : '3.3%'}</span></td>
+    <td class="dim"><span id="rrn${p.id}">••••••-•••••••</span>
+      ${p.envFileId ? `<button class="g sm" style="margin-left:6px;padding:3px 8px"
+        onclick="showRrn(${p.id}, this)">보기</button>` : ''}</td>
+    <td>${p.role || '-'}</td><td>${p.bank || '-'}</td>
+    <td class="dim"><span id="acc${p.id}">${p.accMask || '-'}</span>
+      ${p.envFileId ? `<button class="g sm" style="margin-left:6px;padding:3px 8px"
+        onclick="showAcc('p', ${p.id}, this)">보기</button>
+      <button class="g sm" style="margin-left:4px;padding:3px 8px"
+        onclick="copyAccount(${p.id})">복사</button>` : ''}</td>
+    <td>${p.industry}</td>
+    <td class="dim">${p.consentDate || '-'}</td>
+    <td style="text-align:right"><button class="g sm" onclick="editPerson(${p.id})">수정</button></td>
+    </tr>`).join('')
+    || '<tr><td colspan="9" class="dim">등록된 인력이 없습니다. [＋ 직접 등록] 으로 넣을 수 있습니다.</td></tr>';
+
+  $('venTb').innerHTML = WCT.data.vendors.map((v, i) => `<tr>
+    <td>${esc(v.company)}</td><td>${v.bizNo}</td><td>${esc(v.ceo)}</td>
+    <td>${esc(v.manager)}</td><td class="dim">${esc(v.email)}</td>
+    <td>${esc(v.bank || '-')}</td>
+    <td class="dim"><span id="accv${i}">${v.accMask || '-'}</span>
+      ${v.envFileId ? `<button class="g sm" style="margin-left:6px;padding:3px 8px"
+        onclick="showAcc('v', ${i}, this)">보기</button>
+      <button class="g sm" style="margin-left:4px;padding:3px 8px"
+        onclick="copyVendorAccount(${i})">복사</button>` : ''}</td>
+    <td>${esc(v.holder || '-')}${v.holder && v.company && v.holder !== v.company
+      ? ' <span class="pill">상호와 다름</span>' : ''}</td></tr>`).join('')
+    || '<tr><td colspan="8" class="dim">등록된 거래처가 없습니다.</td></tr>';
+}
+
+function renderPay() {
+  $('payPerson').innerHTML = WCT.data.people.filter((p) => p.active)
+    .map((p) => `<option value="${p.id}">${p.name} · ${
+      (p.incomeType || 'biz') === 'other' ? '8.8%' : '3.3%'} (${p.role || '-'})</option>`).join('');
+  $('rcpPerson').innerHTML = WCT.data.people
+    .map((p) => `<option value="${p.id}">${p.name}</option>`).join('');
+  $('payProject').innerHTML = '<option value="">(없음)</option>' +
+    WCT.data.projects.map((p) => `<option value="${p.name}">${p.name}</option>`).join('');
+
+  const yms = [...new Set(WCT.data.payments.map((p) => p.ym))].sort().reverse();
+  $('payFilter').innerHTML = '<option value="">전체 기간</option>' +
+    yms.map((y) => `<option value="${y}">${y}</option>`).join('');
+
+  const f = $('payFilter').value;
+  const list = WCT.data.payments.filter((p) => !f || p.ym === f)
+    .sort((a, b) => (b.payDate || '').localeCompare(a.payDate || ''));
+  $('payTb').innerHTML = list.map((p) => `<tr>
+    <td>${p.payDate}</td><td>${p.ym}</td><td>${p.project || '-'}</td><td>${p.name}</td>
+    <td class="n">${won(p.gross)}</td><td class="n">${won(p.incomeTax)}</td>
+    <td class="n">${won(p.localTax)}</td><td class="n">${won(p.net)}</td>
+    <td><span class="pill ${p.status === '신고완료' ? 'done' : 'wait'}">${p.status}</span></td>
+    <td style="text-align:right"><button class="g" onclick="delPay(${p.id})">삭제</button></td>
+    </tr>`).join('') || '<tr><td colspan="10" class="dim">지급 내역이 없습니다.</td></tr>';
+
+  const s = list.reduce((a, p) => ({ g: a.g + p.gross, i: a.i + p.incomeTax,
+    l: a.l + p.localTax, n: a.n + p.net }), { g: 0, i: 0, l: 0, n: 0 });
+  $('paySum').textContent =
+    `합계 · 지급 ${won(s.g)}원 · 소득세 ${won(s.i)}원 · 지방세 ${won(s.l)}원 · 실지급 ${won(s.n)}원`;
+}
+
+function renderWht() {
+  const months = [...new Set(WCT.data.payments
+    .map((p) => (p.payDate || '').slice(0, 7)).filter(Boolean))].sort().reverse();
+  const now = thisYm();
+  if (!months.includes(now)) months.unshift(now);
+  const prev = new Date(); prev.setMonth(prev.getMonth() - 1);
+  const prevYm = ymd(prev).slice(0, 7);
+  if (!months.includes(prevYm)) months.splice(1, 0, prevYm);
+
+  const keep = $('whtYm').value;
+  $('whtYm').innerHTML = months.map((m) => `<option>${m}</option>`).join('');
+  $('whtYm').value = months.includes(keep) ? keep : (months.includes(prevYm) ? prevYm : months[0]);
+
+  $('whtTb').innerHTML = (WCT.data.wht || []).sort((a, b) => b.payYm.localeCompare(a.payYm))
+    .map((w) => `<tr>
+      <td>${w.payYm}</td><td class="n">${w.bizCount + w.wageCount}</td>
+      <td class="n">${won(w.bizGross + w.wageGross)}</td>
+      <td class="n">${won(w.totalTax)}</td><td class="n">${won(w.localTax)}</td>
+      <td>${w.hometax ? '<span class="pill done">완료</span>' : '<span class="pill wait">미신고</span>'}</td>
+      <td>${w.wetax ? '<span class="pill done">완료</span>' : '<span class="pill wait">미신고</span>'}</td>
+      </tr>`).join('') || '<tr><td colspan="7" class="dim">기록이 없습니다.</td></tr>';
+
+  whtCalc();
+}
+
+function renderReport() {
+  const yms = [...new Set(WCT.data.payments.map((p) => p.ym))].sort().reverse();
+  $('repYm').innerHTML = yms.map((y) => `<option>${y}</option>`).join('');
+  if (!$('rcpYear').value) $('rcpYear').value = new Date().getFullYear();
+}
+
+function whtCalc() {
+  const ym = $('whtYm').value;
+  if (!ym) return;
+  const a = whtAggregate(ym);
+  const saved = (WCT.data.wht || []).find((w) => w.payYm === ym);
+
+  $('whtBizCount').textContent = a.biz.count;
+  $('whtBizGross').textContent = won(a.biz.gross);
+  $('whtBizTax').textContent = won(a.biz.tax);
+  $('whtOthCount').textContent = a.other.count;
+  $('whtOthGross').textContent = won(a.other.gross);
+  $('whtOthTax').textContent = won(a.other.tax);
+
+  // 근로소득은 급여 표에서 자동 집계
+  const wage = (typeof readPayroll === 'function' ? readPayroll() : [])
+    .filter((r) => r.gross > 0);
+  const wageCount = wage.length;
+  const wageGross = wage.reduce((a, r) => a + r.gross, 0);
+  const wageTax = wage.reduce((a, r) => a + r.tax, 0);
+  const wageLocal = wage.reduce((a, r) => a + r.localTax, 0);
+  $('whtWageCount').textContent = wageCount;
+  $('whtWageGross').textContent = won(wageGross);
+  $('whtWageTax').textContent = won(wageTax);
+  const num = () => 0;
+  const national = a.tax + wageTax;
+  const local = a.local + wageLocal;
+
+  $('whtNational').textContent = won(national) + '원';
+  $('whtLocal').textContent = won(local) + '원';
+
+  const dl = whtDeadline(ym);
+  const left = Math.ceil((dl - new Date()) / 86400000);
+  const col = left < 0 ? 'var(--bad)' : left <= 3 ? 'var(--warn)' : 'var(--dim)';
+  $('whtDue').innerHTML = `<span style="color:${col}">신고·납부 기한 ` +
+    `${ymd(dl)} · ${left < 0 ? `${-left}일 지남` : `D-${left}`}</span>` +
+    (a.accrual.length ? ` <span class="dim">· 귀속 ${a.accrual.join(', ')}</span>` : '');
+}
+
+
+
+let CUR = null;
+window.openSub = async (fileId, kind) => {
+  const dlg = $('dlg');
+  $('dlgMsg').className = 'msg hide';
+  $('dlgBody').innerHTML = '<span class="dim">복호화 중…</span>';
+  $('dlgThumbs').innerHTML = '';
+  dlg.showModal();
+  try {
+    const env = (await WCT.api('envelope', { fileId })).envelope;
+    const p = await WCT.open(env);
+    CUR = { payload: p, fileId };
+    $('dlgTitle').textContent = kind === '사업자' ? '사업자 제출'
+      : (p.kind === 'other' ? '일반·학생 제출 (기타소득 8.8%)' : '프리랜서 제출 (사업소득 3.3%)');
+    $('dlgBody').innerHTML = kind === '사업자' ? `
+      <div><b>상호</b>${p.company_name || ''}</div>
+      <div><b>사업자번호</b>${p.biz_no || ''}</div>
+      <div><b>대표자</b>${p.ceo || ''}</div>
+      <div><b>업태/종목</b>${p.biz_type || ''} / ${p.biz_item || ''}</div>
+      <div><b>주소</b>${p.address || ''}</div>
+      <div><b>담당자</b>${p.manager || ''} · ${p.phone || ''}</div>
+      <div><b>이메일</b>${p.email || ''}</div>
+      <div><b>계좌</b>${p.bank_name || ''} ${maskAcc(p.account)} (${p.account_holder || ''})</div>
+      <div style="color:var(--warn);margin-top:8px">원천징수 대상이 아닙니다 · 거래처로 등록됩니다</div>` : `
+      <div><b>성명</b>${p.name || ''}</div>
+      <div><b>주민등록번호</b>${maskRrn(p.rrn)}</div>
+      <div><b>연락처</b>${p.phone || ''}</div>
+      <div><b>주소</b>${p.address || ''}</div>
+      <div><b>역할</b>${p.role || ''}</div>
+      <div><b>계좌</b>${p.bank_name || ''} ${maskAcc(p.account)} (${p.account_holder || ''})</div>`;
+
+    const imgs = [];
+    Object.entries(p.files || {}).forEach(([g, arr]) => (arr || []).forEach((f, i) => {
+      const nm = ({ bankbook: '통장사본', id_card: '신분증', cert: '사업자등록증' }[g] || g);
+      const data = f.data || '';
+      const mime = (data.match(/^data:([^;,]*)/) || [])[1] || '';
+      const bytes = data.includes(',') ? Math.round(data.split(',')[1].length * 0.75) : 0;
+      imgs.push({ name: nm + '_' + (i + 1), data, mime, bytes, orig: f.name || '' });
+    }));
+    CUR.images = imgs;
+
+    $('dlgThumbs').innerHTML = imgs.map((im, i) => {
+      const kb = (im.bytes / 1024).toFixed(0);
+      if (!im.data || im.bytes < 500) {
+        return '<div class="thumbbad"><div style="font-size:20px">\u26A0\uFE0F</div>' +
+          '<div style="font-weight:700;margin:4px 0">' + esc(im.name) + '</div>' +
+          '<div>전송 중 손상되었습니다</div>' +
+          '<div class="dim" style="margin-top:4px">' + esc(im.mime || '형식 없음') +
+          ' \u00B7 ' + kb + 'KB</div>' +
+          '<div style="margin-top:6px">다시 올려달라고 요청하세요</div></div>';
+      }
+      if (!/^image\/(jpeg|png|gif|webp|bmp)$/.test(im.mime)) {
+        // HEIC 등 — 파일은 정상입니다. 내려받아 사진 앱으로 열면 보입니다.
+        return '<div class="thumbok">' +
+          '<div style="font-size:20px">\uD83D\uDCC4</div>' +
+          '<div style="font-weight:700;margin:4px 0">' + esc(im.name) + '</div>' +
+          '<div>파일 정상 · 브라우저 미리보기만 불가</div>' +
+          '<div class="dim" style="margin-top:4px">' + esc(im.mime) + ' \u00B7 ' + kb + 'KB</div>' +
+          '<div style="margin-top:6px">아래 [사진 내려받기] 로 확인</div></div>';
+      }
+      return '<img src="' + im.data + '" title="' + esc(im.name) + ' \u00B7 ' + kb +
+        'KB" onclick="viewImage(' + i + ')">';
+    }).join('') || '<div class="dim">첨부된 사진이 없습니다.</div>';
+  } catch (e) {
+    $('dlgBody').innerHTML = `<span style="color:var(--bad)">${e.message}</span>`;
+  }
+};
+
+window.viewImage = (i) => {
+  const im = CUR.images[i];
+  const w = window.open('', '_blank');
+  if (!w) return toast('팝업이 차단되었습니다.', true);
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>' +
+    esc(im.name) + '</title><style>body{margin:0;background:#111;display:flex;' +
+    'align-items:center;justify-content:center;min-height:100vh}' +
+    'img{max-width:100%;max-height:100vh}</style></head><body><img src="' +
+    im.data + '"></body></html>');
+  w.document.close();
+};
+
+$('dlgClose').onclick = () => $('dlg').close();
+
+$('dlgDownload').onclick = () => {
+  const list = (CUR.images || []).filter((im) => im.data && im.bytes >= 500);
+  if (!list.length) return toast('내려받을 수 있는 사진이 없습니다.', true);
+  const who = CUR.payload.name || CUR.payload.company_name || '제출';
+  list.forEach((im, i) => setTimeout(() => {
+    const ext = ({ 'image/png': 'png', 'image/heic': 'heic',
+                   'image/heif': 'heif', 'image/webp': 'webp' })[im.mime] || 'jpg';
+    const a = document.createElement('a');
+    a.href = im.data;
+    a.download = who + '_' + im.name + '.' + ext;
+    a.click();
+  }, i * 250));
+  toast(list.length + '장 내려받는 중입니다.');
+};
+
+$('dlgRegister').onclick = async () => {
+  const m = $('dlgMsg');
+  const p = CUR.payload;
+  if (CUR.images.length && !confirm(
+    '등록하면 사진이 든 원본 제출물은 서버에서 삭제됩니다.\n사진을 먼저 내려받으셨나요?')) return;
+  m.className = 'msg'; m.textContent = '등록 중…';
+  try {
+    if (p.kind === 'business') {
+      const env = await WCT.seal({ kind: 'business', company_name: p.company_name,
+        biz_no: p.biz_no, ceo: p.ceo, address: p.address, phone: p.phone,
+        email: p.email, bank_name: p.bank_name, account: p.account,
+        account_holder: p.account_holder });
+      await WCT.api('vendor.add', { company: p.company_name, bizNo: p.biz_no, ceo: p.ceo,
+        bizType: p.biz_type, bizItem: p.biz_item, address: p.address,
+        manager: p.manager, email: p.email, bank: p.bank_name,
+        holder: p.account_holder, accMask: maskAcc(p.account), envelope: env });
+    } else {
+      // 세무에 필요한 항목만 남긴 새 봉투 — 사진은 담지 않는다
+      const env = await WCT.seal({ kind: p.kind, name: p.name, rrn: p.rrn,
+        address: p.address, phone: p.phone, bank_name: p.bank_name,
+        account: p.account, account_holder: p.account_holder });
+      await WCT.api('person.add', { name: p.name, role: p.role, bank: p.bank_name,
+        holder: p.account_holder, accMask: maskAcc(p.account),
+        industry: '940909', consentDate: today(),
+        incomeType: p.kind === 'other' ? 'other' : 'biz', envelope: env });
+    }
+    await WCT.api('dropFile', { fileId: CUR.fileId });
+    m.className = 'msg ok'; m.textContent = '등록했습니다. 원본 제출물은 삭제했습니다.';
+    await refreshAll(true);
+    setTimeout(() => $('dlg').close(), 900);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+};
+
+
+// ═══════════════ 링크
+$('mkInvite').onclick = async () => {
+  const label = $('invLabel').value.trim();
+  const m = $('invMsg');
+  if (!label) { m.className = 'msg bad'; m.textContent = '라벨을 입력하세요.'; return; }
+
+  const multi = $('invKind').value === 'n';
+  const cap = multi ? Math.max(2, Math.min(200, Number($('invCap').value) || 10)) : 1;
+  const token = b64e(crypto.getRandomValues(new Uint8Array(18)))
+    .replace(/[+/=]/g, '').slice(0, 22);
+  const days = Number($('invDays').value) || 7;
+  const exp = new Date(Date.now() + days * 86400000);
+  const expStr = `${ymd(exp)} ${String(exp.getHours()).padStart(2, '0')}:` +
+    `${String(exp.getMinutes()).padStart(2, '0')}:00`;
+
+  try {
+    await WCT.api('invite.create', { token, label, role: $('invRole').value.trim(),
+      expires: expStr, cap });
+    const link = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}submit.html?t=${token}`;
+    await copyText(link);
+    m.className = 'msg ok';
+    m.innerHTML = `클립보드에 복사했습니다 · ${multi ? `최대 ${cap}명` : '1회용'} · ${expStr} 까지` +
+      `<br><code>${esc(link)}</code>`;
+    $('invLabel').value = '';
+    await refreshAll(true);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+};
+
+window.copyLink = (t) => {
+  const link = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}submit.html?t=${t}`;
+  navigator.clipboard.writeText(link);
+  const m = $('invMsg'); m.className = 'msg ok'; m.textContent = link;
+};
+window.closeInvite = async (t) => {
+  if (!confirm('이 링크를 지금 닫을까요?\n더 이상 제출을 받지 않습니다.')) return;
+  await WCT.api('invite.close', { token: t, closed: true });
+  await refreshAll(true);
+  toast('링크를 닫았습니다.');
+};
+
+window.delInvite = async (t) => {
+  if (!confirm('이 링크를 삭제할까요?')) return;
+  await WCT.api('invite.delete', { token: t }); await refreshAll(true);
+};
+
+// ═══════════════ 제출 열기 / 등록
+
+window.openSub = async (fileId, kind) => {
+  const dlg = $('dlg');
+  $('dlgMsg').className = 'msg hide';
+  $('dlgBody').innerHTML = '<span class="dim">복호화 중…</span>';
+  $('dlgThumbs').innerHTML = '';
+  dlg.showModal();
+  try {
+    const env = (await WCT.api('envelope', { fileId })).envelope;
+    const p = await WCT.open(env);
+    CUR = { payload: p, fileId };
+    $('dlgTitle').textContent = kind === '사업자' ? '사업자 제출'
+      : (p.kind === 'other' ? '일반·학생 제출 (기타소득 8.8%)' : '프리랜서 제출 (사업소득 3.3%)');
+    $('dlgBody').innerHTML = kind === '사업자' ? `
+      <div><b>상호</b>${p.company_name || ''}</div>
+      <div><b>사업자번호</b>${p.biz_no || ''}</div>
+      <div><b>대표자</b>${p.ceo || ''}</div>
+      <div><b>업태/종목</b>${p.biz_type || ''} / ${p.biz_item || ''}</div>
+      <div><b>주소</b>${p.address || ''}</div>
+      <div><b>담당자</b>${p.manager || ''} · ${p.phone || ''}</div>
+      <div><b>이메일</b>${p.email || ''}</div>
+      <div><b>계좌</b>${p.bank_name || ''} ${maskAcc(p.account)} (${p.account_holder || ''})</div>
+      <div style="color:var(--warn);margin-top:8px">원천징수 대상이 아닙니다 · 거래처로 등록됩니다</div>` : `
+      <div><b>성명</b>${p.name || ''}</div>
+      <div><b>주민등록번호</b>${maskRrn(p.rrn)}</div>
+      <div><b>연락처</b>${p.phone || ''}</div>
+      <div><b>주소</b>${p.address || ''}</div>
+      <div><b>역할</b>${p.role || ''}</div>
+      <div><b>계좌</b>${p.bank_name || ''} ${maskAcc(p.account)} (${p.account_holder || ''})</div>`;
+
+    const imgs = [];
+    Object.entries(p.files || {}).forEach(([g, arr]) => (arr || []).forEach((f, i) => {
+      const nm = ({ bankbook: '통장사본', id_card: '신분증', cert: '사업자등록증' }[g] || g);
+      imgs.push({ name: `${nm}_${i + 1}.jpg`, data: f.data });
+    }));
+    CUR.images = imgs;
+    $('dlgThumbs').innerHTML = imgs.map((im, i) =>
+      `<img src="${im.data}" title="${im.name}" onclick="window.open('').document.write(
+        '<img src=\\'' + this.src + '\\' style=max-width:100%>')">`).join('');
+  } catch (e) {
+    $('dlgBody').innerHTML = `<span style="color:var(--bad)">${e.message}</span>`;
+  }
+};
+
+$('dlgClose').onclick = () => $('dlg').close();
+
+$('dlgDownload').onclick = () => {
+  (CUR.images || []).forEach((im, i) => setTimeout(() => {
+    const a = document.createElement('a');
+    a.href = im.data;
+    a.download = `${CUR.payload.name || CUR.payload.company_name || '제출'}_${im.name}`;
+    a.click();
+  }, i * 250));
+};
+
+$('dlgRegister').onclick = async () => {
+  const m = $('dlgMsg');
+  const p = CUR.payload;
+  if (CUR.images.length && !confirm(
+    '등록하면 사진이 든 원본 제출물은 서버에서 삭제됩니다.\n사진을 먼저 내려받으셨나요?')) return;
+  m.className = 'msg'; m.textContent = '등록 중…';
+  try {
+    if (p.kind === 'business') {
+      const env = await WCT.seal({ kind: 'business', company_name: p.company_name,
+        biz_no: p.biz_no, ceo: p.ceo, address: p.address, phone: p.phone,
+        email: p.email, bank_name: p.bank_name, account: p.account,
+        account_holder: p.account_holder });
+      await WCT.api('vendor.add', { company: p.company_name, bizNo: p.biz_no, ceo: p.ceo,
+        bizType: p.biz_type, bizItem: p.biz_item, address: p.address,
+        manager: p.manager, email: p.email, bank: p.bank_name,
+        holder: p.account_holder, accMask: maskAcc(p.account), envelope: env });
+    } else {
+      // 세무에 필요한 항목만 남긴 새 봉투 — 사진은 담지 않는다
+      const env = await WCT.seal({ kind: p.kind, name: p.name, rrn: p.rrn,
+        address: p.address, phone: p.phone, bank_name: p.bank_name,
+        account: p.account, account_holder: p.account_holder });
+      await WCT.api('person.add', { name: p.name, role: p.role, bank: p.bank_name,
+        holder: p.account_holder, accMask: maskAcc(p.account),
+        industry: '940909', consentDate: today(),
+        incomeType: p.kind === 'other' ? 'other' : 'biz', envelope: env });
+    }
+    await WCT.api('dropFile', { fileId: CUR.fileId });
+    m.className = 'msg ok'; m.textContent = '등록했습니다. 원본 제출물은 삭제했습니다.';
+    await refreshAll(true);
+    setTimeout(() => $('dlg').close(), 900);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+};
+
+
+// ═══════════════ 지급
+function recalc() {
+  const raw = $('payAmt').value.replace(/[^\d]/g, '');
+  const box = $('payCalc');
+  if (!raw) { box.textContent = '금액을 입력하세요.'; box.dataset.ok = ''; return; }
+  const person = WCT.data.people.find((p) => p.id === +$('payPerson').value);
+  const type = (person && person.incomeType) || 'biz';
+  const r = $('payMode').value === 'gross' ? calcTax(+raw, 10, type) : calcFromNet(+raw, type);
+  if (!r) { box.textContent = '금액을 확인하세요.'; box.dataset.ok = ''; return; }
+  const label = INCOME_TYPES[type].label;
+  box.innerHTML = `<b>${label}</b> · 지급액 <b>${won(r.gross)}</b>원` +
+    (type === 'other' ? ` (소득금액 ${won(r.base)}원)` : '') +
+    `<br>소득세 ${won(r.incomeTax)}원 · 지방소득세 ${won(r.localTax)}원 →
+     실지급 <b>${won(r.net)}</b>원` +
+    (r.exempt === '소액부징수'
+      ? '<br><span style="color:var(--warn)">소액부징수 — 징수는 없지만 신고는 필요합니다.</span>' : '') +
+    (r.exempt === '과세최저한'
+      ? '<br><span style="color:var(--warn)">과세최저한 — 12만 5천원 이하라 세금이 없습니다. 신고는 필요합니다.</span>' : '');
+  box.dataset.ok = JSON.stringify(r);
+}
+['payAmt', 'payMode', 'payPerson'].forEach((id) => $(id).addEventListener('input', recalc));
+$('payPerson').addEventListener('change', recalc);
+$('payFilter').addEventListener('change', renderPay);
+
+$('addPay').onclick = async () => {
+  const r = $('payCalc').dataset.ok;
+  // 무엇이 비었는지 딱 집어서 알려주고 그 칸으로 커서를 옮긴다
+  if (!$('payPerson').value) { toast('소득자를 선택하세요.', true); return $('payPerson').focus(); }
+  if (!$('payDate').value) { toast('지급일을 입력하세요.', true); return $('payDate').focus(); }
+  if (!$('payYm').value) { toast('귀속월을 입력하세요.', true); return $('payYm').focus(); }
+  if (!r) { toast('금액을 입력하세요.', true); return $('payAmt').focus(); }
+  const t = JSON.parse(r);
+  const person = WCT.data.people.find((p) => p.id === +$('payPerson').value);
+  const btn = $('addPay');
+  btn.disabled = true; btn.textContent = '등록 중…';
+  try {
+  await WCT.api('payment.add', { personId: person.id, name: person.name,
+    payDate: $('payDate').value, ym: $('payYm').value, project: $('payProject').value,
+    role: $('payRole').value || person.role, gross: t.gross, incomeTax: t.incomeTax,
+    localTax: t.localTax, net: t.net, isSmall: !!t.exempt, memo: $('payMemo').value,
+    incomeType: t.type, base: t.base });
+  } catch (e) {
+    toast(e.message, true);
+    btn.disabled = false; btn.textContent = '지급 등록';
+    return;
+  }
+  btn.disabled = false; btn.textContent = '지급 등록';
+  $('payAmt').value = ''; $('payMemo').value = ''; recalc();
+  await refreshAll(true);
+  toast(`${person.name} · ${won(t.gross)}원 등록되었습니다.`);
+};
+
+window.delPay = async (id) => {
+  if (!confirm('이 지급 기록을 삭제할까요?')) return;
+  await WCT.api('payment.delete', { id }); await refreshAll(true);
+};
+
+$('newProject').onclick = async () => {
+  const name = prompt('프로젝트명');
+  if (!name) return;
+  await WCT.api('project.add', { name, client: prompt('클라이언트 (생략 가능)') || '' });
+  await refreshAll(true);
+};
+
+
+
+// ═══════════════ 원천세 (매월 10일)
+
+
+function renderWht() {
+  const months = [...new Set(WCT.data.payments
+    .map((p) => (p.payDate || '').slice(0, 7)).filter(Boolean))].sort().reverse();
+  const now = thisYm();
+  if (!months.includes(now)) months.unshift(now);
+  const prev = new Date(); prev.setMonth(prev.getMonth() - 1);
+  const prevYm = ymd(prev).slice(0, 7);
+  if (!months.includes(prevYm)) months.splice(1, 0, prevYm);
+
+  const keep = $('whtYm').value;
+  $('whtYm').innerHTML = months.map((m) => `<option>${m}</option>`).join('');
+  $('whtYm').value = months.includes(keep) ? keep : (months.includes(prevYm) ? prevYm : months[0]);
+
+  $('whtTb').innerHTML = (WCT.data.wht || []).sort((a, b) => b.payYm.localeCompare(a.payYm))
+    .map((w) => `<tr>
+      <td>${w.payYm}</td><td class="n">${w.bizCount + w.wageCount}</td>
+      <td class="n">${won(w.bizGross + w.wageGross)}</td>
+      <td class="n">${won(w.totalTax)}</td><td class="n">${won(w.localTax)}</td>
+      <td>${w.hometax ? '<span class="pill done">완료</span>' : '<span class="pill wait">미신고</span>'}</td>
+      <td>${w.wetax ? '<span class="pill done">완료</span>' : '<span class="pill wait">미신고</span>'}</td>
+      </tr>`).join('') || '<tr><td colspan="7" class="dim">기록이 없습니다.</td></tr>';
+
+  whtCalc();
+}
+
+function whtCalc() {
+  const ym = $('whtYm').value;
+  if (!ym) return;
+  const a = whtAggregate(ym);
+  const saved = (WCT.data.wht || []).find((w) => w.payYm === ym);
+
+  $('whtBizCount').textContent = a.biz.count;
+  $('whtBizGross').textContent = won(a.biz.gross);
+  $('whtBizTax').textContent = won(a.biz.tax);
+  $('whtOthCount').textContent = a.other.count;
+  $('whtOthGross').textContent = won(a.other.gross);
+  $('whtOthTax').textContent = won(a.other.tax);
+
+  // 근로소득은 급여 표에서 자동 집계
+  const wage = (typeof readPayroll === 'function' ? readPayroll() : [])
+    .filter((r) => r.gross > 0);
+  const wageCount = wage.length;
+  const wageGross = wage.reduce((a, r) => a + r.gross, 0);
+  const wageTax = wage.reduce((a, r) => a + r.tax, 0);
+  const wageLocal = wage.reduce((a, r) => a + r.localTax, 0);
+  $('whtWageCount').textContent = wageCount;
+  $('whtWageGross').textContent = won(wageGross);
+  $('whtWageTax').textContent = won(wageTax);
+  const num = () => 0;
+  const national = a.tax + wageTax;
+  const local = a.local + wageLocal;
+
+  $('whtNational').textContent = won(national) + '원';
+  $('whtLocal').textContent = won(local) + '원';
+
+  const dl = whtDeadline(ym);
+  const left = Math.ceil((dl - new Date()) / 86400000);
+  const col = left < 0 ? 'var(--bad)' : left <= 3 ? 'var(--warn)' : 'var(--dim)';
+  $('whtDue').innerHTML = `<span style="color:${col}">신고·납부 기한 ` +
+    `${ymd(dl)} · ${left < 0 ? `${-left}일 지남` : `D-${left}`}</span>` +
+    (a.accrual.length ? ` <span class="dim">· 귀속 ${a.accrual.join(', ')}</span>` : '');
+}
+
+$('whtYm').addEventListener('change', () => { renderPayroll(); });
+
+$('whtDetail').onclick = () => {
+  const ym = $('whtYm').value;
+  const a = whtAggregate(ym);
+  if (!a.list.length) return void ($('whtOut').textContent = `${ym}에 지급한 내역이 없습니다.`);
+  $('whtOut').textContent = [
+    `■ ${ym} 지급분 · ${a.count}명 · ${a.list.length}건`, '',
+    ...a.list.sort((x, y) => x.payDate.localeCompare(y.payDate)).map((p) =>
+      `${p.payDate}  ${((p.incomeType || 'biz') === 'other' ? '[8.8]' : '[3.3]')} ` +
+      `${p.name.padEnd(6)}  귀속 ${p.ym}  ` +
+      `지급 ${won(p.gross).padStart(11)}원  소득세 ${won(p.incomeTax).padStart(8)}원  ` +
+      `지방세 ${won(p.localTax).padStart(7)}원`),
+    '', `합계  지급 ${won(a.gross)}원 · 소득세 ${won(a.tax)}원 · 지방세 ${won(a.local)}원`,
+  ].join('\n');
+};
+
+$('whtGuide').onclick = () => {
+  const ym = $('whtYm').value;
+  const a = whtAggregate(ym);
+  const num = (id) => Number(String($(id).value).replace(/[^\d]/g, '')) || 0;
+  const wage = readPayroll().filter((r) => r.gross > 0);
+  const wt = wage.reduce((x, r) => x + r.tax, 0);
+  const wc = wage.length;
+  const wg = wage.reduce((x, r) => x + r.gross, 0);
+  $('whtOut').textContent = [
+    `━━━ ① 홈택스 (소득세) ━━━`,
+    `  1. 홈택스 로그인 → 세금신고 → 원천세 신고 → 정기신고`,
+    `  2. 기본정보  귀속연월 ${a.accrual[0] || ym} / 지급연월 ${ym} / 매월`,
+    `  3. 소득종류 선택: ${[a.biz.gross ? '사업소득' : '', a.other.gross ? '기타소득' : '',
+        wc ? '근로소득' : ''].filter(Boolean).join(' + ') || '사업소득'}`,
+    a.biz.gross ? `  · 사업소득 [A25]  인원 ${a.biz.count}  총지급액 ${won(a.biz.gross)}  소득세 ${won(a.biz.tax)}` : '',
+    a.other.gross ? `  · 기타소득 [A40]  인원 ${a.other.count}  총지급액 ${won(a.other.gross)}  소득세 ${won(a.other.tax)}` : '',
+    wc ? `  · 근로소득 [A01]  인원 ${wc}  총지급액 ${won(wg)}  소득세 ${won(wt)}` : '',
+    `  4. 신고서 제출 → 납부할 세액 ${won(a.tax + wt)}원 납부`,
+    ``,
+    `━━━ ② 위택스 (지방소득세) ━━━`,
+    `  홈택스 제출 후 뜨는 [지방소득세 신고 이동] 버튼을 쓰면 자료가 넘어갑니다.`,
+    `  놓쳤으면 위택스 로그인 → 신고 → 지방소득세 특별징수 로 직접 들어가세요.`,
+    `  납부액 ${won(a.local + wage.reduce((x, r) => x + r.localTax, 0))}원`,
+    ``,
+    `━━━ 확인 ━━━`,
+    `  · 기한: ${ymd(whtDeadline(ym))} (다음 달 10일)`,
+    `  · 홈택스만 하고 위택스를 빼먹는 사고가 가장 흔합니다. 둘 다 하세요.`,
+    `  · 이번 달 말일에는 간이지급명세서가 따로 있습니다 (월별 신고 탭)`,
+  ].filter(Boolean).join('\n');
+};
+
+$('whtSave').onclick = async () => {
+  const ym = $('whtYm').value;
+  const a = whtAggregate(ym);
+  const wageRows = readPayroll().filter((r) => r.gross > 0);
+  const wt = wageRows.reduce((x, r) => x + r.tax, 0);
+  const wl = wageRows.reduce((x, r) => x + r.localTax, 0);
+  const m = $('whtMsg');
+  const today = today();
+  if (!confirm(`${ym} 지급분을 신고 완료로 기록할까요?\n\n` +
+    `홈택스 ${won(a.tax + wt)}원 / 위택스 ${won(a.local + wl)}원\n\n` +
+    `※ 실제 신고·납부를 마친 뒤에 누르세요.`)) return;
+  try {
+    await WCT.api('wht.save', { payYm: ym, accrualYm: a.accrual[0] || ym,
+      bizCount: a.biz.count, bizGross: a.biz.gross, bizTax: a.biz.tax,
+      otherCount: a.other.count, otherGross: a.other.gross, otherTax: a.other.tax,
+      wageCount: wageRows.length,
+      wageGross: wageRows.reduce((x, r) => x + r.gross, 0), wageTax: wt,
+      totalTax: a.tax + wt, localTax: a.local + wl,
+      hometax: today, wetax: today });
+    m.className = 'msg ok'; m.textContent = '기록했습니다.';
+    await refreshAll(true);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+};
+
+
+
+// ═══════════════ 신고
+async function buildRows(ym, type) {
+  const list = WCT.data.payments.filter((p) => p.ym === ym && p.status !== '예정'
+    && (!type || (p.incomeType || 'biz') === type));
+  const byId = {};
+  list.forEach((p) => {
+    byId[p.personId] = byId[p.personId] ||
+      { personId: p.personId, name: p.name, gross: 0, incomeTax: 0, localTax: 0,
+        incomeType: p.incomeType || 'biz' };
+    byId[p.personId].gross += p.gross;
+    byId[p.personId].incomeTax += p.incomeTax;
+    byId[p.personId].localTax += p.localTax;
+  });
+  // 필요한 봉투를 한 번에 가져옵니다 (한 명씩 따로 열면 매우 느립니다)
+  const persons = Object.values(byId)
+    .map((r) => WCT.data.people.find((p) => p.id === r.personId)).filter(Boolean);
+  try { await WCT.revealMany(persons); } catch (e) {}
+
+  const out = [];
+  for (const r of Object.values(byId)) {
+    const person = WCT.data.people.find((p) => p.id === r.personId);
+    let rrn = '';
+    if (person && person.envFileId) {
+      try { rrn = (await WCT.reveal(person)).rrn || ''; } catch (e) { rrn = ''; }
+    }
+    const d = String(rrn).replace(/\D/g, '');
+    out.push(Object.assign(r, { rrn: d.length === 13 ? `${d.slice(0,6)}-${d.slice(6)}` : '',
+      industry: person ? person.industry : '940909',
+      rate: r.incomeType === 'other' ? 20 : 3,
+      base: r.incomeType === 'other' ? Math.round(r.gross * 0.4) : r.gross,
+      year: ym.split('-')[0], month: String(+ym.split('-')[1]) }));
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+}
+
+$('repCheck').onclick = async () => {
+  const ym = $('repYm').value;
+  if (!ym) return;
+  $('repOut').textContent = '집계 중…';
+
+  const groups = [];
+  for (const type of ['biz', 'other']) {
+    const rows = await buildRows(ym, type);
+    if (rows.length) groups.push({ type, rows });
+  }
+  if (!groups.length) {
+    $('repOut').textContent = `${ym} 귀속 신고 대상이 없습니다.`;
+    return;
+  }
+
+  const dl = ymd(stmtDeadline(ym));
+  const out = [`■ ${ym} 귀속 · 제출기한 ${dl}`];
+  if (groups.length > 1) {
+    out.push('■ 사업소득과 기타소득은 서식이 달라 엑셀이 2개로 나옵니다.');
+  }
+
+  const problems = [];
+  groups.forEach((g) => {
+    const t = INCOME_TYPES[g.type];
+    out.push('', `━━ ${t.label} (${t.code}) · ${g.rows.length}명 ━━`,
+      `   지급 ${won(g.rows.reduce((a, r) => a + r.gross, 0))}원 · ` +
+      `소득세 ${won(g.rows.reduce((a, r) => a + r.incomeTax, 0))}원 · ` +
+      `지방세 ${won(g.rows.reduce((a, r) => a + r.localTax, 0))}원`);
+    g.rows.forEach((r, i) => {
+      out.push(`  ${String(i + 1).padStart(2)}. ${r.name}  ${maskRrn(r.rrn)}  ` +
+        (g.type === 'other' ? `소득금액 ${won(r.base).padStart(10)}원  ` : `업종 ${r.industry}  `) +
+        `지급 ${won(r.gross).padStart(11)}원  소득세 ${won(r.incomeTax)}원`);
+      if (r.rrn.replace(/\D/g, '').length !== 13) problems.push(`${r.name} — 주민등록번호 확인 필요`);
+      if (g.type === 'biz' && String(r.industry).length !== 6) {
+        problems.push(`${r.name} — 업종코드가 6자리가 아닙니다`);
+      }
+      if (r.gross <= 0) problems.push(`${r.name} — 지급액이 0원 이하`);
+    });
+  });
+
+  out.push('', problems.length
+    ? '⚠ 확인 필요\n' + problems.map((p) => '   - ' + p).join('\n')
+    : '✅ 형식 검증을 통과했습니다.');
+  $('repOut').textContent = out.join('\n');
+};
+
+$('repMake').onclick = async () => {
+  const ym = $('repYm').value;
+  let made = 0;
+  for (const type of ['biz', 'other']) {
+    const rows = await buildRows(ym, type);
+    if (!rows.length) continue;
+    const isOther = type === 'other';
+    const head = isOther
+      ? ['일련번호', '소득자성명', '주민등록번호', '귀속연도', '귀속월',
+         '지급액', '필요경비', '기타소득금액', '세율', '소득세', '지방소득세']
+      : ['일련번호', '소득자성명', '주민등록번호', '귀속연도', '귀속월',
+         '업종구분', '지급액', '세율', '소득세', '지방소득세'];
+    const aoa = [head];
+    rows.forEach((r, i) => aoa.push(isOther
+      ? [i + 1, r.name, r.rrn, r.year, r.month, r.gross, r.gross - r.base, r.base,
+         20, r.incomeTax, r.localTax]
+      : [i + 1, r.name, r.rrn, r.year, r.month, r.industry, r.gross, 3,
+         r.incomeTax, r.localTax]));
+    const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
+    aoa.push(isOther
+      ? ['', '합계', '', '', '', sum('gross'), sum('gross') - sum('base'), sum('base'),
+         '', sum('incomeTax'), sum('localTax')]
+      : ['', '합계', '', '', '', '', sum('gross'), '', sum('incomeTax'), sum('localTax')]);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), ym);
+    XLSX.writeFile(wb, `간이지급명세서_${isOther ? '기타소득' : '사업소득'}_${ym}.xlsx`);
+    made++;
+  }
+  if (!made) alert('신고 대상이 없습니다.');
+  else if (made > 1) alert('사업소득·기타소득 두 개의 파일을 만들었습니다.\n홈택스에서 각각 따로 제출하세요.');
+};
+
+$('repDone').onclick = async () => {
+  const ym = $('repYm').value;
+  if (!confirm(`${ym} 귀속분을 신고완료로 표시할까요?`)) return;
+  await WCT.api('payment.markReported', { ym }); await refreshAll(true);
+};
+
+$('dlLedger').onclick = () => {
+  const f = $('payFilter').value;
+  const list = WCT.data.payments.filter((p) => !f || p.ym === f);
+  const aoa = [['지급일', '귀속월', '프로젝트', '성명', '역할', '지급액',
+    '소득세', '지방소득세', '실지급액', '상태', '메모']];
+  list.forEach((p) => aoa.push([p.payDate, p.ym, p.project, p.name, p.role,
+    p.gross, p.incomeTax, p.localTax, p.net, p.status, p.memo]));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '지급대장');
+  XLSX.writeFile(wb, `지급대장_${f || '전체'}.xlsx`);
+};
+
+// ═══════════════ 영수증
+$('rcpMake').onclick = async () => {
+  const pid = +$('rcpPerson').value, year = $('rcpYear').value;
+  const person = WCT.data.people.find((p) => p.id === pid);
+  const list = WCT.data.payments.filter((p) => p.personId === pid && p.ym.startsWith(year));
+  if (!list.length) return alert('해당 연도 지급 내역이 없습니다.');
+  let info = { name: person.name, rrn: '', address: '' };
+  try { info = await WCT.open((await WCT.api('envelope', { fileId: person.envFileId })).envelope); }
+  catch (e) {}
+  const d = String(info.rrn || '').replace(/\D/g, '');
+  const t = list.reduce((a, p) => ({ g: a.g + p.gross, i: a.i + p.incomeTax,
+    l: a.l + p.localTax, n: a.n + p.net }), { g: 0, i: 0, l: 0, n: 0 });
+
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html lang=ko><head><meta charset=utf-8>
+  <title>${year}년 사업소득 원천징수영수증 - ${person.name}</title><style>
+  body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;margin:34px;color:#111}
+  h1{text-align:center;font-size:20px;margin-bottom:2px}
+  .s{text-align:center;color:#666;font-size:12px;margin-bottom:26px}
+  table{border-collapse:collapse;width:100%;margin-bottom:22px;font-size:13px}
+  th,td{border:1px solid #999;padding:7px 9px}
+  th{background:#374151;color:#fff}
+  .i th{background:#f0f0f0;color:#111;width:110px;text-align:left}
+  .n{text-align:right} tfoot td{background:#eee;font-weight:bold}
+  @media print{body{margin:0}}</style></head><body>
+  <h1>사업소득 원천징수영수증 / 지급명세서</h1><div class=s>(${year}년 귀속)</div>
+  <table class=i>
+  <tr><th>징수의무자</th><td>${WCT.data.company || ''}</td><th>소득자 성명</th><td>${person.name}</td></tr>
+  <tr><th>주민등록번호</th><td>${d.length === 13 ? d.slice(0,6) + '-' + d.slice(6) : '-'}</td>
+      <th>업종코드</th><td>${person.industry}</td></tr>
+  <tr><th>주소</th><td colspan=3>${info.address || '-'}</td></tr></table>
+  <table><thead><tr><th>귀속월</th><th>지급일</th><th>지급액</th><th>소득세</th>
+  <th>지방소득세</th><th>실지급액</th></tr></thead><tbody>
+  ${list.sort((a,b)=>a.payDate.localeCompare(b.payDate)).map((p) => `<tr><td>${p.ym}</td>
+    <td>${p.payDate}</td><td class=n>${won(p.gross)}</td><td class=n>${won(p.incomeTax)}</td>
+    <td class=n>${won(p.localTax)}</td><td class=n>${won(p.net)}</td></tr>`).join('')}
+  </tbody><tfoot><tr><td colspan=2>합계</td><td class=n>${won(t.g)}</td>
+  <td class=n>${won(t.i)}</td><td class=n>${won(t.l)}</td><td class=n>${won(t.n)}</td>
+  </tr></tfoot></table>
+  <p>위와 같이 원천징수세액을 징수(영수)하였음을 확인합니다.</p>
+  <p style="text-align:center;margin-top:26px">${new Date().toLocaleDateString('ko-KR')}</p>
+  <p style="text-align:right">징수의무자: ${WCT.data.company || ''} &nbsp;(인)</p>
+  <script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+};
+
+
+
+// ═══════════════ 계좌 복사 · 이체 목록
+window.copyAccount = async (personId) => {
+  const p = WCT.data.people.find((x) => x.id === personId);
+  if (!p) return;
+  try {
+    const d = await WCT.reveal(p);
+    // 은행명·하이픈이 섞여 저장된 건이 있어 숫자만 남겨 복사합니다
+    const line = accDigits(d.account);
+    if (!line) return toast('저장된 계좌가 없습니다.', true);
+    const okc = await copyText(line);
+    toast(okc ? `${p.name} · ${accountLine(d.bank_name, line, d.account_holder)} 복사됨`
+              : '복사에 실패했습니다.', !okc);
+  } catch (e) { toast(e.message, true); }
+};
+
+// 거래처(사업자)도 같은 방식으로 봉투를 열어 계좌를 꺼냅니다.
+// WCT.reveal 은 envFileId 만 보므로 거래처 객체를 그대로 넣어도 됩니다.
+window.copyVendorAccount = async (i) => {
+  const v = WCT.data.vendors[i];
+  if (!v) return;
+  try {
+    const d = await WCT.reveal(v);
+    const line = accDigits(d.account);
+    if (!line) return toast('저장된 계좌가 없습니다.', true);
+    const okc = await copyText(line);
+    toast(okc ? `${v.company} · ${accountLine(d.bank_name, line, d.account_holder)} 복사됨`
+              : '복사에 실패했습니다.', !okc);
+  } catch (e) { toast(e.message, true); }
+};
+
+$('btnTransfer').onclick = async () => {
+  const f = $('payFilter').value;
+  const list = WCT.data.payments
+    .filter((p) => (!f || p.ym === f) && p.status !== '예정')
+    .sort((a, b) => (a.payDate || '').localeCompare(b.payDate || ''));
+  $('trSub').textContent = (f || '전체 기간') + ` · ${list.length}건`;
+  $('trBody').innerHTML = '<span class="dim">계좌를 여는 중…</span>';
+  $('trSum').textContent = '';
+  $('trDlg').showModal();
+
+  if (!list.length) {
+    $('trBody').innerHTML = '<div class="dim">지급 내역이 없습니다.</div>';
+    return;
+  }
+
+  // 같은 사람에게 여러 건이면 합쳐서 한 번만 이체하도록 묶는다
+  const byPerson = {};
+  list.forEach((p) => {
+    byPerson[p.personId] = byPerson[p.personId] ||
+      { name: p.name, personId: p.personId, net: 0, count: 0 };
+    byPerson[p.personId].net += p.net;
+    byPerson[p.personId].count++;
+  });
+
+  // 봉투를 한 번에 가져옵니다
+  try {
+    await WCT.revealMany(Object.values(byPerson)
+      .map((r) => WCT.data.people.find((x) => x.id === r.personId)).filter(Boolean));
+  } catch (e) {}
+
+  const rows = [];
+  for (const r of Object.values(byPerson)) {
+    const person = WCT.data.people.find((x) => x.id === r.personId);
+    let bank = '', acc = '', holder = '';
+    try {
+      const d = await WCT.reveal(person);
+      bank = d.bank_name || ''; acc = accDigits(d.account); holder = d.account_holder || '';
+      if (!acc) acc = '(계좌 없음)';
+    } catch (e) { acc = '(열지 못함)'; }
+    rows.push(Object.assign(r, { bank, acc, holder }));
+  }
+  rows.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  window.__trRows = rows;
+
+  $('trBody').innerHTML = '<table style="margin-top:12px"><thead><tr>' +
+    '<th>성명</th><th>은행</th><th>계좌번호</th><th>예금주</th>' +
+    '<th class="n">실지급액</th><th></th></tr></thead><tbody>' +
+    rows.map((r, i) => `<tr>
+      <td>${esc(r.name)}${r.count > 1 ? ` <span class="dim">(${r.count}건)</span>` : ''}</td>
+      <td>${esc(r.bank)}</td>
+      <td style="font-variant-numeric:tabular-nums">${esc(r.acc)}</td>
+      <td>${esc(r.holder)}${r.holder && r.holder !== r.name
+        ? ' <span class="pill bad">예금주 불일치</span>' : ''}</td>
+      <td class="n">${won(r.net)}</td>
+      <td style="text-align:right"><button class="g sm" onclick="copyRow(${i})">복사</button></td>
+    </tr>`).join('') + '</tbody></table>';
+
+  $('trSum').textContent = `합계 ${won(rows.reduce((a, r) => a + r.net, 0))}원`;
+};
+
+window.copyRow = async (i) => {
+  const r = window.__trRows[i];
+  const okc = await copyText(r.acc);
+  toast(okc ? `${r.name} 계좌 복사됨 · ${won(r.net)}원` : '복사에 실패했습니다.', !okc);
+};
+
+$('trCopyAll').onclick = async () => {
+  const rows = window.__trRows || [];
+  if (!rows.length) return;
+  const text = ['성명\t은행\t계좌번호\t예금주\t실지급액']
+    .concat(rows.map((r) => [r.name, r.bank, r.acc, r.holder, r.net].join('\t')))
+    .join('\n');
+  const okc = await copyText(text);
+  toast(okc ? `${rows.length}건 복사됨 — 엑셀에 붙여넣으세요.` : '복사에 실패했습니다.', !okc);
+};
+
+
+// ═══════════════ 계좌번호 — 눌러야 잠깐 보이고 15초 뒤 다시 가려집니다
+/* 은행 홈페이지가 붙여넣기를 막는 경우가 있어, 눈으로 보고 직접 칠 수 있게
+   전체 번호를 잠깐 띄웁니다. 시트에는 여전히 암호화된 채로 있습니다. */
+const accTimers = {};
+
+/** scope: 'p' 인력(id=personId) · 'v' 거래처(id=목록 순번) */
+window.showAcc = async (scope, id, btn) => {
+  const key = scope + id;
+  const el = $(scope === 'p' ? 'acc' + id : 'accv' + id);
+  const src = scope === 'p'
+    ? WCT.data.people.find((x) => x.id === id)
+    : WCT.data.vendors[id];
+  if (!src || !el) return;
+
+  // 이미 보이는 상태면 바로 가린다
+  if (accTimers[key]) {
+    clearTimeout(accTimers[key]);
+    delete accTimers[key];
+    el.textContent = src.accMask || '-';
+    el.style.color = '';
+    btn.textContent = '보기';
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const d = await WCT.reveal(src);
+    const raw = accDigits(d.account);
+    if (!raw) { toast('저장된 계좌가 없습니다.', true); return; }
+    el.textContent = raw;
+    el.style.color = 'var(--fg)';
+    btn.textContent = '가림';
+    toast(`${src.name || src.company} · ${ACC_SHOW_MS / 1000}초 뒤 가려집니다`);
+
+    accTimers[key] = setTimeout(() => {
+      el.textContent = src.accMask || '-';
+      el.style.color = '';
+      btn.textContent = '보기';
+      delete accTimers[key];
+    }, ACC_SHOW_MS);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+function hideAllAcc() {
+  Object.keys(accTimers).forEach((key) => {
+    clearTimeout(accTimers[key]);
+    delete accTimers[key];
+    const scope = key[0];
+    const id = Number(key.slice(1));
+    const el = $(scope === 'p' ? 'acc' + id : 'accv' + id);
+    const src = scope === 'p'
+      ? WCT.data.people.find((x) => x.id === id)
+      : WCT.data.vendors[id];
+    if (el) { el.textContent = (src && src.accMask) || '-'; el.style.color = ''; }
+  });
+}
+
+
+// ═══════════════ 주민등록번호 — 눌러야 잠깐 보이고 15초 뒤 다시 가려집니다
+const RRN_SHOW_MS = 15000;
+const ACC_SHOW_MS = 15000;
+const rrnTimers = {};
+
+window.showRrn = async (personId, btn) => {
+  const p = WCT.data.people.find((x) => x.id === personId);
+  const el = $('rrn' + personId);
+  if (!p || !el) return;
+
+  // 이미 보이는 상태면 바로 가린다
+  if (rrnTimers[personId]) {
+    clearTimeout(rrnTimers[personId]);
+    delete rrnTimers[personId];
+    el.textContent = '••••••-•••••••';
+    el.style.color = '';
+    btn.textContent = '보기';
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const d = await WCT.reveal(p);
+    const raw = String(d.rrn || '').replace(/\D/g, '');
+    if (raw.length !== 13) { toast('저장된 주민등록번호가 올바르지 않습니다.', true); return; }
+    const shown = `${raw.slice(0, 6)}-${raw.slice(6)}`;
+    el.textContent = shown;
+    el.style.color = 'var(--fg)';
+    btn.textContent = '가림';
+    await copyText(shown);
+    toast(`${p.name} 주민등록번호 복사됨 · ${RRN_SHOW_MS / 1000}초 뒤 가려집니다`);
+
+    rrnTimers[personId] = setTimeout(() => {
+      el.textContent = '••••••-•••••••';
+      el.style.color = '';
+      btn.textContent = '보기';
+      delete rrnTimers[personId];
+    }, RRN_SHOW_MS);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// 다른 탭으로 옮기거나 화면을 벗어나면 즉시 가린다
+function hideAllRrn() {
+  hideAllAcc();
+  Object.keys(rrnTimers).forEach((id) => {
+    clearTimeout(rrnTimers[id]);
+    delete rrnTimers[id];
+    const el = $('rrn' + id);
+    if (el) { el.textContent = '••••••-•••••••'; el.style.color = ''; }
+  });
+  document.querySelectorAll('button').forEach((b) => {
+    if (b.textContent === '가림') b.textContent = '보기';
+  });
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) hideAllRrn(); });
+window.addEventListener('blur', hideAllRrn);
+$('tabs').addEventListener('click', hideAllRrn);
+
+
+// ═══════════════ 링크 종류 전환
+$('invKind').addEventListener('change', () => {
+  const multi = $('invKind').value === 'n';
+  $('invCapBox').classList.toggle('hide', !multi);
+  $('invLabelName').textContent = multi ? '회차 이름 (라벨)' : '보낼 사람 (라벨)';
+  $('invLabel').placeholder = multi ? '8/28 경국대 촬영 보조출연' : '홍길동 촬영감독';
+  $('invHint').innerHTML = multi
+    ? '카톡방에 한 번만 뿌리면 됩니다. 정한 인원이 다 차거나 기간이 지나면 자동으로 닫힙니다.<br>' +
+      '링크가 새더라도 그 회차 인원까지만 들어옵니다.'
+    : '한 사람이 제출하면 링크가 자동으로 닫힙니다. 개별 스태프에게 보낼 때 쓰세요.';
+});
+
+
+// ═══════════════ 인력 직접 등록 · 수정
+const BANKS = ['국민','신한','우리','하나','농협','기업','카카오뱅크','토스뱅크','새마을금고',
+  '우체국','SC제일','부산','대구','경남','광주','전북','수협','케이뱅크','신협','산업'];
+let pEditId = null;
+
+/** 주민등록번호 체크섬 — 오타를 여기서 잡습니다 */
+function rrnValid(v) {
+  const d = String(v).replace(/\D/g, '');
+  if (d.length !== 13) return false;
+  const mo = +d.slice(2, 4), day = +d.slice(4, 6);
+  if (mo < 1 || mo > 12 || day < 1 || day > 31) return false;
+  if (!'1234'.includes(d[6])) return '567890'.includes(d[6]);   // 외국인·1800년대
+  const w = [2,3,4,5,6,7,8,9,2,3,4,5];
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += +d[i] * w[i];
+  return (11 - (sum % 11)) % 10 === +d[12];
+}
+
+function hyphen(el, pat) {
+  el.addEventListener('input', () => {
+    const d = el.value.replace(/\D/g, '').slice(0, pat.reduce((a, b) => a + b, 0));
+    let out = '', i = 0;
+    for (const len of pat) {
+      if (i >= d.length) break;
+      if (out) out += '-';
+      out += d.slice(i, i + len);
+      i += len;
+    }
+    el.value = out;
+  });
+}
+
+(function initPersonForm() {
+  $('pBank').innerHTML = '<option value=""></option>' +
+    BANKS.map((b) => `<option>${b}</option>`).join('');
+  hyphen($('pRrn'), [6, 7]);
+  hyphen($('pPhone'), [3, 4, 4]);
+
+  $('pRrnEye').onclick = () => {
+    const on = $('pRrn').type === 'password';
+    $('pRrn').type = on ? 'text' : 'password';
+    $('pRrnEye').textContent = on ? '가림' : '보기';
+  };
+
+  $('pRrn').addEventListener('blur', () => {
+    const v = $('pRrn').value, h = $('pRrnHint');
+    if (!v) { h.textContent = '신고에 쓰이므로 정확히 입력하세요.'; h.style.color = ''; return; }
+    const okv = rrnValid(v);
+    h.textContent = okv ? '✓ 형식 확인' : '번호를 다시 확인해 주세요.';
+    h.style.color = okv ? 'var(--ok)' : 'var(--bad)';
+  });
+})();
+
+function openPerson(person, data) {
+  pEditId = person ? person.id : null;
+  $('pTitle').textContent = person ? `인력 수정 — ${person.name}` : '인력 직접 등록';
+  $('pMsg').className = 'msg hide';
+  $('pDelete').classList.toggle('hide', !person);
+  $('pRrn').type = 'password';
+  $('pRrnEye').textContent = '보기';
+
+  $('pName').value = person ? person.name : '';
+  $('pType').value = person ? (person.incomeType || 'biz') : 'biz';
+  $('pRole').value = person ? (person.role || '') : '';
+  $('pBank').value = person ? (person.bank || '') : '';
+  $('pHolder').value = person ? (person.holder || '') : '';
+  $('pIndustry').value = person ? (person.industry || '940909') : '940909';
+  $('pConsent').value = person ? (String(person.consentDate || '').slice(0, 10) || today()) : today();
+
+  const d = data || {};
+  const raw = String(d.rrn || '').replace(/\D/g, '');
+  $('pRrn').value = raw.length === 13 ? `${raw.slice(0, 6)}-${raw.slice(6)}` : '';
+  $('pPhone').value = d.phone || '';
+  $('pAddr').value = d.address || '';
+  $('pAcc').value = d.account || '';
+  if (d.bank_name) $('pBank').value = d.bank_name;
+  if (d.account_holder) $('pHolder').value = d.account_holder;
+
+  $('pDlg').showModal();
+}
+
+$('btnNewPerson').onclick = () => openPerson(null, null);
+
+window.editPerson = async (id) => {
+  const person = WCT.data.people.find((p) => p.id === id);
+  if (!person) return;
+  try {
+    const d = person.envFileId ? await WCT.reveal(person) : {};
+    openPerson(person, d);
+  } catch (e) {
+    toast('저장된 정보를 열지 못했습니다. 새로 입력해 주세요.', true);
+    openPerson(person, {});
+  }
+};
+
+$('pSave').onclick = async () => {
+  const m = $('pMsg');
+  const name = $('pName').value.trim();
+  const rrn = $('pRrn').value.replace(/\D/g, '');
+  if (!name) { m.className = 'msg bad'; m.textContent = '성명을 입력하세요.'; return; }
+  if (!rrnValid(rrn)) {
+    if (!confirm('주민등록번호 형식이 올바르지 않습니다.\n\n그래도 이대로 저장할까요?\n' +
+                 '잘못된 번호는 신고 시 가산세 사유가 됩니다.')) return;
+  }
+  // 동명이인은 정상입니다. 같은 사람인지는 주민등록번호로만 판단합니다.
+  let fp = '';
+  try { fp = await WCT.fingerprint(rrn); } catch (e) { fp = ''; }
+  if (fp) {
+    const dup = WCT.data.people.find((p) => p.fp === fp && p.id !== pEditId);
+    if (dup) {
+      alert(`이미 등록된 주민등록번호입니다.\n\n기존 등록: ${dup.name}` +
+        (dup.name !== name ? ` (지금 입력한 이름: ${name})` : '') +
+        '\n\n같은 사람이므로 새로 만들 수 없습니다.\n' +
+        '기존 인력을 [수정] 하세요. 두 번 등록하면 명세서 집계가 갈라집니다.');
+      return;
+    }
+  }
+  // 이름만 같은 경우는 알려만 주고 그대로 진행합니다 (동명이인)
+  if (!pEditId) {
+    const sameName = WCT.data.people.filter((p) => p.name === name && p.active);
+    if (sameName.length) {
+      const known = sameName.every((p) => p.fp);
+      if (!known && !confirm(
+        `'${name}' 이름이 이미 있습니다.\n\n` +
+        '다만 기존 인력에 주민등록번호 지문이 없어 같은 사람인지 확인할 수 없습니다.\n' +
+        '(예전에 등록된 인력입니다. [수정]에서 한 번 저장하면 지문이 생깁니다)\n\n' +
+        '동명이인이 맞다면 그대로 진행하세요. 계속할까요?')) return;
+    }
+  }
+
+  const btn = $('pSave');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    const type = $('pType').value;
+    const acc = accDigits($('pAcc').value);
+    const env = await WCT.seal({
+      kind: type === 'other' ? 'other' : 'freelancer',
+      name, rrn, address: $('pAddr').value.trim(), phone: $('pPhone').value.trim(),
+      bank_name: $('pBank').value, account: acc, account_holder: $('pHolder').value.trim(),
+    });
+    const payload = {
+      name, role: $('pRole').value.trim(), bank: $('pBank').value,
+      holder: $('pHolder').value.trim(), accMask: acc ? maskAcc(acc) : '',
+      industry: $('pIndustry').value.trim() || '940909',
+      consentDate: $('pConsent').value, incomeType: type, envelope: env, fp,
+    };
+    if (pEditId) {
+      await WCT.api('person.update', Object.assign({ id: pEditId, active: true }, payload));
+      delete WCT._cache[(WCT.data.people.find((p) => p.id === pEditId) || {}).envFileId];
+    } else {
+      await WCT.api('person.add', payload);
+    }
+    await refreshAll(true);
+    $('pDlg').close();
+    toast(pEditId ? `${name} 정보를 수정했습니다.` : `${name} 등록되었습니다.`);
+  } catch (e) {
+    m.className = 'msg bad'; m.textContent = e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '저장';
+  }
+};
+
+$('pDelete').onclick = async () => {
+  const used = WCT.data.payments.filter((p) => p.personId === pEditId);
+  if (used.length) {
+    return alert(`지급 기록이 ${used.length}건 있어 삭제할 수 없습니다.\n` +
+      '기록을 남겨야 신고 이력이 유지됩니다.');
+  }
+  if (!confirm('이 인력을 삭제할까요? 되돌릴 수 없습니다.')) return;
+  await WCT.api('person.delete', { id: pEditId });
+  await refreshAll(true);
+  $('pDlg').close();
+  toast('삭제했습니다.');
+};
+
+
+// ═══════════════ 급여 (근로소득 A01)
+let prEditId = null;
+
+/** 해당 달의 급여 행을 만든다. 저장된 값 > 지난달 값 > 기본값 순으로 채운다. */
+function payrollRowsFor(ym) {
+  const people = (WCT.data.payrollPeople || []).filter((p) => p.active);
+  const saved = (WCT.data.payroll || []).filter((r) => r.ym === ym);
+  const prevYms = [...new Set((WCT.data.payroll || []).map((r) => r.ym))]
+    .filter((y) => y < ym).sort();
+  const prevYm = prevYms.length ? prevYms[prevYms.length - 1] : null;
+
+  return people.map((p) => {
+    const flags = { np: p.np, hi: p.hi, ei: p.ei };
+    const s = saved.find((r) => r.personId === p.id);
+    if (s) {
+      return Object.assign({ personId: p.id, name: p.name, kind: p.kind,
+        gross: s.gross, tax: s.tax,
+        npAmt: s.np, hiAmt: s.hi, ltcAmt: s.ltc, eiAmt: s.ei }, flags);
+    }
+    const prev = prevYm && (WCT.data.payroll || [])
+      .find((r) => r.ym === prevYm && r.personId === p.id);
+    if (prev) {
+      return Object.assign({ personId: p.id, name: p.name, kind: p.kind,
+        gross: prev.gross, tax: prev.tax,
+        npAmt: prev.np, hiAmt: prev.hi, ltcAmt: prev.ltc, eiAmt: prev.ei }, flags);
+    }
+    const ins = calcInsurance(p.baseGross, flags);
+    return Object.assign({ personId: p.id, name: p.name, kind: p.kind,
+      gross: p.baseGross, tax: p.baseTax,
+      npAmt: ins.np, hiAmt: ins.hi, ltcAmt: ins.ltc, eiAmt: ins.ei }, flags);
+  });
+}
+
+function renderPayroll() {
+  const ym = $('whtYm').value;
+  $('payrollYmLabel').textContent = ym ? `· ${ym} 지급분` : '';
+  const rows = payrollRowsFor(ym);
+
+  if (!rows.length) {
+    $('payrollTb').innerHTML =
+      '<tr><td colspan="9" class="dim">등록된 급여 대상자가 없습니다. ' +
+      '[대상자 관리] 에서 추가하세요.</td></tr>';
+    $('payrollSum').textContent = '';
+    whtCalc();
+    return;
+  }
+
+  // 고용보험을 쓰는 사람이 없으면 그 열은 숨겨 자리를 아낍니다
+  const useEi = rows.some((r) => r.ei === true);
+  $('thEi').style.display = useEi ? '' : 'none';
+  $('colEi').style.display = useEi ? '' : 'none';
+
+  $('payrollTb').innerHTML = rows.map((r, i) => `<tr>
+    <td>${esc(r.name)}</td>
+    <td><input class="n prGrossIn" data-i="${i}" inputmode="numeric" value="${r.gross || ''}"></td>
+    <td><input class="n prTaxIn" data-i="${i}" inputmode="numeric" value="${r.tax || ''}"></td>
+    <td class="n" id="prLocal${i}">-</td>
+    <td>${r.np === false ? '<span class="dim">-</span>'
+      : `<input class="n prNpIn" data-i="${i}" inputmode="numeric" value="${r.npAmt || ''}">`}</td>
+    <td>${r.hi === false ? '<span class="dim">-</span>'
+      : `<input class="n prHiIn" data-i="${i}" inputmode="numeric" value="${r.hiAmt || ''}">`}</td>
+    <td>${r.hi === false ? '<span class="dim">-</span>'
+      : `<input class="n prLtcIn" data-i="${i}" inputmode="numeric" value="${r.ltcAmt || ''}">`}</td>
+    ${useEi ? `<td>${r.ei !== true ? '<span class="dim">-</span>'
+      : `<input class="n prEiIn" data-i="${i}" inputmode="numeric" value="${r.eiAmt || ''}">`}</td>`
+      : ''}
+    <td class="n" id="prNet${i}">-</td>
+  </tr>`).join('');
+
+  document.querySelectorAll('.prGrossIn').forEach((el) =>
+    el.addEventListener('input', () => { autoInsurance(Number(el.dataset.i)); calcPayroll(); }));
+  document.querySelectorAll('.prTaxIn, .prNpIn, .prHiIn, .prLtcIn, .prEiIn')
+    .forEach((el) => el.addEventListener('input', calcPayroll));
+  calcPayroll();
+}
+
+/** 지급액이 바뀌면 보험료를 다시 계산해 채운다 (고지서 값으로 덮어쓸 수 있음) */
+function autoInsurance(i) {
+  const base = payrollRowsFor($('whtYm').value)[i];
+  if (!base) return;
+  const g = Number(String(document.querySelector(`.prGrossIn[data-i="${i}"]`).value)
+    .replace(/[^\d]/g, '')) || 0;
+  const ins = calcInsurance(g, { np: base.np, hi: base.hi, ei: base.ei });
+  const set = (sel, v) => {
+    const el = document.querySelector(`${sel}[data-i="${i}"]`);
+    if (el) el.value = v || '';
+  };
+  set('.prNpIn', ins.np);
+  set('.prHiIn', ins.hi);
+  set('.prLtcIn', ins.ltc);
+  set('.prEiIn', ins.ei);
+}
+
+function readPayroll() {
+  const ym = $('whtYm').value;
+  const base = payrollRowsFor(ym);
+  const num = (sel, i, d) => {
+    const el = document.querySelector(`${sel}[data-i="${i}"]`);
+    return el ? (Number(String(el.value).replace(/[^\d]/g, '')) || 0) : (d || 0);
+  };
+  return base.map((r, i) => {
+    const gross = num('.prGrossIn', i, r.gross);
+    const tax = num('.prTaxIn', i, r.tax);
+    const localTax = Math.floor(tax * 0.1 / 10) * 10;
+    const np = num('.prNpIn', i, r.npAmt);
+    const hi = num('.prHiIn', i, r.hiAmt);
+    const ltc = num('.prLtcIn', i, r.ltcAmt);
+    const ei = num('.prEiIn', i, r.eiAmt);
+    return { personId: r.personId, name: r.name, kind: r.kind,
+             gross, tax, localTax, np, hi, ltc, ei,
+             net: gross - tax - localTax - np - hi - ltc - ei };
+  });
+}
+
+function calcPayroll() {
+  const rows = readPayroll();
+  rows.forEach((r, i) => {
+    const l = $('prLocal' + i), n = $('prNet' + i);
+    if (l) l.textContent = won(r.localTax);
+    if (n) n.textContent = won(r.net);
+  });
+  const paid = rows.filter((r) => r.gross > 0);
+  const ins = paid.reduce((a, r) => a + r.np + r.hi + r.ltc + r.ei, 0);
+  $('payrollSum').textContent = paid.length
+    ? `${paid.length}명 · 지급 ${won(paid.reduce((a, r) => a + r.gross, 0))}원 · ` +
+      `소득세 ${won(paid.reduce((a, r) => a + r.tax, 0))}원 · ` +
+      `4대보험 ${won(ins)}원 · 실지급 ${won(paid.reduce((a, r) => a + r.net, 0))}원`
+    : '지급액을 입력하세요.';
+  whtCalc();
+}
+
+$('btnPayrollSave').onclick = async () => {
+  const ym = $('whtYm').value;
+  const m = $('payrollMsg');
+  const rows = readPayroll().filter((r) => r.gross > 0);
+  const btn = $('btnPayrollSave');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    await WCT.api('payroll.save', { ym, rows });
+    await refreshAll(true);
+    m.className = 'msg ok';
+    m.textContent = rows.length
+      ? `${ym} 급여 ${rows.length}명분을 저장했습니다.`
+      : `${ym} 급여 기록을 비웠습니다.`;
+    setTimeout(() => { m.className = 'msg hide'; }, 2500);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '이 달 급여 저장'; }
+};
+
+// ─────────── 대상자 관리
+$('btnPayrollPeople').onclick = () => { prReset(); renderPrTable(); $('prDlg').showModal(); };
+
+function renderPrTable() {
+  const list = WCT.data.payrollPeople || [];
+  $('prTb').innerHTML = list.map((p) => `<tr>
+    <td>${esc(p.name)}</td><td><span class="pill">${esc(p.kind)}</span></td>
+    <td class="n">${won(p.baseGross)}</td><td class="n">${won(p.baseTax)}</td>
+    <td class="dim" style="font-size:11px">${
+      [p.np ? '연금' : '', p.hi ? '건강' : '', p.ei ? '고용' : ''].filter(Boolean).join(' · ') || '-'}</td>
+    <td>${p.active ? '<span class="pill done">사용</span>'
+                   : '<span class="pill">중지</span>'}</td>
+    <td style="text-align:right">
+      <button class="g sm" onclick="prEdit(${p.id})">수정</button>
+      <button class="g sm" onclick="prToggle(${p.id}, ${!p.active})">${
+        p.active ? '중지' : '재개'}</button></td></tr>`).join('')
+    || '<tr><td colspan="7" class="dim">등록된 대상자가 없습니다.</td></tr>';
+}
+
+function prReset() {
+  prEditId = null;
+  $('prFormTitle').textContent = '＋ 새 대상자';
+  $('prName').value = ''; $('prKind').value = '대표';
+  $('prGross').value = ''; $('prTax').value = '';
+  $('prNp').checked = true; $('prHi').checked = true; $('prEi').checked = false;
+  $('prMsg').className = 'msg hide';
+  $('prCancel').classList.add('hide');
+  $('prDelete').classList.add('hide');
+}
+
+window.prEdit = (id) => {
+  const p = (WCT.data.payrollPeople || []).find((x) => x.id === id);
+  if (!p) return;
+  prEditId = id;
+  $('prFormTitle').textContent = `수정 — ${p.name}`;
+  $('prName').value = p.name;
+  $('prKind').value = p.kind;
+  $('prGross').value = p.baseGross || '';
+  $('prTax').value = p.baseTax || '';
+  $('prNp').checked = p.np !== false;
+  $('prHi').checked = p.hi !== false;
+  $('prEi').checked = p.ei === true;
+  $('prCancel').classList.remove('hide');
+  $('prDelete').classList.remove('hide');
+};
+
+$('prCancel').onclick = prReset;
+
+$('prSave').onclick = async () => {
+  const name = $('prName').value.trim();
+  const m = $('prMsg');
+  if (!name) { m.className = 'msg bad'; m.textContent = '성명을 입력하세요.'; return; }
+  const num = (id) => Number(String($(id).value).replace(/[^\d]/g, '')) || 0;
+  const payload = { name, kind: $('prKind').value,
+                    baseGross: num('prGross'), baseTax: num('prTax'),
+                    np: $('prNp').checked, hi: $('prHi').checked, ei: $('prEi').checked };
+  const btn = $('prSave');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    if (prEditId) await WCT.api('payroll.person.update',
+      Object.assign({ id: prEditId, active: true }, payload));
+    else await WCT.api('payroll.person.add', payload);
+    await refreshAll(true);
+    renderPrTable(); prReset();
+    toast(`${name} 저장되었습니다.`);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '저장'; }
+};
+
+window.prToggle = async (id, active) => {
+  await WCT.api('payroll.person.update', { id, active });
+  await refreshAll(true);
+  renderPrTable();
+};
+
+$('prDelete').onclick = async () => {
+  const used = (WCT.data.payroll || []).filter((r) => r.personId === prEditId);
+  if (used.length) {
+    return alert(`급여 기록이 ${used.length}건 있어 삭제할 수 없습니다.\n` +
+      '대신 [중지] 로 바꾸세요. 신고 이력은 남아야 합니다.');
+  }
+  if (!confirm('이 대상자를 삭제할까요?')) return;
+  await WCT.api('payroll.person.delete', { id: prEditId });
+  await refreshAll(true);
+  renderPrTable(); prReset();
+};
+
+
+// ═══════════════ 설정 — 세금계산서 발행 정보
+const CF_MAP = [
+  ['cfName', '회사명'], ['cfBizNo', '사업자번호'], ['cfCeo', '대표자'],
+  ['cfAddr', '사업장주소'], ['cfType', '업태'], ['cfItem', '종목'],
+  ['cfEmail', '계산서이메일'], ['cfNotice', '계산서안내'],
+];
+
+function renderSettings() {
+  const c = WCT.data.companyInfo || {};
+  CF_MAP.forEach(([id, key]) => { $(id).value = c[key] || ''; });
+}
+
+$('cfSave').onclick = async () => {
+  const m = $('cfMsg');
+  const payload = { company: $('cfName').value.trim() };
+  CF_MAP.forEach(([id, key]) => { payload[key] = $(id).value.trim(); });
+  const btn = $('cfSave');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    await WCT.api('company.set', payload);
+    await refreshAll(true);
+    m.className = 'msg ok';
+    m.textContent = '저장했습니다. 제출 폼에 바로 반영됩니다.';
+    setTimeout(() => { m.className = 'msg hide'; }, 2500);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '저장'; }
+};
+
+$('cfPreview').onclick = () => {
+  const out = $('cfOut');
+  out.classList.remove('hide');
+  out.textContent = [
+    '━━ 사업자가 보게 되는 화면 ━━', '',
+    '📄 세금계산서 발행 정보',
+    '   아래 정보로 세금계산서를 발행해 주세요. 항목을 누르면 복사됩니다.', '',
+    `   상호            ${$('cfName').value}`,
+    `   사업자등록번호   ${$('cfBizNo').value}`,
+    `   대표자          ${$('cfCeo').value}`,
+    `   사업장 주소      ${$('cfAddr').value}`,
+    `   업태            ${$('cfType').value}`,
+    `   종목            ${$('cfItem').value}`,
+    `   계산서 이메일    ${$('cfEmail').value}`, '',
+    '   [ 전체 정보 복사 ]', '',
+    `   ${$('cfNotice').value}`, '',
+    '제출을 마친 뒤 완료 화면에도 같은 내용이 한 번 더 표시됩니다.',
+  ].join('\n');
+};
+
+
+// ═══════════════ 4대보험 요율 설정
+const RT_MAP = [['rtNp', '요율_국민연금'], ['rtHi', '요율_건강보험'],
+                ['rtLtc', '요율_장기요양'], ['rtEi', '요율_고용보험'],
+                ['rtUnit', '요율_절사단위']];
+
+function renderRates() {
+  const r = WCT.data.rates || {};
+  RT_MAP.forEach(([id, key]) => { $(id).value = r[key] || ''; });
+}
+
+$('rtSave').onclick = async () => {
+  const m = $('rtMsg');
+  const payload = {};
+  RT_MAP.forEach(([id, key]) => { payload[key] = $(id).value.trim(); });
+  const btn = $('rtSave');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    await WCT.api('company.set', payload);
+    await refreshAll(true);
+    m.className = 'msg ok';
+    m.textContent = '저장했습니다. 급여 표에 바로 반영됩니다.';
+    setTimeout(() => { m.className = 'msg hide'; }, 2500);
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '요율 저장'; }
+};
+
+$('rtTest').onclick = () => {
+  const out = $('rtOut');
+  out.classList.remove('hide');
+  const g = 2500000;
+  const n = (id) => Number($(id).value) || 0;
+  const u = Math.max(1, Number($('rtUnit').value) || 10);
+  const f = (v) => Math.floor(v / u) * u;
+  const np = f(g * n('rtNp') / 100);
+  const hi = f(g * n('rtHi') / 100);
+  const ltc = f(hi * n('rtLtc') / 100);
+  const ei = f(g * n('rtEi') / 100);
+  out.textContent = [
+    '월 급여 2,500,000원 기준 (근로자 부담)', '',
+    `  국민연금  ${won(np).padStart(10)}원   (${n('rtNp')}%)`,
+    `  건강보험  ${won(hi).padStart(10)}원   (${n('rtHi')}%)`,
+    `  장기요양  ${won(ltc).padStart(10)}원   (건강보험료의 ${n('rtLtc')}%)`,
+    `  고용보험  ${won(ei).padStart(10)}원   (${n('rtEi')}% · 대표는 해당 없음)`,
+    '  ─────────────────────',
+    `  대표 기준  ${won(np + hi + ltc).padStart(10)}원   (연금+건강+요양)`,
+    `  직원 기준  ${won(np + hi + ltc + ei).padStart(10)}원   (고용보험 포함)`,
+    '',
+    '※ 공단 고지서와 대조해 보시고, 다르면 요율을 고치거나',
+    '   급여 표에서 고지서 금액으로 직접 입력하세요.',
+  ].join('\n');
+};
+
+
+// ═══════════════ 계정 관리 (조연출 · 제작PD)
+let USERS = [];
+
+async function renderUsers() {
+  try {
+    USERS = (await WCT.api('user.list')).users || [];
+  } catch (e) {
+    $('userTb').innerHTML = `<tr><td colspan="3" class="dim">${esc(e.message)}</td></tr>`;
+    return;
+  }
+  $('userTb').innerHTML = USERS.map((u) => `<tr>
+    <td><b>${esc(u.userId)}</b></td>
+    <td><span class="pill">${u.role === 'admin' ? '관리자' : 'PD'}</span></td>
+    <td class="dim">${esc(u.lastSeen || '-')}</td></tr>`).join('')
+    || '<tr><td colspan="3" class="dim">허브 그룹(hub-admin / hub-staff)에 든 계정이 없습니다.</td></tr>';
+}
+
+/** 사람이 옮겨 적기 쉬운 임시 비밀번호 (헷갈리는 글자 제외) */
+function tempPassword() {
+  const cs = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const a = crypto.getRandomValues(new Uint8Array(10));
+  return Array.from(a, (n) => cs[n % cs.length]).join('');
+}
+
+$('btnNewUser').onclick = () => renderUsers();
+function __unusedNewUser() {
+  $('uTitle').textContent = '계정 만들기';
+  $('uId').value = ''; $('uName').value = ''; $('uMemo').value = '';
+  $('uMsg').className = 'msg hide';
+  $('uResult').classList.add('hide');
+  $('uSave').classList.remove('hide');
+  $('uDlg').showModal();
+};
+
+$('uSave').onclick = async () => {
+  const m = $('uMsg');
+  const uid = $('uId').value.trim().toLowerCase();
+  const name = $('uName').value.trim();
+  if (!/^[a-z0-9._-]{3,20}$/.test(uid)) {
+    m.className = 'msg bad';
+    m.textContent = '아이디는 영문 소문자·숫자로 3~20자입니다.';
+    return;
+  }
+  if (!name) { m.className = 'msg bad'; m.textContent = '이름을 입력하세요.'; return; }
+
+  const btn = $('uSave');
+  btn.disabled = true; btn.textContent = '만드는 중…';
+  try {
+    const pw = tempPassword();
+    const salt = WCT.newSalt();
+    const token = await WCT.userToken(uid, pw, salt);
+    await WCT.api('user.add', { userId: uid, name, role: 'pd', token, salt,
+                                memo: $('uMemo').value.trim() });
+    showCredentials(uid, name, pw);
+    await renderUsers();
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '만들기'; }
+};
+
+function showCredentials(uid, name, pw) {
+  const url = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}admin.html`;
+  const text = [
+    `${name}님, 맹그라미 업무 허브 계정입니다.`, '',
+    `  주소      ${url}`,
+    `  아이디    ${uid}`,
+    `  비밀번호  ${pw}`, '',
+    '[아이디로 로그인] 을 눌러 들어오세요.',
+    '처음 로그인하면 비밀번호를 바꾸라고 안내가 나옵니다.',
+    '프로젝트와 게시판을 사용할 수 있습니다.',
+  ].join('\n');
+  $('uResultText').textContent = text;
+  $('uResult').classList.remove('hide');
+  $('uSave').classList.add('hide');
+  $('uMsg').className = 'msg ok';
+  $('uMsg').textContent = '계정을 만들었습니다.';
+  $('uCopy').onclick = async () => {
+    const okc = await copyText(text);
+    $('uCopy').textContent = okc ? '✓ 복사되었습니다' : '복사 실패';
+    setTimeout(() => { $('uCopy').textContent = '전달 내용 복사'; }, 1600);
+  };
+}
+
+window.uReset = async (id, uid) => {
+  if (!confirm(`${uid} 의 비밀번호를 새로 발급할까요?\n기존 비밀번호는 즉시 사용할 수 없게 됩니다.`)) return;
+  try {
+    const pw = tempPassword();
+    const salt = WCT.newSalt();
+    const token = await WCT.userToken(uid, pw, salt);
+    await WCT.api('user.reset', { id, token, salt });
+    const u = USERS.find((x) => x.id === id) || { name: uid };
+    $('uTitle').textContent = '비밀번호 재발급';
+    $('uMsg').className = 'msg hide';
+    $('uDlg').showModal();
+    showCredentials(uid, u.name, pw);
+    await renderUsers();
+  } catch (e) { toast(e.message, true); }
+};
+
+window.uToggle = async (id, active) => {
+  await WCT.api('user.set', { id, active });
+  await renderUsers();
+  toast(active ? '다시 사용할 수 있습니다.' : '사용을 중지했습니다.');
+};
+
+window.uDelete = async (id, uid) => {
+  if (!confirm(`${uid} 계정을 삭제할까요?\n되돌릴 수 없습니다. 잠시 막으려면 [중지] 를 쓰세요.`)) return;
+  await WCT.api('user.delete', { id });
+  await renderUsers();
+  toast('삭제했습니다.');
+};
+
+
+// ═══════════════ 복구 코드 — 이제 필요 없음 (열쇠는 NAS 에 보관)
+async function renderRecovery() {}
+if ($('btnRecovery')) $('btnRecovery').onclick = () => {
+  $('recStep1').classList.remove('hide');
+  $('recStep2').classList.add('hide');
+  $('recPw').value = '';
+  $('recMsg').className = 'msg hide';
+  $('recDlg').showModal();
+};
+
+$('recClose').onclick = () => $('recDlg').close();
+$('recDone').onclick = () => { $('recDlg').close(); renderRecovery(); };
+
+$('recMake').onclick = async () => {
+  const m = $('recMsg');
+  const pw = $('recPw').value;
+  if (!pw) { m.className = 'msg bad'; m.textContent = '비밀번호를 입력하세요.'; return; }
+  const btn = $('recMake');
+  btn.disabled = true; btn.textContent = '발급 중…';
+  try {
+    // 입력한 비밀번호로 개인키를 실제로 열어 본인 확인 + 원본 확보
+    const st = await WCT.status();
+    const auth = await WCT.derive(pw, b64d(st.saltAuth), 'auth');
+    const saved = WCT.auth;
+    WCT.auth = auth;
+    let ks;
+    try { ks = (await WCT.api('unlock')).keystore; }
+    catch (e) { WCT.auth = saved; throw new Error('비밀번호가 올바르지 않습니다.'); }
+    const pkcs8 = await WCT.unwrapKey(ks.wrapped, ks.iv, pw, ks.saltKey);
+    WCT.auth = saved;
+    if (!pkcs8) throw new Error('비밀번호가 올바르지 않습니다.');
+
+    // 같은 개인키를 복구 코드로 한 번 더 감싼다
+    const code = WCT.newRecoveryCode();
+    const salt = WCT.newSalt();
+    const w = await WCT.wrapKey(pkcs8, WCT.normalizeCode(code), salt);
+    await WCT.api('recovery.set', { recWrapped: w.wrapped, recIv: w.iv, recSalt: salt });
+
+    $('recCode').textContent = code;
+    $('recStep1').classList.add('hide');
+    $('recStep2').classList.remove('hide');
+    window.__recCode = code;
+    await renderRecovery();
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '발급하기'; }
+};
+
+$('recCopy').onclick = async () => {
+  const okc = await copyText(window.__recCode || '');
+  $('recCopy').textContent = okc ? '✓ 복사됨' : '실패';
+  setTimeout(() => { $('recCopy').textContent = '복사'; }, 1500);
+};
+
+$('recPrint').onclick = () => {
+  const w = window.open('', '_blank');
+  if (!w) return toast('팝업이 차단되었습니다.', true);
+  const company = (WCT.data.companyInfo && WCT.data.companyInfo['회사명']) || '맹그라미';
+  w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">
+    <title>복구 코드</title><style>
+    body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+      margin:40px;color:#111;line-height:1.8}
+    h1{font-size:20px;margin-bottom:4px}
+    .sub{color:#666;font-size:13px;margin-bottom:28px}
+    .code{font-family:monospace;font-size:30px;letter-spacing:3px;text-align:center;
+      padding:28px;border:3px dashed #999;border-radius:10px;margin:24px 0}
+    .warn{border:1px solid #c00;border-left:5px solid #c00;padding:14px 16px;
+      font-size:13px;color:#900;margin-top:24px}
+    ul{font-size:13px;padding-left:20px}
+    </style></head><body>
+    <h1>맹그라미 업무 허브 — 관리자 복구 코드</h1>
+    <div class="sub">${esc(company)} · 발급 ${esc(today())}</div>
+    <div class="code">${esc(window.__recCode || '')}</div>
+    <ul>
+      <li>관리자 비밀번호를 잊었을 때 이 코드로 새 비밀번호를 정할 수 있습니다.</li>
+      <li>로그인 화면의 [비밀번호를 잊으셨나요] 를 누르고 이 코드를 입력하세요.</li>
+      <li>새 코드를 발급하면 이 코드는 무효가 됩니다.</li>
+    </ul>
+    <div class="warn">
+      <b>이 종이를 주운 사람은 비밀번호를 아는 것과 같습니다.</b><br>
+      스태프의 주민등록번호와 계좌를 모두 열 수 있습니다.<br>
+      금고나 잠긴 서류철에 보관하시고, 사진 촬영·메신저 전송은 하지 마세요.
+    </div>
+    <script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+};
+
+
+// ═══════════════ 구글 캘린더
+function renderCalendar() {
+  const ev = buildCalendarEvents(WCT.data);
+  const soon = ev.filter((e) => e.date >= today()).sort((a, b) => a.date.localeCompare(b.date));
+  $('calStatus').innerHTML = soon.length
+    ? `보낼 일정 <b>${ev.length}개</b> · 앞으로 남은 것 ${soon.length}개<br>` +
+      `<span style="font-size:12px">다음: ${esc(soon[0].date)} ${esc(soon[0].title)}</span>`
+    : '보낼 일정이 없습니다.';
+}
+
+$('btnCalCheck').onclick = async () => {
+  const out = $('calOut');
+  out.classList.remove('hide');
+  out.textContent = '확인 중…';
+  try {
+    const r = await WCT.api('calendar.check');
+    out.textContent = r.found
+      ? `✅ '${r.name}' 캘린더를 찾았습니다.\n   지금까지 보낸 일정 ${r.synced}개`
+      : `❌ 'MGRM스케줄' 캘린더를 찾지 못했습니다.\n\n` +
+        `   내 캘린더 목록\n` +
+        (r.names || []).map((n) => '     · ' + n).join('\n') +
+        `\n\n   이름이 정확히 일치해야 합니다. 띄어쓰기도 확인하세요.`;
+  } catch (e) { out.textContent = '오류: ' + e.message; }
+};
+
+$('btnCalSync').onclick = async () => {
+  const ev = buildCalendarEvents(WCT.data);
+  const out = $('calOut');
+  out.classList.remove('hide');
+
+  if (!confirm(`MGRM스케줄 캘린더에 일정 ${ev.length}개를 보냅니다.\n\n` +
+    '이미 보낸 일정은 갱신되고, 도구에서 사라진 일정은 캘린더에서 지워집니다.\n계속할까요?')) return;
+
+  const btn = $('btnCalSync');
+  btn.disabled = true; btn.textContent = '보내는 중…';
+  out.textContent = '캘린더에 반영하는 중입니다. 일정이 많으면 시간이 걸립니다…';
+  try {
+    const r = await WCT.api('calendar.sync', { events: ev });
+    const list = ev.filter((e) => e.date >= today())
+      .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 12);
+    out.textContent = [
+      `✅ ${r.calendar} 에 반영했습니다.`,
+      `   새로 만듦 ${r.added} · 갱신 ${r.updated} · 삭제 ${r.removed} · 전체 ${r.total}`,
+      '', '앞으로의 일정',
+      ...list.map((e) => `  ${e.date}  ${e.title}`),
+      ev.filter((e) => e.date >= today()).length > 12 ? '  …' : '',
+    ].filter(Boolean).join('\n');
+    toast('캘린더에 반영했습니다.');
+  } catch (e) {
+    out.textContent = '오류: ' + e.message;
+    toast(e.message, true);
+  } finally { btn.disabled = false; btn.textContent = '캘린더로 보내기'; }
+};
+
+</script>
+</body>
+</html>

@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<!-- submit.html · v1.2.0 · 2026-09-01
+     원천징수 자료 제출 폼 (스태프·거래처용)
+     변경: 계좌번호를 숫자만 저장하도록 정규화, 입력 안내 문구 추가 -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>정산 정보 제출 · 맹그라미</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --line:#282d38; --fg:#e9ecf1;
+    --dim:#9aa3b2; --accent:#c8a84b; --warn:#e0a33e; --bad:#e2564a; --ok:#4ea87a;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+    line-height:1.6;padding:0 0 64px}
+  .wrap{max-width:560px;margin:0 auto;padding:28px 18px}
+  header{padding-bottom:18px;border-bottom:1px solid var(--line);margin-bottom:24px}
+  h1{font-size:20px;margin:0 0 6px;letter-spacing:-.3px}
+  .sub{color:var(--dim);font-size:13px;margin:0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:18px;margin-bottom:16px}
+  h2{font-size:15px;margin:0 0 14px;color:var(--accent);letter-spacing:-.2px}
+  label{display:block;font-size:13px;color:var(--dim);margin:14px 0 6px}
+  label.req::after{content:' *';color:var(--bad)}
+  input[type=text],input[type=tel],input[type=email],select,textarea{
+    width:100%;padding:13px 14px;background:#0d0f14;border:1px solid var(--line);
+    border-radius:10px;color:var(--fg);font-size:16px;font-family:inherit;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  .hint{font-size:12px;color:var(--dim);margin-top:5px}
+  .choice{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+  .choice.c3{grid-template-columns:repeat(3,1fr)}
+  .choice.c3 button{padding:16px 6px;font-size:13.5px}
+  .choice.c3 button small{font-size:10.5px;line-height:1.35}
+  .choice button{padding:20px 12px;background:#0d0f14;border:1px solid var(--line);
+    border-radius:12px;color:var(--fg);font-size:15px;font-family:inherit;cursor:pointer;
+    text-align:center;line-height:1.4}
+  .choice button small{display:block;color:var(--dim);font-size:11px;margin-top:5px}
+  .choice button[aria-pressed=true]{border-color:var(--accent);background:#1e1a10;color:var(--accent)}
+  .drop{border:1px dashed var(--line);border-radius:12px;padding:20px;text-align:center;
+    color:var(--dim);font-size:13px;cursor:pointer;background:#0d0f14}
+  .drop.has{border-style:solid;border-color:var(--ok);color:var(--ok)}
+  .thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .drop.busy{opacity:.6;pointer-events:none}
+  .fileerr{margin-top:8px;padding:10px 12px;border-radius:8px;background:#2a1614;
+    border:1px solid var(--bad);color:#f0a89f;font-size:12px;line-height:1.6}
+  .thumb{position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;
+    border:1px solid var(--line)}
+  .thumb img{width:100%;height:100%;object-fit:cover}
+  .thumb button{position:absolute;top:2px;right:2px;width:20px;height:20px;border:0;
+    border-radius:50%;background:rgba(0,0,0,.72);color:#fff;font-size:13px;cursor:pointer;
+    line-height:20px;padding:0;z-index:2}
+  .thumb{width:auto;min-width:72px}
+  .thumb .tag{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.66);
+    color:#cfd4dd;font-size:9px;text-align:center;padding:2px 0;line-height:1.3}
+  .thumb.noprev{border-color:var(--ok);width:118px;height:auto}
+  .thumb .ph{padding:14px 6px;text-align:center;color:var(--ok);font-size:11px;
+    font-weight:700;line-height:1.5;background:#101a15}
+  .thumb .ph small{color:var(--dim);font-size:9px;font-weight:400;display:block;margin-top:4px}
+  .agree{display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:13px}
+  .agree input{width:20px;height:20px;margin-top:2px;flex:none;accent-color:var(--accent)}
+  details{margin-top:10px;font-size:12px;color:var(--dim)}
+  details summary{cursor:pointer;color:var(--accent)}
+  details div{margin-top:8px;padding:12px;background:#0d0f14;border-radius:8px;
+    border:1px solid var(--line);line-height:1.7}
+  .submit{width:100%;padding:17px;background:var(--accent);border:0;border-radius:12px;
+    color:#141414;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:6px}
+  .submit:disabled{opacity:.45;cursor:not-allowed}
+  .note{display:flex;gap:9px;background:#12161c;border:1px solid var(--line);
+    border-left:3px solid var(--accent);border-radius:8px;padding:13px;
+    font-size:12.5px;color:var(--dim);margin-bottom:18px;line-height:1.65}
+  .msg{padding:14px;border-radius:10px;font-size:14px;margin-top:14px;display:none}
+  .msg.bad{display:block;background:#2a1614;border:1px solid var(--bad);color:#f0a89f}
+  .msg.ok{display:block;background:#132318;border:1px solid var(--ok);color:#9fd9bb}
+  .center{text-align:center;padding:60px 20px}
+  .center h2{font-size:19px;color:var(--fg);margin-bottom:10px}
+  .center p{color:var(--dim);font-size:14px}
+  .big{font-size:44px;margin-bottom:14px}
+  .hidden{display:none}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .foot{text-align:center;color:#5b6270;font-size:11px;margin-top:24px}
+  .card.issuer{border-color:var(--accent);background:#191712}
+  .irow{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);
+    align-items:flex-start;cursor:pointer}
+  .irow:last-of-type{border-bottom:0}
+  .irow .k{color:var(--dim);font-size:12.5px;width:96px;flex:none;padding-top:1px}
+  .irow .v{flex:1;font-size:14px;word-break:break-all;line-height:1.5}
+  .irow .c{color:var(--accent);font-size:11px;flex:none;padding-top:2px}
+  .irow:active{background:#221f18}
+  .irow .v.big2{font-size:17px;font-weight:700;letter-spacing:.3px}
+  .copyall{width:100%;margin-top:14px;padding:13px;background:#0d0f14;
+    border:1px solid var(--accent);border-radius:10px;color:var(--accent);
+    font-size:14px;font-family:inherit;cursor:pointer}
+  .copyall:active{background:#221f18}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 로딩 -->
+  <div id="loading" class="center">
+    <div class="big">⏳</div>
+    <p>링크를 확인하는 중입니다…</p>
+  </div>
+
+  <!-- 링크 오류 -->
+  <div id="invalid" class="center hidden">
+    <div class="big">🔒</div>
+    <h2>사용할 수 없는 링크입니다</h2>
+    <p id="invalidMsg"></p>
+    <p style="margin-top:18px">담당자에게 새 링크를 요청해 주세요.</p>
+  </div>
+
+  <!-- 완료 -->
+  <div id="done" class="center hidden">
+    <div class="big">✅</div>
+    <h2>제출이 완료되었습니다</h2>
+    <p>확인 후 정산 절차를 진행하겠습니다.<br>감사합니다.</p>
+    <div id="doneIssuer" class="card issuer hidden" style="margin-top:26px;text-align:left">
+      <h2>📄 세금계산서 발행 정보</h2>
+      <p class="hint" style="margin:-6px 0 12px">
+        이 화면을 캡처해 두시면 계산서 발행할 때 편합니다.</p>
+      <div id="doneIssuerBox"></div>
+      <button type="button" class="copyall" id="copyIssuer2">전체 정보 복사</button>
+    </div>
+  </div>
+
+  <!-- 본문 -->
+  <div id="main" class="hidden">
+    <header>
+      <h1>정산 정보 제출</h1>
+      <p class="sub" id="ctx">맹그라미 (맹진욱)</p>
+    </header>
+
+    <div class="note">
+      <span>🔐</span>
+      <div>입력하신 내용은 <b>이 화면에서 곧바로 암호화되어</b> 전송됩니다.
+      중간 서버와 저장소는 내용을 볼 수 없고, 담당자 PC에서만 열립니다.</div>
+    </div>
+
+    <div class="card">
+      <h2>구분 선택</h2>
+      <div class="choice c3">
+        <button type="button" id="btnFree" aria-pressed="false">
+          프리랜서 <small>3.3%<br>계속·반복 용역</small>
+        </button>
+        <button type="button" id="btnOther" aria-pressed="false">
+          일반 · 학생 <small>8.8%<br>일시적 용역</small>
+        </button>
+        <button type="button" id="btnBiz" aria-pressed="false">
+          사업자 <small>세금계산서<br>발행</small>
+        </button>
+      </div>
+      <div class="hint" id="kindHint" style="margin-top:10px">
+        어느 쪽인지 모르시면 담당자에게 물어보세요.</div>
+    </div>
+
+    <!-- 프리랜서 -->
+    <div id="formFree" class="hidden">
+      <div class="card">
+        <h2>기본 정보</h2>
+        <label class="req">성명</label>
+        <input type="text" id="f_name" autocomplete="name" placeholder="주민등록상 이름">
+
+        <label class="req">주민등록번호</label>
+        <input type="tel" id="f_rrn" inputmode="numeric" maxlength="14" placeholder="000000-0000000">
+        <div class="hint" id="rrnHint">소득세법상 원천징수 신고에 필요합니다.</div>
+
+        <label class="req">연락처</label>
+        <input type="tel" id="f_phone" inputmode="tel" placeholder="010-0000-0000">
+
+        <label class="req">주소</label>
+        <input type="text" id="f_addr" placeholder="도로명 주소">
+
+        <label>담당 역할</label>
+        <input type="text" id="f_role" placeholder="예: 촬영감독, 그립">
+      </div>
+
+      <div class="card">
+        <h2>입금 계좌</h2>
+        <div class="row">
+          <div>
+            <label class="req">은행</label>
+            <select id="f_bank"></select>
+          </div>
+          <div>
+            <label class="req">예금주</label>
+            <input type="text" id="f_holder" placeholder="본인 명의">
+          </div>
+        </div>
+        <label class="req">계좌번호</label>
+        <input type="tel" id="f_acc" inputmode="numeric" placeholder="'-' 넣으셔도 됩니다">
+        <div class="hint">은행명은 위에서 고르셨으니 번호만 적어주세요. 숫자만 저장됩니다.</div>
+      </div>
+
+      <div class="card">
+        <h2>서류 사진</h2>
+        <label class="req">통장 사본</label>
+        <div class="drop" data-for="f_bankbook">📷 촬영하거나 사진을 선택하세요</div>
+        <input type="file" id="f_bankbook" accept="image/*" multiple class="hidden">
+        <div class="fileerr" id="err_f_bankbook" style="display:none"></div>
+        <div class="thumbs" id="thumb_f_bankbook"></div>
+
+        <label class="req">신분증</label>
+        <div class="drop" data-for="f_id">📷 촬영하거나 사진을 선택하세요</div>
+        <input type="file" id="f_id" accept="image/*" multiple class="hidden">
+        <div class="fileerr" id="err_f_id" style="display:none"></div>
+        <div class="thumbs" id="thumb_f_id"></div>
+        <div class="hint">촬영해도 되고, 갤러리에 있는 사진을 골라도 됩니다.<br>글씨가 또렷하게 보이도록 밝은 곳에서 찍어주세요.</div>
+      </div>
+    </div>
+
+    <!-- 사업자 -->
+    <div id="formBiz" class="hidden">
+      <div class="card issuer">
+        <h2>📄 세금계산서 발행 정보</h2>
+        <p class="hint" style="margin:-6px 0 12px">
+          아래 정보로 세금계산서를 발행해 주세요. 항목을 누르면 복사됩니다.</p>
+        <div id="issuerBox"><span class="hint">불러오는 중…</span></div>
+        <button type="button" class="copyall" id="copyIssuer">전체 정보 복사</button>
+        <div class="hint" id="issuerNotice" style="margin-top:10px"></div>
+      </div>
+
+      <div class="card">
+        <h2>사업자 정보</h2>
+        <label class="req">상호</label>
+        <input type="text" id="b_company">
+
+        <label class="req">사업자등록번호</label>
+        <input type="tel" id="b_bizno" inputmode="numeric" maxlength="12" placeholder="000-00-00000">
+
+        <label class="req">대표자명</label>
+        <input type="text" id="b_ceo">
+
+        <div class="row">
+          <div><label>업태</label><input type="text" id="b_type"></div>
+          <div><label>종목</label><input type="text" id="b_item"></div>
+        </div>
+
+        <label class="req">사업장 주소</label>
+        <input type="text" id="b_addr">
+      </div>
+
+      <div class="card">
+        <h2>담당자 · 계산서</h2>
+        <label class="req">담당자명</label>
+        <input type="text" id="b_manager">
+
+        <label class="req">연락처</label>
+        <input type="tel" id="b_phone" inputmode="tel" placeholder="010-0000-0000">
+
+        <label class="req">계산서 수신 이메일</label>
+        <input type="email" id="b_email" inputmode="email" autocomplete="email">
+      </div>
+
+      <div class="card">
+        <h2>입금 계좌</h2>
+        <div class="row">
+          <div><label class="req">은행</label><select id="b_bank"></select></div>
+          <div><label class="req">예금주</label><input type="text" id="b_holder"></div>
+        </div>
+        <label class="req">계좌번호</label>
+        <input type="tel" id="b_acc" inputmode="numeric" placeholder="'-' 넣으셔도 됩니다">
+        <div class="hint">은행명은 위에서 고르셨으니 번호만 적어주세요. 숫자만 저장됩니다.</div>
+      </div>
+
+      <div class="card">
+        <h2>서류 사진</h2>
+        <label class="req">사업자등록증</label>
+        <div class="drop" data-for="b_cert">📷 촬영하거나 사진을 선택하세요</div>
+        <input type="file" id="b_cert" accept="image/*" multiple class="hidden">
+        <div class="fileerr" id="err_b_cert" style="display:none"></div>
+        <div class="thumbs" id="thumb_b_cert"></div>
+
+        <label class="req">통장 사본</label>
+        <div class="drop" data-for="b_bankbook">📷 촬영하거나 사진을 선택하세요</div>
+        <input type="file" id="b_bankbook" accept="image/*" multiple class="hidden">
+        <div class="fileerr" id="err_b_bankbook" style="display:none"></div>
+        <div class="thumbs" id="thumb_b_bankbook"></div>
+      </div>
+    </div>
+
+    <!-- 동의 -->
+    <div id="agreeBox" class="card hidden">
+      <h2>개인정보 수집·이용 동의</h2>
+      <div class="agree">
+        <input type="checkbox" id="agree">
+        <label for="agree" style="margin:0;color:var(--fg)">
+          아래 내용을 확인했으며 수집·이용에 동의합니다. <span style="color:var(--bad)">*</span>
+        </label>
+      </div>
+      <details>
+        <summary>내용 보기</summary>
+        <div>
+          <b>수집 항목</b><br>
+          · 프리랜서: 성명, 주민등록번호, 주소, 연락처, 계좌정보, 통장사본, 신분증 사본<br>
+          · 사업자: 상호, 사업자등록번호, 대표자, 주소, 담당자 연락처, 이메일, 계좌정보, 사업자등록증, 통장사본<br><br>
+          <b>수집 목적</b><br>
+          용역대금 지급, 소득세법에 따른 원천징수 및 지급명세서 제출, 세금계산서 발행<br><br>
+          <b>보유 기간</b><br>
+          · 원천징수 관련 정보: 관계 법령이 정한 기간<br>
+          · 신분증·통장사본 등 이미지: 본인 확인 및 계좌 등록 완료 후 지체 없이 파기<br><br>
+          <b>동의를 거부할 권리</b><br>
+          동의를 거부할 수 있으나, 이 경우 대금 지급 절차가 진행되지 않을 수 있습니다.<br><br>
+          <b>보호 방식</b><br>
+          제출 정보는 브라우저에서 암호화되어 전송·보관되며, 담당자 외에는 복호화할 수 없습니다.
+        </div>
+      </details>
+    </div>
+
+    <button class="submit" id="submitBtn" disabled>제출하기</button>
+    <div class="msg" id="msg"></div>
+    <p class="foot">맹그라미 · 문의 054-853-6231</p>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  설정 — 저장은 hub.mgrm.kr → NAS. 따로 채울 값 없음
+// ══════════════════════════════════════════════════════════
+const API = '/api/public';
+async function pub(body) {
+  const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body) });
+  return r.json();
+}
+let PUBLIC_KEY_B64 = '';   // 서버에서 자동으로 받아옵니다
+
+// ══════════════════════════════════════════════════════════
+const BANKS = ['국민','신한','우리','하나','농협','기업','카카오뱅크','토스뱅크',
+  '새마을금고','우체국','SC제일','부산','대구','경남','광주','전북','수협','케이뱅크','신협','산업'];
+const MAX_EDGE = 1600, JPEG_Q = 0.72, MAX_TOTAL = 6 * 1024 * 1024;
+
+/* 계좌번호는 숫자만 저장합니다.
+   화면에는 치신 그대로 보이지만, 은행명이나 하이픈이 섞여 있으면
+   나중에 은행 홈페이지에 붙여넣을 때 거부되므로 보낼 때 걸러냅니다. */
+const accDigits = (v) => String(v || '').replace(/\D/g, '');
+
+const $ = (id) => document.getElementById(id);
+const token = new URLSearchParams(location.search).get('t') || '';
+let kind = null;
+const files = {};   // inputId -> [{name, type, data}]
+
+// ---------- 링크 확인 ----------
+(async function init() {
+  BANKS.forEach((b) => {
+    ['f_bank', 'b_bank'].forEach((id) => {
+      const o = document.createElement('option');
+      o.value = o.textContent = b;
+      $(id).appendChild(o);
+    });
+  });
+
+  if (!token) return invalid('링크에 인증 정보가 없습니다.');
+  try {
+    const j = await pub({ action: 'check', t: token });
+    if (!j.ok) return invalid(j.error || '유효하지 않은 링크입니다.');
+
+    const k = await pub({ action: 'pubkey' });
+    if (!k.ok || !k.pub) return invalid('서버 설정이 완료되지 않았습니다. 담당자에게 알려주세요.');
+    PUBLIC_KEY_B64 = k.pub;
+    $('loading').classList.add('hidden');
+    $('main').classList.remove('hidden');
+    if (j.label) $('ctx').textContent = `맹그라미 (맹진욱) · ${j.label}`;
+    if (j.role) $('f_role').value = j.role;
+    if (j.cap > 1) {
+      const b = document.createElement('div');
+      b.className = 'note';
+      b.innerHTML = `<span>👥</span><div>여러 명이 함께 쓰는 링크입니다.
+        현재 <b>${j.used}명</b> 제출 · <b>${j.left}자리</b> 남았습니다.<br>
+        본인 정보만 정확히 넣어주세요.</div>`;
+      const hdr = document.querySelector('header');
+      hdr.parentNode.insertBefore(b, hdr.nextSibling);
+    }
+  } catch (e) {
+    invalid('네트워크 연결을 확인해 주세요.');
+  }
+})();
+
+function invalid(m) {
+  $('loading').classList.add('hidden');
+  $('invalid').classList.remove('hidden');
+  $('invalidMsg').textContent = m;
+}
+
+// ---------- 구분 선택 ----------
+$('btnFree').onclick = () => setKind('freelancer');
+$('btnOther').onclick = () => setKind('other');
+$('btnBiz').onclick = () => setKind('business');
+
+const HINTS = {
+  freelancer: '촬영·편집 등 용역을 계속적으로 제공하는 경우입니다. 지급액의 3.3%를 원천징수합니다.',
+  other: '일시적으로 참여한 경우입니다. 지급액의 8.8%를 원천징수하며, 12만 5천원 이하는 세금이 없습니다.',
+  business: '사업자등록이 있어 세금계산서를 발행하는 경우입니다. 원천징수하지 않습니다.',
+};
+
+function setKind(k) {
+  kind = k;
+  $('btnFree').setAttribute('aria-pressed', k === 'freelancer');
+  $('btnOther').setAttribute('aria-pressed', k === 'other');
+  $('btnBiz').setAttribute('aria-pressed', k === 'business');
+  // 프리랜서와 일반·학생은 받는 항목이 같습니다
+  $('formFree').classList.toggle('hidden', k === 'business');
+  $('formBiz').classList.toggle('hidden', k !== 'business');
+  $('agreeBox').classList.remove('hidden');
+  $('kindHint').textContent = HINTS[k] || '';
+  if (k === 'business') showIssuer();
+  check();
+}
+
+// ---------- 입력 보조 ----------
+function hyphenate(el, pattern) {
+  el.addEventListener('input', () => {
+    const d = el.value.replace(/\D/g, '').slice(0, pattern.reduce((a, b) => a + b, 0));
+    let out = '', i = 0;
+    for (const len of pattern) {
+      if (i >= d.length) break;
+      if (out) out += '-';
+      out += d.slice(i, i + len);
+      i += len;
+    }
+    el.value = out;
+    check();
+  });
+}
+hyphenate($('f_rrn'), [6, 7]);
+hyphenate($('b_bizno'), [3, 2, 5]);
+hyphenate($('f_phone'), [3, 4, 4]);
+hyphenate($('b_phone'), [3, 4, 4]);
+
+// 주민번호 체크섬 — 오기입을 여기서 잡는다
+function rrnValid(v) {
+  const d = v.replace(/\D/g, '');
+  if (d.length !== 13) return false;
+  const m = +d.slice(2, 4), day = +d.slice(4, 6);
+  if (m < 1 || m > 12 || day < 1 || day > 31) return false;
+  if (!'1234'.includes(d[6])) return '567890'.includes(d[6]);
+  const w = [2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5];
+  let s = 0;
+  for (let i = 0; i < 12; i++) s += +d[i] * w[i];
+  return (11 - (s % 11)) % 10 === +d[12];
+}
+$('f_rrn').addEventListener('blur', () => {
+  const v = $('f_rrn').value;
+  const h = $('rrnHint');
+  if (!v) { h.textContent = '소득세법상 원천징수 신고에 필요합니다.'; h.style.color = ''; return; }
+  if (rrnValid(v)) { h.textContent = '✓ 형식 확인'; h.style.color = 'var(--ok)'; }
+  else { h.textContent = '번호를 다시 확인해 주세요.'; h.style.color = 'var(--bad)'; }
+});
+
+// ---------- 사진 ----------
+document.querySelectorAll('.drop').forEach((d) => {
+  d.onclick = () => $(d.dataset.for).click();
+});
+['f_bankbook', 'f_id', 'b_cert', 'b_bankbook'].forEach((id) => {
+  $(id).addEventListener('change', async (e) => {
+    const chosen = [...e.target.files];
+    e.target.value = '';
+    if (!chosen.length) return;
+
+    files[id] = files[id] || [];
+    const drop = document.querySelector(`.drop[data-for="${id}"]`);
+    const errBox = $('err_' + id);
+    errBox.textContent = '';
+    errBox.style.display = 'none';
+    drop.classList.add('busy');
+
+    const problems = [];
+    for (let i = 0; i < chosen.length; i++) {
+      const f = chosen[i];
+      if (files[id].length >= 3) { problems.push('최대 3장까지 올릴 수 있습니다.'); break; }
+      drop.textContent = `사진을 처리하는 중… (${i + 1}/${chosen.length})`;
+      try {
+        files[id].push(await shrink(f));
+      } catch (err) {
+        problems.push(`${f.name || '사진'} — ${err.message}`);
+      }
+    }
+
+    drop.classList.remove('busy');
+    if (problems.length) {
+      errBox.textContent = problems.join('\n');
+      errBox.style.display = 'block';
+    }
+    renderThumbs(id);
+    check();
+  });
+});
+
+/* 사진 축소
+   갤러리 사진은 촬영본보다 훨씬 크고(4천만 화소도 있음) 아이폰은 HEIC 형식이라
+   그냥 <img> 로 열면 실패하는 기기가 있습니다. 그래서 단계별로 시도합니다.
+     ① createImageBitmap  — 형식·회전 정보를 가장 잘 처리
+     ② <img> + objectURL  — 예전 브라우저용
+     ③ 원본 그대로 전송   — 위 둘 다 실패했을 때 (용량이 작으면)                */
+
+const CANVAS_MAX_PX = 12000000;   // 모바일 캔버스 한계(대략 1600만 화소) 아래로
+
+const BIG_FILE = 3 * 1024 * 1024;   // 이보다 크면 '읽으면서 줄이기'를 먼저 시도
+
+/* 안드로이드 일부 갤러리·파일앱은 형식 정보를 비워서 넘깁니다.
+   그러면 브라우저가 이미지로 인식하지 못해 미리보기가 깨집니다.
+   확장자로 형식을 추정해 다시 포장합니다. */
+function guessType(file) {
+  const t = (file.type || '').toLowerCase();
+  if (t.startsWith('image/')) return t;
+  const ext = (file.name || '').toLowerCase().split('.').pop();
+  return ({ png: 'image/png', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp',
+            heic: 'image/heic', heif: 'image/heif' })[ext] || 'image/jpeg';
+}
+
+function retype(file) {
+  return new Blob([file], { type: guessType(file) });
+}
+
+async function decode(file) {
+  const hasBitmap = typeof createImageBitmap === 'function';
+
+  /* 요즘 폰 사진은 1억 화소가 넘기도 합니다.
+     원본 크기로 펼치면 메모리가 모자라 조용히 실패하므로,
+     큰 파일은 '읽는 단계에서 바로 축소'해 메모리를 아낍니다. */
+  if (hasBitmap && file.size > BIG_FILE) {
+    try {
+      return await createImageBitmap(file, {
+        imageOrientation: 'from-image', resizeWidth: MAX_EDGE * 2, resizeQuality: 'medium',
+      });
+    } catch (e) { /* 다음 방법으로 */ }
+  }
+
+  if (hasBitmap) {
+    try {
+      return await createImageBitmap(file, { imageOrientation: 'from-image' });
+    } catch (e) { /* 다음 방법으로 */ }
+  }
+
+  // 형식을 바로잡아 한 번 더
+  const fixed = retype(file);
+  if (hasBitmap && fixed.type !== file.type) {
+    try {
+      return await createImageBitmap(fixed, { imageOrientation: 'from-image' });
+    } catch (e) { /* 다음 방법으로 */ }
+  }
+
+  const viaImg = (blob) => new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    let settled = false;
+    const done = (fn) => { if (settled) return; settled = true; URL.revokeObjectURL(url); fn(); };
+    // 안드로이드에서 클라우드 사진은 응답이 아예 없는 경우가 있어 시간 제한을 둡니다
+    const timer = setTimeout(() => done(() => rej(new Error('timeout'))), 20000);
+    img.onload = () => { clearTimeout(timer); done(() => res(img)); };
+    img.onerror = () => { clearTimeout(timer); done(() => rej(new Error('decode'))); };
+    img.src = url;
+  });
+
+  try { return await viaImg(file); } catch (e) { /* 마지막 시도 */ }
+  return viaImg(fixed);
+}
+
+function fileToDataUrl(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(new Error('read'));
+    r.readAsDataURL(file);
+  });
+}
+
+async function shrink(file) {
+  // 안드로이드에서 클라우드에만 있는 사진(기기에 원본이 없는 경우) 걸러내기
+  if (!file.size) {
+    throw new Error(
+      '사진이 휴대폰에 저장되어 있지 않은 것 같습니다.\n' +
+      '갤러리에서 해당 사진을 먼저 내려받은 뒤 다시 선택해 주세요.');
+  }
+
+  let src;
+  try {
+    src = await decode(file);
+  } catch (e) {
+    // ③ 축소는 못 하지만 원본이 작으면 그대로 보냅니다
+    if (file.size <= 2.5 * 1024 * 1024) {
+      try {
+        // FileReader 는 blob 의 형식을 그대로 쓰므로, 비어 있으면 이미지로 인식되지 않습니다
+        return { name: file.name, type: guessType(file), raw: true,
+                 data: await fileToDataUrl(retype(file)) };
+      } catch (e2) { /* 아래 안내로 */ }
+    }
+    const mb = (file.size / 1024 / 1024).toFixed(1);
+    throw new Error(
+      (e.message === 'timeout'
+        ? '사진을 불러오는 데 너무 오래 걸립니다.\n'
+        : '이 사진을 읽지 못했습니다.\n') +
+      '갤러리에서 사진을 한 번 편집(자르기 등)해 저장한 뒤 올리거나,\n' +
+      '직접 촬영해 주세요.\n' +
+      `(형식 ${file.type || '알 수 없음'} · 용량 ${mb}MB)`);
+  }
+
+  const w0 = src.width, h0 = src.height;
+  if (!w0 || !h0) throw new Error('사진 크기를 확인하지 못했습니다.');
+
+  // 긴 변 기준 + 전체 화소 기준, 둘 다 만족하도록 축소 비율을 정한다
+  let scale = Math.min(1, MAX_EDGE / Math.max(w0, h0));
+  if (w0 * h0 * scale * scale > CANVAS_MAX_PX) {
+    scale = Math.sqrt(CANVAS_MAX_PX / (w0 * h0));
+  }
+  const w = Math.max(1, Math.round(w0 * scale));
+  const h = Math.max(1, Math.round(h0 * scale));
+
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  if (!ctx) throw new Error('사진을 처리하지 못했습니다. 다시 시도해 주세요.');
+  ctx.drawImage(src, 0, 0, w, h);
+  if (src.close) src.close();
+
+  let data = c.toDataURL('image/jpeg', JPEG_Q);
+  // 그래도 크면 한 번 더 줄인다
+  if (data.length > 1.4 * 1024 * 1024) {
+    const c2 = document.createElement('canvas');
+    c2.width = Math.round(w * 0.7); c2.height = Math.round(h * 0.7);
+    c2.getContext('2d').drawImage(c, 0, 0, c2.width, c2.height);
+    data = c2.toDataURL('image/jpeg', 0.65);
+  }
+  if (!data || data.length < 200) throw new Error('사진을 처리하지 못했습니다.');
+  return { name: file.name, type: 'image/jpeg', data,
+           info: `${w}×${h} · ${(data.length / 1365).toFixed(0)}KB` };
+}
+
+/* 아이폰·삼성의 '고효율 이미지' 설정으로 찍은 사진(HEIC)은
+   일부 안드로이드 브라우저가 화면에 못 띄웁니다.
+   제출·저장은 정상이므로, 다음부터 편하시라고 안내만 합니다. */
+function showHeicTip(type) {
+  if (!/heic|heif/i.test(type || '')) return;
+  if ($('heicTip')) return;
+  const box = document.createElement('div');
+  box.id = 'heicTip';
+  box.className = 'note';
+  box.style.marginTop = '12px';
+  box.innerHTML = '<span>ℹ️</span><div>이 사진은 <b>정상적으로 첨부되었습니다.</b> ' +
+    '그대로 제출하시면 됩니다.<br><br>' +
+    '화면에 사진이 안 보이는 것은 휴대폰 카메라의 <b>고효율 이미지(HEIC)</b> 형식 때문입니다.<br>' +
+    '카메라 설정 → 고급 → <b>고효율 이미지 끄기</b> 로 바꾸면 다음부터는 보입니다.</div>';
+  const anchor = document.querySelector('#formFree .card:last-of-type')
+    || document.querySelector('#formFree');
+  if (anchor) anchor.appendChild(box);
+}
+
+function renderThumbs(id) {
+  const box = $('thumb_' + id);
+  box.innerHTML = '';
+  (files[id] || []).forEach((f, i) => {
+    const d = document.createElement('div');
+    d.className = 'thumb';
+    // 미리보기가 깨지면 어떤 사진이 왜 그런지 화면에 남깁니다
+    d.innerHTML =
+      '<img src="' + f.data + '" alt="">' +
+      '<button type="button" class="del">×</button>' +
+      '<span class="tag">' + (f.info || (f.raw ? '원본' : '')) + '</span>';
+    const img = d.querySelector('img');
+    img.onerror = () => {
+      // 미리보기가 안 될 뿐 제출에는 문제가 없습니다.
+      // 실패로 보이면 스태프가 불필요하게 다시 시도하게 되므로 정확히 알립니다.
+      d.classList.add('noprev');
+      img.remove();
+      const kb = Math.round((f.data || '').length / 1365);
+      const p = document.createElement('div');
+      p.className = 'ph';
+      p.innerHTML = '✓ 첨부됨<br><small>미리보기만 지원되지<br>않는 형식입니다<br>' +
+        (f.type || '형식없음') + ' · ' + kb + 'KB</small>';
+      d.insertBefore(p, d.firstChild);
+      showHeicTip(f.type);
+    };
+    d.querySelector('.del').onclick = () => {
+      files[id].splice(i, 1); renderThumbs(id); check();
+    };
+    box.appendChild(d);
+  });
+
+  const drop = document.querySelector(`.drop[data-for="${id}"]`);
+  const n = (files[id] || []).length;
+  drop.classList.toggle('has', n > 0);
+  drop.textContent = n ? `✓ ${n}장 선택됨 — 더 추가하려면 누르세요`
+                       : '📷 촬영하거나 사진을 선택하세요';
+}
+
+// ---------- 검증 ----------
+$('agree').onchange = check;
+document.querySelectorAll('input,select').forEach((el) => el.addEventListener('input', check));
+
+function collect() {
+  if (kind !== 'business') {
+    return {
+      kind, name: $('f_name').value.trim(), rrn: $('f_rrn').value.trim(),
+      phone: $('f_phone').value.trim(), address: $('f_addr').value.trim(),
+      role: $('f_role').value.trim(), bank_name: $('f_bank').value,
+      account: accDigits($('f_acc').value), account_holder: $('f_holder').value.trim(),
+      files: { bankbook: files.f_bankbook || [], id_card: files.f_id || [] },
+    };
+  }
+  return {
+    kind, company_name: $('b_company').value.trim(), biz_no: $('b_bizno').value.trim(),
+    ceo: $('b_ceo').value.trim(), biz_type: $('b_type').value.trim(),
+    biz_item: $('b_item').value.trim(), address: $('b_addr').value.trim(),
+    manager: $('b_manager').value.trim(), phone: $('b_phone').value.trim(),
+    email: $('b_email').value.trim(), bank_name: $('b_bank').value,
+    account: accDigits($('b_acc').value), account_holder: $('b_holder').value.trim(),
+    files: { cert: files.b_cert || [], bankbook: files.b_bankbook || [] },
+  };
+}
+
+function check() {
+  let ok = !!kind && $('agree').checked;
+  if (ok && kind !== 'business') {
+    const d = collect();
+    ok = d.name && rrnValid(d.rrn) && d.phone && d.address &&
+         d.account && d.account_holder &&
+         d.files.bankbook.length > 0 && d.files.id_card.length > 0;
+  } else if (ok) {
+    const d = collect();
+    ok = d.company_name && d.biz_no.replace(/\D/g, '').length === 10 && d.ceo &&
+         d.address && d.manager && d.phone && /\S+@\S+\.\S+/.test(d.email) &&
+         d.account && d.account_holder &&
+         d.files.cert.length > 0 && d.files.bankbook.length > 0;
+  }
+  $('submitBtn').disabled = !ok;
+}
+
+// ---------- 암호화 후 전송 ----------
+const b64 = (buf) => {
+  const bytes = new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(s);
+};
+
+async function seal(payload) {
+  const raw = Uint8Array.from(atob(PUBLIC_KEY_B64), (c) => c.charCodeAt(0));
+  const pub = await crypto.subtle.importKey(
+    'spki', raw, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
+  const aes = await crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 }, true, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aes,
+    new TextEncoder().encode(JSON.stringify(payload)));
+  const wk = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, pub,
+    await crypto.subtle.exportKey('raw', aes));
+  return { v: 1, kind, alg: 'RSA-OAEP-256+AES-256-GCM',
+           wk: b64(wk), iv: b64(iv), ct: b64(ct) };
+}
+
+$('submitBtn').onclick = async () => {
+  const btn = $('submitBtn'), msg = $('msg');
+  btn.disabled = true;
+  btn.textContent = '암호화하는 중…';
+  msg.className = 'msg';
+
+  try {
+    const payload = collect();
+    const size = JSON.stringify(payload).length;
+    if (size > MAX_TOTAL) {
+      throw new Error('사진 용량이 너무 큽니다. 장수를 줄이거나 다시 촬영해 주세요.');
+    }
+    const envelope = await seal(payload);
+
+    btn.textContent = '전송하는 중…';
+    const j = await pub({ action: 'submit', token, envelope });
+    if (!j.ok) throw new Error(j.error || '제출에 실패했습니다.');
+
+    $('main').classList.add('hidden');
+    $('done').classList.remove('hidden');
+    window.scrollTo(0, 0);
+    showIssuerOnDone();
+  } catch (e) {
+    msg.className = 'msg bad';
+    msg.textContent = e.message || '제출에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+    btn.disabled = false;
+    btn.textContent = '제출하기';
+  }
+};
+
+// ═══════════════ 세금계산서 발행 정보 (사업자에게 보여줍니다)
+let ISSUER = null;
+
+const ISSUER_FIELDS = [
+  ['상호', 'name'], ['사업자등록번호', 'bizNo'], ['대표자', 'ceo'],
+  ['사업장 주소', 'address'], ['업태', 'bizType'], ['종목', 'bizItem'],
+  ['계산서 이메일', 'email'],
+];
+
+async function loadIssuer() {
+  if (ISSUER) return ISSUER;
+  const j = await pub({ action: 'company' });
+  if (!j.ok) throw new Error('발행 정보를 불러오지 못했습니다.');
+  ISSUER = j.company;
+  return ISSUER;
+}
+
+function issuerHtml(c) {
+  return ISSUER_FIELDS.map(([label, key]) => {
+    const v = c[key] || '-';
+    const big = (key === 'bizNo') ? ' big2' : '';
+    return `<div class="irow" data-copy="${escAttr(v)}">
+      <span class="k">${label}</span>
+      <span class="v${big}">${escHtml(v)}</span>
+      <span class="c">복사</span>
+    </div>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+const escAttr = escHtml;
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch {}
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+
+function flash(el, msg) {
+  const tag = el.querySelector('.c');
+  if (!tag) return;
+  const old = tag.textContent;
+  tag.textContent = msg;
+  tag.style.color = 'var(--ok)';
+  setTimeout(() => { tag.textContent = old; tag.style.color = ''; }, 1200);
+}
+
+function bindIssuer(container) {
+  container.querySelectorAll('.irow').forEach((row) => {
+    row.onclick = async () => {
+      const okc = await copyText(row.dataset.copy);
+      flash(row, okc ? '✓ 복사됨' : '실패');
+    };
+  });
+}
+
+function issuerText(c) {
+  return ISSUER_FIELDS.map(([label, key]) => `${label}: ${c[key] || ''}`).join('\n');
+}
+
+async function showIssuer() {
+  try {
+    const c = await loadIssuer();
+    $('issuerBox').innerHTML = issuerHtml(c);
+    bindIssuer($('issuerBox'));
+    $('issuerNotice').textContent = c.notice || '';
+  } catch (e) {
+    $('issuerBox').innerHTML =
+      '<span class="hint" style="color:var(--bad)">발행 정보를 불러오지 못했습니다. ' +
+      '담당자에게 문의해 주세요.</span>';
+  }
+}
+
+$('copyIssuer').onclick = async () => {
+  const okc = await copyText(issuerText(await loadIssuer()));
+  $('copyIssuer').textContent = okc ? '✓ 복사되었습니다' : '복사 실패';
+  setTimeout(() => { $('copyIssuer').textContent = '전체 정보 복사'; }, 1600);
+};
+
+$('copyIssuer2').onclick = async () => {
+  const okc = await copyText(issuerText(await loadIssuer()));
+  $('copyIssuer2').textContent = okc ? '✓ 복사되었습니다' : '복사 실패';
+  setTimeout(() => { $('copyIssuer2').textContent = '전체 정보 복사'; }, 1600);
+};
+
+/** 사업자로 제출을 마치면 완료 화면에도 발행 정보를 남깁니다 */
+async function showIssuerOnDone() {
+  if (kind !== 'business') return;
+  try {
+    const c = await loadIssuer();
+    $('doneIssuerBox').innerHTML = issuerHtml(c);
+    bindIssuer($('doneIssuerBox'));
+    $('doneIssuer').classList.remove('hidden');
+  } catch (e) { /* 완료 자체는 이미 끝났으므로 조용히 넘어갑니다 */ }
+}
+
+</script>
+</body>
+</html>
