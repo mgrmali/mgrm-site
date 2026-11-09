@@ -2,3 +2,4 @@
 .wrangler
 /src/
 wrangler.json
+/hub/
