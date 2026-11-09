@@ -15,8 +15,8 @@ services:
       - HUB_STAFF_GROUP=hub-staff
       - GAS_URL=https://script.google.com/macros/s/AKfycbzSRu7J20klkUFYE8lfx1qf_C6SLolq0g-p_fhHfGmQKreUSDNkbQSh8bQn63JvL3bu/exec
       - DATA_DIR=/data
-      - GROUP_FILE=/qnap/group
+      - GROUP_FILE=/qnap/config/group,/qnap/group
     volumes:
       - /share/Container/mgrm-hub/server.js:/app/server.js:ro
       - /share/HubData:/data                 # 허브 데이터 (QNAP admin 만 접근하는 공유 폴더로 만들 것)
-      - /etc/group:/qnap/group:ro            # QNAP 그룹 목록 (읽기 전용) — 허브 그룹 확인용
+      - /etc/config:/qnap/config:ro            # QNAP 그룹 목록 (읽기 전용) — 허브 그룹 확인용

@@ -21,13 +21,23 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.1.0';
+const VERSION = 'hub-store 1.1.1';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
 const DATA_KEY = process.env.DATA_KEY || '';          // 개인키를 디스크에 잠가 두는 열쇠
 const QNAP_URL = process.env.QNAP_URL || '';
-const GROUP_FILE = process.env.GROUP_FILE || '/qnap/group';
+/* 그룹 파일: 쉼표로 여러 경로를 주면 앞에서부터 읽히는 파일을 씁니다.
+   QNAP 은 /etc/group 을 통째로 갈아끼우므로 파일 하나를 마운트하면 옛 내용이 남습니다.
+   → 폴더(/etc/config)를 마운트하고 그 안의 group 을 읽는 것이 안전합니다. */
+const GROUP_FILES = String(process.env.GROUP_FILE || '/qnap/config/group,/qnap/group')
+  .split(',').map((x) => x.trim()).filter(Boolean);
+function readGroupFile_() {
+  for (const p of GROUP_FILES) {
+    try { const t = fs.readFileSync(p, 'utf8'); if (t) return t; } catch {}
+  }
+  return '';
+}
 const ADMIN_GROUP = process.env.HUB_ADMIN_GROUP || 'hub-admin';
 const STAFF_GROUP = process.env.HUB_STAFF_GROUP || 'hub-staff';
 const BLOCKED_USERS = ['admin'];                      // QNAP 기본 관리자는 허브 로그인 금지
@@ -252,7 +262,7 @@ function failed_(k) {
 /** QNAP 그룹 파일에서 이 계정이 어느 허브 그룹에 들어 있는지 */
 function groupsOf_(user) {
   let text = '';
-  try { text = fs.readFileSync(GROUP_FILE, 'utf8'); } catch { return []; }
+  text = readGroupFile_(); if (!text) return [];
   const u = String(user).toLowerCase();
   return text.split('\n').map((l) => l.split(':')).filter((p) => p.length >= 4)
     .filter((p) => p[3].split(',').map((x) => x.trim().toLowerCase()).includes(u))
@@ -267,7 +277,7 @@ function roleOf_(user) {
 /** 허브 그룹 구성원 목록 (계정 화면 표시용) */
 function members_() {
   let text = '';
-  try { text = fs.readFileSync(GROUP_FILE, 'utf8'); } catch { return []; }
+  text = readGroupFile_(); if (!text) return [];
   const out = [];
   text.split('\n').map((l) => l.split(':')).filter((p) => p.length >= 4).forEach((p) => {
     const role = p[0] === ADMIN_GROUP ? 'admin' : p[0] === STAFF_GROUP ? 'pd' : '';
@@ -1264,4 +1274,7 @@ const server = http.createServer(async (req, res) => {
     send(res, 200, { ok: false, error: String(e.message || e) });
   }
 });
-server.listen(PORT, () => console.log(`${VERSION} — :${PORT}, 데이터 ${DATA}, QNAP ${QNAP_URL || '(미설정)'}`));
+server.listen(PORT, () => {
+  const gf = GROUP_FILES.find((p) => { try { fs.accessSync(p); return true; } catch { return false; } });
+  console.log(`${VERSION} — :${PORT}, 데이터 ${DATA}, QNAP ${QNAP_URL || '(미설정)'}, 그룹 파일 ${gf || '(없음!)'}`);
+});
