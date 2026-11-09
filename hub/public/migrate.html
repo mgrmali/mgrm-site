@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>구글 시트 → NAS 이사 · 맹그라미 업무 허브</title>
+<link rel="stylesheet" href="wct-style.css">
+</head>
+<body>
+<div class="wrap" style="max-width:720px">
+  <div class="card">
+    <h1 style="margin:0 0 6px">구글 시트 → NAS 이사</h1>
+    <p class="dim" style="margin:0 0 16px">한 번만 하는 작업입니다. 관리자만 할 수 있어요.</p>
+
+    <h2>1. 예전 관리자 비밀번호</h2>
+    <div class="note">주민번호·계좌를 여는 개인키가 이 비밀번호로 잠겨 있어요.
+      한 번 풀어서 NAS 에 옮겨 두면, 앞으로는 비밀번호 없이 관리자 그룹 로그인만으로 열려요.</div>
+    <label>예전 관리자 비밀번호</label>
+    <input type="password" id="oldPw" autocomplete="off">
+    <button class="b" id="btnKey" style="margin-top:10px">열쇠 꺼내기</button>
+    <div class="msg hide" id="keyMsg"></div>
+
+    <h2 style="margin-top:28px">2. 자료 파일</h2>
+    <div class="note">구글 시트와 봉투 파일을 모아 둔 <b>hub-import.json</b> 을 고르세요. (없으면 비워 두고 3번으로 — 열쇠만 옮깁니다)</div>
+    <input type="file" id="file" accept=".json,application/json">
+    <div id="fileInfo" class="dim" style="font-size:13px;margin-top:6px"></div>
+
+    <h2 style="margin-top:28px">3. NAS 로 보내기</h2>
+    <label><input type="checkbox" id="replace"> NAS 에 이미 있는 같은 탭은 비우고 새로 넣기</label>
+    <button class="b" id="btnGo" style="margin-top:10px" disabled>NAS 로 보내기</button>
+    <div class="msg hide" id="goMsg"></div>
+    <pre class="out hide" id="out" style="margin-top:12px"></pre>
+  </div>
+</div>
+<script src="wct-core.js"></script>
+<script>
+const GAS_OLD = 'https://script.google.com/macros/s/AKfycbzSRu7J20klkUFYE8lfx1qf_C6SLolq0g-p_fhHfGmQKreUSDNkbQSh8bQn63JvL3bu/exec';
+let KEY = null, GAS_AUTH = '', DATAJ = null;
+
+(async () => {
+  if (!await WCT.requireAuth(true)) return;
+  mountHeader('이사 도구');
+})();
+
+$('btnKey').onclick = async () => {
+  const m = $('keyMsg'), pw = $('oldPw').value;
+  m.className = 'msg hide';
+  if (!pw) { m.className = 'msg bad'; m.textContent = '비밀번호를 입력하세요.'; return; }
+  $('btnKey').disabled = true;
+  try {
+    const st = await (await fetch(GAS_OLD + '?action=status')).json();
+    if (!st.initialized) throw new Error('예전 서버에 설정이 없습니다.');
+    const auth = await WCT.derive(pw, b64d(st.saltAuth), 'auth');
+    const r = await fetch(GAS_OLD, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'unlock', key: auth }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error('비밀번호가 올바르지 않습니다.');
+    const ks = j.keystore;
+    const wrapKey = await WCT.derive(pw, b64d(ks.saltKey), 'key');
+    let pkcs8;
+    try { pkcs8 = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(ks.iv) }, wrapKey, b64d(ks.wrapped)); }
+    catch { throw new Error('비밀번호가 올바르지 않습니다.'); }
+    KEY = { pub: ks.pub, pkcs8: b64e(pkcs8) };
+    GAS_AUTH = auth;
+    m.className = 'msg ok'; m.textContent = '열쇠를 꺼냈습니다. 아래로 진행하세요.';
+    $('btnGo').disabled = false;
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { $('btnKey').disabled = false; }
+};
+
+$('file').onchange = async () => {
+  const f = $('file').files[0];
+  DATAJ = null; $('fileInfo').textContent = '';
+  if (!f) return;
+  try {
+    DATAJ = JSON.parse(await f.text());
+    const sheets = Object.keys(DATAJ.sheets || {}).map((k) => `${k} ${(DATAJ.sheets[k] || []).length}행`);
+    $('fileInfo').textContent = `탭 ${sheets.length}개 (${sheets.join(', ')}) · 봉투 ${Object.keys(DATAJ.files || {}).length}개`;
+  } catch (e) { $('fileInfo').textContent = '파일을 읽지 못했습니다: ' + e.message; }
+};
+
+$('btnGo').onclick = async () => {
+  const m = $('goMsg');
+  m.className = 'msg hide';
+  if (!KEY) { m.className = 'msg bad'; m.textContent = '먼저 열쇠를 꺼내세요.'; return; }
+  if (!confirm('NAS 로 보냅니다. 계속할까요?')) return;
+  $('btnGo').disabled = true; $('btnGo').textContent = '보내는 중…';
+  try {
+    const body = { keystore: KEY, gasAuth: GAS_AUTH, replace: $('replace').checked,
+      sheets: (DATAJ && DATAJ.sheets) || {}, files: (DATAJ && DATAJ.files) || {} };
+    const r = await fetch('/api/import', { method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    $('out').classList.remove('hide');
+    $('out').textContent = JSON.stringify(j, null, 2);
+    m.className = 'msg ok'; m.textContent = '끝났습니다. 로그아웃했다가 다시 들어오면 새 열쇠로 동작합니다.';
+    sessionStorage.removeItem('wct'); sessionStorage.removeItem('wct_data');
+  } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
+  finally { $('btnGo').disabled = false; $('btnGo').textContent = 'NAS 로 보내기'; }
+};
+</script>
+</body>
+</html>

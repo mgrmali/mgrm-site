@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>맹그라미 업무 허브</title>
+<link rel="stylesheet" href="wct-style.css">
+<style>
+  .hero{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+    padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:20px;flex-wrap:wrap}
+  .hero .hi{font-size:22px;font-weight:700;letter-spacing:-.3px}
+  .hero .sub{color:var(--dim);font-size:13px;margin-top:4px}
+  .due{display:flex;gap:14px;align-items:baseline;padding:8px 0;
+    border-bottom:1px solid var(--line)}
+  .due:last-child{border-bottom:0}
+  .due .ym{font-size:16px;font-weight:700;min-width:70px}
+  .stat{display:flex;justify-content:space-between;padding:7px 0;
+    border-bottom:1px solid var(--line);font-size:13px}
+  .stat:last-child{border-bottom:0}
+  .post{display:block;padding:8px 0;border-bottom:1px solid var(--line)}
+  .post:last-child{border-bottom:0}
+  .post .t{font-size:13px}
+  .post .m{color:var(--dim);font-size:11.5px;margin-top:2px}
+</style>
+</head>
+<body>
+
+<div id="lock" class="center">
+  <h1 style="margin-bottom:8px">맹그라미 업무 허브</h1>
+  <p class="dim" id="lockSub">확인 중…</p>
+</div>
+<div id="app" class="wrap hide">
+  <div class="hero">
+    <div>
+      <div class="hi" id="greet">안녕하세요.</div>
+      <div class="sub" id="todayLine"></div>
+    </div>
+    <button class="g sm" onclick="WCT.lock()">로그아웃</button>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:20px">
+    <a class="tile adminOnly" href="withholding.html">
+      <div class="ic">🧾</div>
+      <div class="tt">원천징수</div>
+      <div class="ds">인력 · 지급 · 원천세 · 지급명세서</div>
+      <div id="badgeWht"></div>
+    </a>
+    <a class="tile" href="board.html">
+      <div class="ic">📌</div>
+      <div class="tt">게시판</div>
+      <div class="ds">업무 메모 · 공지 · 체크리스트</div>
+      <div id="badgeBoard"></div>
+    </a>
+    <a class="tile" href="projects.html">
+      <div class="ic">🎬</div>
+      <div class="tt">프로젝트</div>
+      <div class="ds">프리 · 프로덕션 · 포스트 진행 현황</div>
+      <div id="badgeProj"></div>
+    </a>
+    <a class="tile adminOnly" href="vault.html">
+      <div class="ic">🔐</div>
+      <div class="tt">금고</div>
+      <div class="ds">라이선스 키 · 계정 정보</div>
+      <div id="badgeVault"></div>
+    </a>
+    <a class="tile adminOnly" href="invoices.html">
+      <div class="ic">📑</div>
+      <div class="tt">세금계산서</div>
+      <div class="ds">매출 · 매입 · 부가세 · 미수금</div>
+      <div id="badgeInv"></div>
+    </a>
+    <a class="tile" href="https://diary.mgrm.kr/">
+      <div class="ic">🎨</div>
+      <div class="tt">컬러 다이어리</div>
+      <div class="ds">레퍼런스 분석 · 라이브러리</div>
+      <div></div>
+    </a>
+  </div>
+
+  <div class="grid g3">
+    <div class="card" style="margin:0">
+      <h2>다가오는 마감</h2>
+      <div id="wDue"><span class="dim">불러오는 중…</span></div>
+    </div>
+    <div class="card" style="margin:0">
+      <h2>현황</h2>
+      <div id="wStat"><span class="dim">불러오는 중…</span></div>
+    </div>
+    <div class="card" style="margin:0">
+      <h2>프로젝트</h2>
+      <div id="wProj"><span class="dim">불러오는 중…</span></div>
+      <a href="projects.html" class="dim" style="font-size:12px;display:inline-block;margin-top:10px">
+        보드 열기 →</a>
+    </div>
+    <div class="card" style="margin:0">
+      <h2>게시판</h2>
+      <div id="wBoard"><span class="dim">불러오는 중…</span></div>
+      <a href="board.html" class="dim" style="font-size:12px;display:inline-block;margin-top:10px">
+        전체 보기 →</a>
+    </div>
+  </div>
+
+  <div class="card adminOnly" style="margin-top:16px">
+    <h2>확인할 제출</h2>
+    <div id="wSub"><span class="dim">불러오는 중…</span></div>
+  </div>
+</div>
+
+<script src="wct-core.js"></script>
+<script>
+(async function boot() {
+  if (await WCT.restore()) { showHub(); return; }
+  location.href = 'login?next=admin.html';
+})();
+
+// ═══════════════ 허브
+function applyRole() {
+  const admin = WCT.isAdmin();
+  document.querySelectorAll('.adminOnly').forEach((el) =>
+    el.classList.toggle('hide', !admin));
+}
+
+
+async function showHub() {
+  $('lock').classList.add('hide');
+  $('app').classList.remove('hide');
+  applyRole();
+  if (new URLSearchParams(location.search).get('denied')) {
+    toast('그 페이지는 관리자만 볼 수 있습니다.', true);
+    history.replaceState(null, '', location.pathname);
+  }
+
+  const now = new Date();
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const h = now.getHours();
+  $('greet').textContent = h < 6 ? '늦은 시간까지 고생 많으십니다.'
+    : h < 12 ? '좋은 아침입니다.' : h < 18 ? '안녕하세요.' : '오늘도 수고하셨습니다.';
+  $('todayLine').textContent =
+    `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 (${days[now.getDay()]})`;
+  if (WCT.me && WCT.me.name) $('greet').textContent = `${WCT.me.name}님, ` + $('greet').textContent;
+
+  const draw = () => {
+    applyRole();
+    const D = WCT.data;
+    if (D.company && !$('todayLine').textContent.includes(D.company)) {
+      $('todayLine').textContent += ` · ${D.company}`;
+    }
+    renderDue(D); renderStat(D); renderProj(D); renderInv(D);
+    renderVault(D); renderBoard(D); renderSub(D);
+  };
+  try {
+    await WCT.loadThenRefresh(draw);   // 캐시로 먼저 그리고 뒤에서 갱신
+  } catch (e) {
+    $('wDue').innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`;
+  }
+}
+
+
+function renderDue(D) {
+  if (!WCT.isAdmin()) {
+    $('wDue').innerHTML =
+      '<div class="dim" style="font-size:12.5px;line-height:1.7">' +
+      '세무 관련 항목은 관리자만 볼 수 있습니다.<br>' +
+      '프로젝트와 게시판을 이용하세요.</div>';
+    $('badgeWht').innerHTML = '';
+    return;
+  }
+  const items = [];
+  const done = new Set((D.wht || []).filter((w) => w.hometax).map((w) => w.payYm));
+  [...new Set((D.payments || []).filter((p) => p.status !== '예정')
+    .map((p) => (p.payDate || '').slice(0, 7)).filter(Boolean))]
+    .filter((m) => !done.has(m)).sort().forEach((m) => {
+      const a = whtAggregate(m);
+      items.push({ ym: m, what: `원천세 · ${won(a.tax + a.local)}원`,
+        date: whtDeadline(m), d: dday(whtDeadline(m)) });
+    });
+
+  const un = {};
+  (D.payments || []).filter((p) => p.status === '지급완료')
+    .forEach((p) => { un[p.ym] = (un[p.ym] || 0) + 1; });
+  Object.keys(un).sort().forEach((ym) => {
+    items.push({ ym, what: `지급명세서 · ${un[ym]}건`,
+      date: stmtDeadline(ym), d: dday(stmtDeadline(ym)) });
+  });
+
+  items.sort((a, b) => a.date - b.date);
+  $('wDue').innerHTML = items.length ? items.slice(0, 6).map((i) => `
+    <a class="due" href="withholding.html">
+      <span class="ym">${i.ym}</span>
+      <span class="dim" style="flex:1">${esc(i.what)}</span>
+      <span style="color:${i.d.color}">${i.d.text}</span></a>`).join('')
+    : '<div style="color:var(--ok)">처리할 마감이 없습니다.</div>';
+
+  const urgent = items.filter((i) => i.d.left <= 7);
+  const over = urgent.some((i) => i.d.left < 0);
+  $('badgeWht').innerHTML = urgent.length
+    ? `<span class="badge ${over ? 'bad' : 'hot'}">${over ? '기한 초과' : `마감 임박 ${urgent.length}건`}</span>`
+    : '';
+}
+
+function renderStat(D) {
+  if (!WCT.isAdmin()) {
+    const act = (D.projects || []).filter((p) => p.active !== false && p.stage !== '완료');
+    const tasks = (D.tasks || []);
+    const doneT = tasks.filter((t) => t.done).length;
+    $('wStat').innerHTML = `
+      <div class="stat"><span class="dim">진행 중 프로젝트</span><b>${act.length}건</b></div>
+      <div class="stat"><span class="dim">전체 작업</span><b>${tasks.length}개</b></div>
+      <div class="stat"><span class="dim">완료한 작업</span><b>${doneT}개</b></div>
+      <div class="stat"><span class="dim">게시글</span><b>${(D.board || []).length}개</b></div>`;
+    return;
+  }
+  const y = String(new Date().getFullYear());
+  const total = (D.payments || []).filter((p) => String(p.ym).startsWith(y))
+    .reduce((a, p) => a + p.gross, 0);
+  const waiting = (D.submissions || []).filter((s) => s.status === '대기').length;
+  const unpaidAmt = (D.sales || []).filter((x) => x.status === '발행완료')
+    .reduce((a, x) => a + x.total, 0);
+  $('wStat').innerHTML = `
+    <div class="stat"><span class="dim">등록 인력</span><b>${
+      (D.people || []).filter((p) => p.active).length}명</b></div>
+    <div class="stat"><span class="dim">거래처</span><b>${(D.vendors || []).length}곳</b></div>
+    <div class="stat"><span class="dim">대기 중 제출</span><b style="${
+      waiting ? 'color:var(--warn)' : ''}">${waiting}건</b></div>
+    <div class="stat"><span class="dim">${y}년 지급 합계</span><b>${won(total)}원</b></div>
+    <div class="stat"><span class="dim">미수금</span><b style="${
+      unpaidAmt ? 'color:var(--warn)' : ''}">${won(unpaidAmt)}원</b></div>`;
+}
+
+function renderProj(D) {
+  const act = (D.projects || []).filter((p) => p.active !== false && p.stage !== '완료');
+  if (!act.length) {
+    $('wProj').innerHTML = '<div class="dim">진행 중인 프로젝트가 없습니다.</div>';
+    $('badgeProj').innerHTML = '';
+    return;
+  }
+  const byStage = {};
+  act.forEach((p) => { byStage[p.stage || '프리'] = (byStage[p.stage || '프리'] || 0) + 1; });
+  const colors = { '프리': '#5b8dd6', '프로덕션': '#c8a84b', '포스트': '#a06bd0' };
+
+  const soon = act.filter((p) => p.due && dday(new Date(p.due + 'T00:00:00')).left <= 7);
+  $('wProj').innerHTML =
+    ['프리', '프로덕션', '포스트'].filter((s) => byStage[s]).map((s) => `
+      <div class="stat"><span class="dim">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;
+          background:${colors[s]};margin-right:7px"></span>${s}</span>
+        <b>${byStage[s]}건</b></div>`).join('') +
+    soon.slice(0, 3).map((p) => {
+      const d = dday(new Date(p.due + 'T00:00:00'));
+      return `<a class="post" href="projects.html"><div class="t">${esc(p.name)}</div>
+        <div class="m" style="color:${d.color}">마감 ${esc(p.due)} · ${d.text}</div></a>`;
+    }).join('');
+
+  const over = soon.some((p) => dday(new Date(p.due + 'T00:00:00')).left < 0);
+  $('badgeProj').innerHTML = soon.length
+    ? `<span class="badge ${over ? 'bad' : 'hot'}">${over ? '마감 초과' : `마감 임박 ${soon.length}건`}</span>`
+    : `<span class="badge">진행 ${act.length}건</span>`;
+}
+
+function renderVault(D) {
+  const n = (D.vault || []).length;
+  $('badgeVault').innerHTML = n ? `<span class="badge">${n}개 보관</span>` : '';
+}
+
+function renderInv(D) {
+  const unpaid = (D.sales || []).filter((x) => x.status === '발행완료');
+  const plan = (D.sales || []).filter((x) => x.status === '발행예정');
+  const amt = unpaid.reduce((a, x) => a + x.total, 0);
+  const parts = [];
+  if (plan.length) parts.push(`<span class="badge bad">미발행 ${plan.length}건</span>`);
+  else if (unpaid.length) parts.push(`<span class="badge hot">미수 ${won(amt)}원</span>`);
+  $('badgeInv').innerHTML = parts.join('');
+}
+
+function renderBoard(D) {
+  const posts = (D.board || []).slice()
+    .sort((a, b) => (b.pinned - a.pinned) || (b.id - a.id)).slice(0, 4);
+  $('wBoard').innerHTML = posts.length ? posts.map((p) => `
+    <a class="post" href="board.html#p${p.id}">
+      <div class="t">${p.pinned ? '📌 ' : ''}${esc(p.title)}</div>
+      <div class="m">${esc(p.cat)} · ${esc(String(p.createdAt).slice(0, 10))}</div>
+    </a>`).join('') : '<div class="dim">아직 글이 없습니다.</div>';
+  $('badgeBoard').innerHTML = (D.board || []).some((p) => p.pinned)
+    ? '<span class="badge hot">고정 글 있음</span>' : '';
+}
+
+</script>
+</body>
+</html>
