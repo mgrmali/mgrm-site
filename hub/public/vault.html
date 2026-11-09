@@ -231,8 +231,19 @@ $('bulkFile').onchange = async () => {
   let arr;
   try { arr = JSON.parse(await f.text()); if (!Array.isArray(arr)) throw 0; }
   catch { return toast('JSON 배열 파일이 아닙니다.', true); }
-  const have = new Set(items().map((v) => v.cat + '|' + v.name));
-  if (!confirm(`${arr.length}개 항목을 금고에 넣습니다. 같은 분류·이름은 건너뜁니다. 계속할까요?`)) return;
+  const cur = items();
+  let replace = false;
+  if (cur.length) {
+    replace = confirm(`지금 금고에 ${cur.length}개가 있어요.\n\n[확인] 전부 지우고 파일 내용 ${arr.length}개로 교체\n[취소] 지우지 않고 없는 것만 추가`);
+    if (replace && !confirm(`정말 기존 ${cur.length}개를 지울까요? 되돌릴 수 없습니다.`)) return;
+  } else if (!confirm(`${arr.length}개 항목을 금고에 넣습니다. 계속할까요?`)) return;
+  if (replace) {
+    toast('기존 항목 지우는 중…');
+    for (const v of cur) {
+      try { await WCT.api('vault.delete', { id: v.id }); } catch (e) { console.error(v.name, e); }
+    }
+  }
+  const have = new Set(replace ? [] : cur.map((v) => v.cat + '|' + v.name));
   let done = 0, skip = 0, fail = 0;
   for (const it of arr) {
     const cat = CATS.includes(it.cat) && it.cat !== '전체' ? it.cat : '기타';
