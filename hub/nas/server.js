@@ -21,12 +21,12 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.0.0';
+const VERSION = 'hub-store 1.0.1';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
 const DATA_KEY = process.env.DATA_KEY || '';          // 개인키를 디스크에 잠가 두는 열쇠
-const QNAP_URL = (process.env.QNAP_URL || '').replace(/\/+$/, '');
+const QNAP_URL = process.env.QNAP_URL || '';
 const GROUP_FILE = process.env.GROUP_FILE || '/qnap/group';
 const ADMIN_GROUP = process.env.HUB_ADMIN_GROUP || 'hub-admin';
 const STAFF_GROUP = process.env.HUB_STAFF_GROUP || 'hub-staff';
@@ -262,18 +262,18 @@ function members_() {
   return out;
 }
 
-/** QNAP authLogin.cgi 로 아이디·비밀번호 확인 */
-function qnapCheck_(user, pw) {
+/** QNAP authLogin.cgi 로 아이디·비밀번호 확인
+    QNAP_URL 에 여러 주소를 쉼표로 적을 수 있고(예: http://ip:8080,https://ip:443),
+    앞에서부터 차례로 시도합니다. 거절 사유는 로그에 남깁니다(비밀번호는 안 남김). */
+function qnapOnce_(base, user, pw) {
   return new Promise((resolve, reject) => {
-    if (!QNAP_URL) return reject(new Error('NAS 설정(QNAP_URL)이 비어 있습니다.'));
     const body = new URLSearchParams({ user, pwd: Buffer.from(pw, 'utf8').toString('base64'),
-      serviceKey: '1', client_app: 'mgrm-hub', client_agent: 'mgrm-hub' }).toString();
-    const u = new URL(QNAP_URL + '/cgi-bin/authLogin.cgi');
+      serviceKey: '1', remme: '0', client_app: 'mgrm-hub' }).toString();
+    const u = new URL(base.replace(/\/+$/, '') + '/cgi-bin/authLogin.cgi');
     const lib = u.protocol === 'https:' ? https : http;
-    const req = lib.request(u, { method: 'POST', timeout: 10000,
-      rejectUnauthorized: false,   // NAS 내부 주소의 자체 인증서 허용 (내부망 전용)
+    const req = lib.request(u, { method: 'POST', timeout: 10000, rejectUnauthorized: false,
       headers: { 'Content-Type': 'application/x-www-form-urlencoded',
-                 'Content-Length': Buffer.byteLength(body) } }, (res) => {
+                 'Content-Length': Buffer.byteLength(body), 'User-Agent': 'mgrm-hub' } }, (res) => {
       let t = '';
       res.on('data', (c) => { t += c; });
       res.on('end', () => {
@@ -281,21 +281,37 @@ function qnapCheck_(user, pw) {
         const passed = tag('authPassed') === '1';
         const sid = tag('authSid');
         if (passed && sid) {
-          // 확인용으로 만든 QNAP 세션은 바로 닫습니다
           try {
-            lib.get(new URL(QNAP_URL + '/cgi-bin/authLogin.cgi?logout=1&sid=' +
-              encodeURIComponent(sid)), { rejectUnauthorized: false }, (r) => r.resume())
-              .on('error', () => {});
+            lib.get(new URL(base.replace(/\/+$/, '') + '/cgi-bin/authLogin.cgi?logout=1&sid=' +
+              encodeURIComponent(sid)), { rejectUnauthorized: false }, (r) => r.resume()).on('error', () => {});
           } catch {}
         }
-        resolve({ passed, need2sv: /need_2sv|2sv/i.test(t) && !passed,
-                  name: tag('username') || user });
+        const info = { status: res.statusCode, authPassed: tag('authPassed'), errorValue: tag('errorValue'),
+          need_2sv: tag('need_2sv'), pw_status: tag('pw_status'), is_booting: tag('is_booting'),
+          head: passed ? '' : t.replace(/\s+/g, ' ').slice(0, 300) };
+        resolve({ passed, need2sv: tag('need_2sv') === '1' || /need_2sv>1|2sv/i.test(t) && !passed,
+                  name: tag('username') || user, info, base });
       });
     });
     req.on('timeout', () => req.destroy(new Error('NAS 응답 시간 초과')));
     req.on('error', reject);
     req.end(body);
   });
+}
+async function qnapCheck_(user, pw) {
+  const bases = QNAP_URL.split(',').map((s) => s.trim()).filter(Boolean);
+  if (!bases.length) throw new Error('NAS 설정(QNAP_URL)이 비어 있습니다.');
+  let last = null, lastErr = null;
+  for (const base of bases) {
+    try {
+      const r = await qnapOnce_(base, user, pw);
+      console.log(`[auth] ${user} @ ${base} →`, JSON.stringify(r.info));
+      if (r.passed || r.need2sv) return r;
+      last = r;
+    } catch (e) { lastErr = e; console.log(`[auth] ${user} @ ${base} → 연결 실패: ${e.message}`); }
+  }
+  if (last) return last;
+  throw lastErr || new Error('NAS 에 연결하지 못했습니다.');
 }
 
 async function auth_(b) {
