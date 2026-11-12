@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.3.0';
+const VERSION = 'hub-store 1.4.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -78,7 +78,8 @@ const SHEETS = {
   '거래처': ['ID', '상호', '사업자번호', '대표자', '업태', '종목', '주소',
              '담당자', '이메일', '은행', '예금주', '계좌표시', '봉투ID', '등록일'],
   '프로젝트': ['ID', '이름', '클라이언트', '활성', '단계', '시작일', '마감일',
-             '계약금액', '담당', '메모', '등록일', '코드', '폴더'],
+             '계약금액', '담당', '메모', '등록일', '코드', '폴더', '회차표'],
+  '회차':   ['ID', '프로젝트ID', '회차', '날짜', '장소', '주소', '집합', '내용', '상태', '등록일'],
   '작업':   ['ID', '프로젝트ID', '단계', '제목', '담당', '마감일', '완료', '순서', '등록일', '캘린더',
              '시작일', '캘린더이름'],
   '지급':   ['ID', '인력ID', '성명', '지급일', '귀속월', '프로젝트', '역할',
@@ -712,7 +713,8 @@ const GCAL = (() => {
   const SA_FILE = process.env.GOOGLE_SA_FILE || path.join(DATA, 'google-sa.json');
   const CAL_FILE = path.join(DATA, 'calendars.json');
   const DEFAULT_CAL = 'MGRM스케줄';
-  const AUTO_PREFIX = ['proj-', 'task-'];    // 허브가 스스로 만드는 일정
+  const AUTO_PREFIX = ['proj-', 'task-', 'shoot-'];    // 허브가 스스로 만드는 일정
+  const SHOOT_CAL = 'MGRM촬영';
   let sa = null, ids = null, token = null, tokenExp = 0, busy = null, again = false, timer = null;
 
   function load_() {
@@ -760,12 +762,13 @@ const GCAL = (() => {
     return t.toISOString().slice(0, 10); };
   const evId = (v) => String(v || '').replace(/@google\.com$/, '');
   const sigOf = (e) => crypto.createHash('sha1').update(JSON.stringify(
-    [e.title, e.date, e.end || '', e.desc || '', e.remind || 0, e.cal])).digest('hex').slice(0, 16);
+    [e.title, e.date, e.end || '', e.desc || '', e.remind || 0, e.cal, e.loc || ''])).digest('hex').slice(0, 16);
 
   function body_(e) {
     const end = e.end && e.end > e.date ? e.end : e.date;
     const b = { summary: e.title, description: (e.desc ? e.desc + '\n\n' : '') + '— 업무 허브에서 넣은 일정',
       start: { date: e.date }, end: { date: addDay(end, 1) },
+      location: e.loc || '',
       extendedProperties: { private: { hubKey: e.key } } };
     const r = Number(e.remind) || 0;
     // 하루 일정 알림: r일 전 오전 9시
@@ -807,7 +810,65 @@ const GCAL = (() => {
         desc: `프로젝트: ${p.name}\n단계: ${t.stage}` + (t.assignee ? `\n담당: ${t.assignee}` : '') +
               (p.folder ? `\n폴더: 1. 의뢰/${p.folder}` : '') });
     });
+    // 촬영 회차 — 하루 종일, MGRM촬영, 장소 칸은 주소가 있을 때만 (테슬라 내비)
+    rows_('회차').map(mapShoot_).filter((s) => s.date && s.status !== '취소').forEach((s) => {
+      const p = projs[s.projectId];
+      if (!p || p.active === false) return;
+      const head = `촬영_${s.no}회차` + (s.place ? `(${s.place})` : '');
+      ev.push({ key: `shoot-${s.id}`, date: s.date, cal: SHOOT_CAL, remind: 1, loc: s.addr,
+        title: p.code ? `[${p.code}] ${head}` : `${head} · ${p.name}`,
+        desc: [s.call ? `집합: ${s.call}` : '', s.note, p.shootVer ? `${p.shootVer} 기준` : '']
+          .filter(Boolean).join('\n') });
+    });
     return ev.filter((e) => e.date >= cut);
+  }
+
+  /** 캘린더에 이미 있는 '[코드] 촬영_N회차(장소)' 일정을 허브 회차로 가져와 그대로 이어받습니다 */
+  async function importShoots(projectId) {
+    if (!load_()) return { ok: false, error: '캘린더 직접 연동이 설정되지 않았어요.' };
+    const p = byId_('프로젝트', projectId);
+    if (!p) return { ok: false, error: '프로젝트를 찾지 못했어요.' };
+    const code = String(p['코드'] || '');
+    if (!code) return { ok: false, error: '프로젝트에 코드를 먼저 넣어 주세요 (예: YHN).' };
+    const items = [];
+    let pageToken = '';
+    do {
+      const q = new URLSearchParams({ q: `[${code}]`, singleEvents: 'true', maxResults: '250',
+        timeMin: new Date(Date.now() - 400 * 86400e3).toISOString() });
+      if (pageToken) q.set('pageToken', pageToken);
+      const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/' +
+        encodeURIComponent(ids[SHOOT_CAL]) + '/events?' + q, { headers: { Authorization: 'Bearer ' + await token_() } });
+      const j = await res.json();
+      if (res.status >= 300) return { ok: false, error: '캘린더를 읽지 못했어요: ' + ((j.error && j.error.message) || res.status) };
+      items.push(...(j.items || []));
+      pageToken = j.nextPageToken || '';
+    } while (pageToken);
+    const re = new RegExp('^\\[' + code + '\\]\\s*촬영_\\s*([0-9A-Za-z-]+)\\s*회차\\s*(?:\\((.*)\\))?\\s*$');
+    const found = items.filter((ev) => ev.status !== 'cancelled' && ev.start && ev.start.date &&
+      !(ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.hubKey))
+      .map((ev) => ({ ev, m: String(ev.summary || '').trim().match(re) })).filter((x) => x.m);
+    return tx_(() => {
+      const mine = rows_('회차').filter((r) => Number(r['프로젝트ID']) === Number(projectId));
+      const have = new Set(mine.map((r) => String(r['회차'])));
+      let id = nextId_('회차'), added = 0, skipped = 0, ver = '';
+      found.sort((a, b) => a.ev.start.date.localeCompare(b.ev.start.date)).forEach(({ ev, m }) => {
+        if (have.has(m[1])) { skipped++; return; }
+        const lines = String(ev.description || '').replace(/\r/g, '').split('\n');
+        while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+        const last = lines.length ? lines[lines.length - 1].trim() : '';
+        if (/기준$/.test(last)) { ver = ver || last.replace(/\s*기준$/, ''); lines.pop(); }
+        const sid = id++;
+        append_('회차', { 'ID': sid, '프로젝트ID': Number(projectId), '회차': m[1], '날짜': ev.start.date,
+          '장소': (m[2] || '').trim(), '주소': String(ev.location || ''), '집합': '',
+          '내용': lines.join('\n').trim(), '상태': '', '등록일': nowStr_() });
+        // 같은 일정을 허브 것으로 등록 (지우고 다시 만들지 않음) — 다음 반영 때 허브 내용으로 맞춰짐
+        append_('캘린더', { '키': `shoot-${sid}`, '제목': ev.summary, '날짜': ev.start.date,
+          '캘린더': SHOOT_CAL, '이벤트ID': ev.id, '동기시각': nowStr_(), '지문': '' });
+        have.add(m[1]); added++;
+      });
+      if (ver && !String(p['회차표'] || '')) patch_(p, { '회차표': ver });
+      return { ok: true, added, skipped, version: ver };
+    });
   }
 
   /** 원하는 일정 목록(want)과 지금 캘린더(시트 기록)를 맞춥니다. scope 에 맞는 키만 건드림 */
@@ -893,7 +954,7 @@ const GCAL = (() => {
       synced: rows_('캘린더').length, robot: sa.client_email, direct: true };
   }
 
-  return { ready, syncAll, later, check, guess, hubEvents };
+  return { ready, syncAll, later, check, guess, hubEvents, importShoots };
 })();
 
 // ══════════════════════════════════════════ 허브 기능 (로그인 필요)
@@ -901,6 +962,7 @@ const PD_ALLOWED = [
   'bootstrap', 'me', 'project.add', 'project.update', 'project.delete',
   'task.add', 'task.set', 'task.delete', 'board.add', 'board.delete', 'board.pin',
   'folder.list', 'folder.make', 'folder.link',
+  'shoot.save', 'shoot.delete', 'shoot.bulk', 'shoot.import',
 ];
 const READ_ONLY = ['bootstrap', 'me', 'review.videos', 'envelope', 'envelopes', 'unlock', 'user.list',
                    'recovery.status', 'calendar.check', 'log.list', 'folder.list'];
@@ -916,6 +978,12 @@ async function rpc_(b) {
   if (role !== 'admin' && PD_ALLOWED.indexOf(a) < 0) {
     return { ok: false, error: '이 기능은 관리자만 사용할 수 있습니다.' };
   }
+  if (a === 'shoot.import') {
+    const r = await GCAL.importShoots(b.projectId);
+    if (r.ok) GCAL.later();
+    log_(who.user, role, a, b._ip, r.ok);
+    return r;
+  }
   if (a === 'calendar.sync' || a === 'calendar.check') {
     return GCAL.ready() ? (a === 'calendar.check' ? GCAL.check() : GCAL.syncAll(b.events || []))
                         : calendarRelay_(a, b);
@@ -923,7 +991,7 @@ async function rpc_(b) {
   const run = () => admin_(a, b, who);
   const res = READ_ONLY.includes(a) ? run() : tx_(run);
   // 프로젝트·작업이 바뀌면 캘린더를 뒤에서 조용히 맞춥니다 (직접 연동일 때만)
-  if (res && res.ok && /^(project|task|folder)\./.test(a) && a !== 'folder.list') GCAL.later();
+  if (res && res.ok && /^(project|task|folder|shoot)\./.test(a) && a !== 'folder.list') GCAL.later();
   if (!READ_ONLY.includes(a) || a === 'envelope' || a === 'envelopes' || a === 'unlock') {
     log_(who.user, role, a, b._ip, res && res.ok);
   }
@@ -961,6 +1029,16 @@ function calendarRelay_(a, b) {
     };
     go(GAS_URL, 0);
   });
+}
+
+/** 회차 입력값 정리 */
+function shootIn_(b) {
+  const no = String(b.no === undefined ? '' : b.no).replace(/회차|\s/g, '');
+  const date = String(b.date || '').trim();
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`${no}회차 날짜는 2026-11-18 형식이어야 해요.`);
+  return { '회차': no, '날짜': date, '장소': String(b.place || '').trim(), '주소': String(b.addr || '').trim(),
+    '집합': String(b.call || '').trim(), '내용': String(b.note || '').trim(),
+    '상태': b.status === '취소' ? '취소' : '' };
 }
 
 function normCode_(v) {
@@ -1124,6 +1202,58 @@ function admin_(a, b, who) {
 
     case 'folder.list': return { ok: true, ...FOLDER.list(b.year) };
 
+    /* ── 촬영 회차 */
+    case 'shoot.save': {
+      const s = shootIn_(b);
+      if (b.id) {
+        const r = byId_('회차', b.id);
+        if (!r) return { ok: false, error: '회차를 찾지 못했어요.' };
+        patch_(r, s);
+        return { ok: true, id: Number(b.id) };
+      }
+      if (!byId_('프로젝트', b.projectId)) return { ok: false, error: '프로젝트를 찾지 못했어요.' };
+      const id = nextId_('회차');
+      append_('회차', Object.assign({ 'ID': id, '프로젝트ID': Number(b.projectId), '등록일': nowStr_() }, s));
+      return { ok: true, id };
+    }
+
+    case 'shoot.delete': {
+      (Array.isArray(b.ids) ? b.ids : [b.id]).forEach((id) => {
+        const r = byId_('회차', id); if (r) remove_(r);
+      });
+      return { ok: true };
+    }
+
+    /* 스케줄표 붙여넣기 — 회차 번호가 같으면 고치고, 없으면 새로 만듭니다.
+       붙여넣기에 없는 기존 회차는 지우지 않고 목록만 돌려줍니다 (지울지는 화면에서 묻기) */
+    case 'shoot.bulk': {
+      const p = byId_('프로젝트', b.projectId);
+      if (!p) return { ok: false, error: '프로젝트를 찾지 못했어요.' };
+      if (b.version !== undefined) patch_(p, { '회차표': String(b.version || '') });
+      const mine = rows_('회차').filter((r) => Number(r['프로젝트ID']) === Number(b.projectId));
+      const byNo = {}; mine.forEach((r) => { byNo[String(r['회차'])] = r; });
+      let added = 0, updated = 0;
+      const seen = new Set();
+      let id = nextId_('회차');
+      (b.rows || []).forEach((x) => {
+        const s = shootIn_(x);
+        if (!s['회차']) return;
+        seen.add(s['회차']);
+        const r = byNo[s['회차']];
+        if (r) {
+          if (['날짜', '장소', '주소', '집합', '내용'].some((k) => String(r[k] || '') !== String(s[k] || ''))) {
+            delete s['상태']; patch_(r, s); updated++;
+          }
+        } else {
+          append_('회차', Object.assign({ 'ID': id++, '프로젝트ID': Number(b.projectId), '등록일': nowStr_() }, s));
+          added++;
+        }
+      });
+      const missing = mine.filter((r) => !seen.has(String(r['회차'])))
+        .map((r) => ({ id: Number(r['ID']), no: String(r['회차']), date: ymd_(r['날짜']) }));
+      return { ok: true, added, updated, missing };
+    }
+
     case 'folder.make': {
       const r = byId_('프로젝트', b.id);
       if (!r) return { ok: false, error: '프로젝트를 찾지 못했어요.' };
@@ -1146,7 +1276,7 @@ function admin_(a, b, who) {
       const r = byId_('프로젝트', b.id);
       if (r) patch_(r, { '이름': b.name, '클라이언트': b.client, '단계': b.stage, '시작일': b.start,
         '마감일': b.due, '계약금액': b.amount, '담당': b.owner, '메모': b.memo, '활성': b.active,
-        '코드': b.code === undefined ? undefined : normCode_(b.code) });
+        '코드': b.code === undefined ? undefined : normCode_(b.code), '회차표': b.shootVer });
       return { ok: true };
     }
 
@@ -1154,6 +1284,7 @@ function admin_(a, b, who) {
       const r = byId_('프로젝트', b.id);
       if (r) remove_(r);
       rows_('작업').filter((t) => Number(t['프로젝트ID']) === Number(b.id)).forEach(remove_);
+      rows_('회차').filter((t) => Number(t['프로젝트ID']) === Number(b.id)).forEach(remove_);
       return { ok: true };
     }
 
@@ -1399,7 +1530,10 @@ const mapProject_ = (r) => ({ id: Number(r['ID']), name: String(r['이름']),
   client: String(r['클라이언트'] || ''), stage: String(r['단계'] || '프리'),
   start: ymd_(r['시작일']), due: ymd_(r['마감일']), amount: Number(r['계약금액']) || 0,
   owner: String(r['담당'] || ''), memo: String(r['메모'] || ''), active: notFalse_(r['활성']),
-  code: String(r['코드'] || ''), folder: String(r['폴더'] || '') });
+  code: String(r['코드'] || ''), folder: String(r['폴더'] || ''), shootVer: String(r['회차표'] || '') });
+const mapShoot_ = (r) => ({ id: Number(r['ID']), projectId: Number(r['프로젝트ID']), no: String(r['회차'] || ''),
+  date: ymd_(r['날짜']), place: String(r['장소'] || ''), addr: String(r['주소'] || ''),
+  call: String(r['집합'] || ''), note: String(r['내용'] || ''), status: String(r['상태'] || '') });
 const mapVendor_ = (r) => ({ id: Number(r['ID']), company: String(r['상호']),
   bizNo: String(r['사업자번호'] || ''), ceo: String(r['대표자'] || ''), bizType: String(r['업태'] || ''),
   bizItem: String(r['종목'] || ''), address: String(r['주소'] || ''), manager: String(r['담당자'] || ''),
@@ -1456,6 +1590,7 @@ function bootstrapAdmin_(who) {
       ltc: Number(r['장기요양료']) || 0, ei: Number(r['고용보험료']) || 0 })),
     board: rows_('게시판').map(mapBoard_),
     tasks: rows_('작업').map(mapTask_),
+    shoots: rows_('회차').map(mapShoot_),
     wht: rows_('원천세').map((r) => ({ payYm: ym_(r['지급연월']), accrualYm: ym_(r['귀속연월']),
       bizCount: Number(r['사업소득인원']) || 0, bizGross: Number(r['사업소득지급액']) || 0,
       bizTax: Number(r['사업소득세']) || 0, wageCount: Number(r['근로소득인원']) || 0,
@@ -1500,6 +1635,7 @@ function bootstrapPd_(who) {
   return { ok: true, role: 'pd', me: { name: who.name || who.user, userId: who.user }, mustChange: false,
     projects: rows_('프로젝트').map(mapProject_).map((p) => { p.amount = 0; return p; }),
     tasks: rows_('작업').map(mapTask_),
+    shoots: rows_('회차').map(mapShoot_),
     board: rows_('게시판').map(mapBoard_),
     company: cfgGet_('회사명') || COMPANY_DEFAULT['회사명'],
     submissions: [], invites: [], people: [], vendors: [], payments: [], sales: [], purchases: [],
