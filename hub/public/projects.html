@@ -55,6 +55,12 @@
   .tcal input{width:13px;height:13px;margin:0;accent-color:var(--accent)}
   .tcal.on{border-color:var(--ci-b);color:var(--ci-c);background:var(--tint);font-weight:700}
   .task.on .tmeta{opacity:.45}
+  .tsel{width:auto;padding:3px 6px;font-size:11px;background:var(--soft)}
+  .tstart{width:120px;padding:4px 7px;font-size:11px;background:var(--soft)}
+  .fbox{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;padding:10px 12px;
+    border:1px solid var(--line);border-radius:10px;background:var(--soft);font-size:12.5px}
+  .fbox code{font-size:12px;word-break:break-all}
+  .codechip{font-weight:700;color:var(--ci-c);border-color:var(--ci-b)}
   .task .x:hover{color:var(--bad)}
 
   .stagehd{display:flex;align-items:center;gap:8px;margin:18px 0 6px;font-size:12.5px;
@@ -98,10 +104,12 @@
     <div><label>마감일</label><input type="date" id="dDue"></div>
     <div><label>계약금액</label><input id="dAmount" inputmode="numeric"></div>
   </div>
-  <div class="row r2">
+  <div class="row r3">
+    <div><label>코드</label><input id="dCode" maxlength="6" placeholder="예: KSP" style="text-transform:uppercase"></div>
     <div><label>클라이언트</label><input id="dClient"></div>
     <div><label>담당</label><input id="dOwner"></div>
   </div>
+  <div class="fbox" id="dFolder"></div>
   <label>메모</label>
   <textarea id="dMemo" style="min-height:70px"></textarea>
 
@@ -110,8 +118,8 @@
   <div id="dTasks"></div>
 
   <div class="dim" style="font-size:11.5px;margin-top:10px">
-    📅 를 켜고 마감일을 정하면 구글 캘린더(MGRM스케줄)에 들어갑니다.
-    본 촬영·납품처럼 꼭 챙길 것만 켜세요.
+    📅 를 켜고 마감일을 정하면 작업 종류에 맞는 MGRM 캘린더(촬영·구성·편집·D.I·스케줄)에 들어갑니다.
+    여러 날에 걸친 일은 <b>시작일</b>도 적으면 구간으로 들어가요. 본 촬영·납품처럼 꼭 챙길 것만 켜세요.
   </div>
 
   <div class="bar" style="margin-top:12px">
@@ -135,9 +143,28 @@
     <div><label>클라이언트</label><input id="nClient"></div>
   </div>
   <div class="row r3">
+    <div><label>코드 (영문 3글자)</label><input id="nCode" maxlength="6" placeholder="예: KSP" style="text-transform:uppercase"></div>
+    <div style="grid-column:span 2"><label>&nbsp;</label>
+      <div class="dim" style="font-size:11.5px;padding-top:6px">폴더 이름과 캘린더 제목 [코드]에 함께 씁니다</div></div>
+  </div>
+  <div class="row r3">
     <div><label>시작일</label><input type="date" id="nStart"></div>
     <div><label>마감일</label><input type="date" id="nDue"></div>
     <div><label>계약금액</label><input id="nAmount" inputmode="numeric" placeholder="0"></div>
+  </div>
+  <div class="fbox" style="display:block">
+    <label style="display:flex;align-items:center;gap:8px;color:var(--fg);margin:0">
+      <input type="checkbox" id="nMakeFolder" checked style="width:auto">
+      NAS 의뢰 폴더 만들기 <span class="dim" style="font-size:11.5px">(1. 의뢰 / 올해 / 새 폴더규칙 템플릿)</span>
+    </label>
+    <div id="nFolderOpt" style="margin-top:8px">
+      <label style="margin-top:0">폴더 이름</label>
+      <input id="nFolderName" placeholder="11_KSP_사업명">
+      <label style="display:flex;align-items:center;gap:8px;color:var(--fg);margin-top:8px">
+        <input type="checkbox" id="nColorOnly" style="width:auto"> 색보정 단독 의뢰
+        <span class="dim" style="font-size:11.5px">(00_ADMIN · 20_IN · 30_WORK · 40_OUT 만)</span>
+      </label>
+    </div>
   </div>
   <label style="display:flex;align-items:center;gap:8px;color:var(--fg);margin-top:14px">
     <input type="checkbox" id="nTemplate" checked style="width:auto">
@@ -149,6 +176,20 @@
     <button class="g" onclick="$('newDlg').close()">취소</button>
   </div>
   <div class="msg hide" id="nMsg"></div>
+</dialog>
+
+<!-- 기존 폴더 연결 -->
+<dialog id="linkDlg">
+  <h2>기존 의뢰 폴더 연결</h2>
+  <div class="row r3">
+    <div><label>연도</label><select id="lYear"></select></div>
+    <div style="grid-column:span 2"><label>폴더</label><select id="lFolder"></select></div>
+  </div>
+  <div class="bar" style="margin-top:14px">
+    <button class="b" id="lSave">연결</button>
+    <button class="g" onclick="$('linkDlg').close()">취소</button>
+  </div>
+  <div class="msg hide" id="lMsg"></div>
 </dialog>
 
 <script src="wct-core.js"></script>
@@ -187,6 +228,29 @@ function parseTask(title) {
 
 let CUR = null;
 
+/* 캘린더 고르기 — NAS 서버와 같은 규칙 (작업 이름으로 자동) */
+const CALS = ['MGRM촬영', 'MGRM구성', 'MGRM편집', 'MGRM D.I', 'MGRM스케줄'];
+function guessCal(t) {
+  t = String(t || '');
+  if (/DIT/i.test(t)) return 'MGRM촬영';
+  if (/D\.?I(?![A-Za-z])|색보정|컬러|그레이딩/i.test(t)) return 'MGRM D.I';
+  if (/편집|시사|사운드|믹싱|CG|그래픽|마스터|자막/i.test(t)) return 'MGRM편집';
+  if (/기획|시나리오|콘티|구성|스토리보드|대본|트리트먼트/.test(t)) return 'MGRM구성';
+  if (/촬영|헌팅|로케이션|답사/.test(t)) return 'MGRM촬영';
+  return 'MGRM스케줄';
+}
+const normCode = (v) => String(v || '').trim().toUpperCase();
+const safeName = (v) => String(v || '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '');
+function folderNameOf(code, name) {
+  const mm = new Date(Date.now() + 9 * 3600e3).toISOString().slice(5, 7);
+  return [mm, safeName(code), safeName(name)].filter(Boolean).join('_');
+}
+/** 같은 코드를 쓰는 다른 프로젝트 */
+function codeTaken(code, exceptId) {
+  if (!code) return null;
+  return (WCT.data.projects || []).find((p) => p.id !== exceptId && normCode(p.code) === code) || null;
+}
+
 (async function init() {
   if (!await WCT.requireAuth()) return;
   window.__onReload = render;
@@ -213,8 +277,21 @@ let CUR = null;
   $('newBtn').onclick = () => {
     $('nStart').value = today();
     $('nMsg').className = 'msg hide';
+    $('nFolderName').dataset.edited = '';
+    $('nFolderName').value = folderNameOf(normCode($('nCode').value), $('nName').value);
     $('newDlg').showModal();
   };
+  const autoFolder = () => {
+    if (!$('nFolderName').dataset.edited)
+      $('nFolderName').value = folderNameOf(normCode($('nCode').value), $('nName').value);
+  };
+  $('nName').addEventListener('input', autoFolder);
+  $('nCode').addEventListener('input', autoFolder);
+  $('nFolderName').addEventListener('input', () => { $('nFolderName').dataset.edited = '1'; });
+  $('nMakeFolder').addEventListener('change', () => {
+    $('nFolderOpt').style.display = $('nMakeFolder').checked ? '' : 'none';
+  });
+  $('lYear').addEventListener('change', () => loadFolders($('lYear').value));
   $('newTask').addEventListener('keydown', (e) => { if (e.key === 'Enter') addTask(); });
 
   await WCT.loadThenRefresh(render);
@@ -290,7 +367,7 @@ function card(p) {
   const pr = progress(p.id);
   const lb = laborOf(p.name);
   return `<div class="pc" draggable="true" data-id="${p.id}" onclick="openProject(${p.id})">
-    <div class="nm">${esc(p.name)}</div>
+    <div class="nm">${p.code ? `<span class="chip codechip" style="margin-right:5px">${esc(p.code)}</span>` : ''}${esc(p.name)}</div>
     <div class="cl">${esc(p.client || '클라이언트 미지정')}</div>
     ${pr.total ? `<div class="prog ${pr.pct === 100 ? 'full' : ''}"><i style="width:${pr.pct}%"></i></div>` : ''}
     <div class="mt">
@@ -354,7 +431,9 @@ window.openProject = (id) => {
   $('dAmount').value = p.amount || '';
   $('dClient').value = p.client || '';
   $('dOwner').value = p.owner || '';
+  $('dCode').value = p.code || '';
   $('dMemo').value = p.memo || '';
+  renderFolder();
   $('dMsg').className = 'msg hide';
 
   const lb = laborOf(p.name);
@@ -397,13 +476,20 @@ function renderTasks() {
         <div class="tx">
           <div>${esc(t.title)}</div>
           <div class="tmeta">
-            <input type="date" class="tdue" value="${esc(t.due || '')}"
+            <input type="date" class="tdue" title="마감일" value="${esc(t.due || '')}"
               onchange="setTaskDue(${t.id}, this.value)">
             <label class="tcal ${t.cal ? 'on' : ''}" title="캘린더에 표시">
               <input type="checkbox" ${t.cal ? 'checked' : ''}
                 onchange="setTaskCal(${t.id}, this.checked)">
               <span>📅 캘린더</span>
             </label>
+            ${t.cal ? `<select class="tsel" title="넣을 캘린더" onchange="setTaskField(${t.id}, 'calName', this.value)">
+                <option value="">자동 · ${esc(guessCal(t.title))}</option>
+                ${CALS.map((c) => `<option ${t.calName === c ? 'selected' : ''}>${c}</option>`).join('')}
+              </select>
+              <span class="dim" style="font-size:10.5px" title="여러 날에 걸친 일이면 시작일도 적어요">구간 시작</span>
+              <input type="date" class="tstart" title="여러 날이면 시작일 (비우면 마감일 하루)"
+                value="${esc(t.start || '')}" onchange="setTaskField(${t.id}, 'start', this.value)">` : ''}
           </div>
         </div>
         <button class="x" onclick="delTask(${t.id})">×</button>
@@ -439,6 +525,75 @@ window.setTaskCal = async (id, cal) => {
   } catch (e) { toast(e.message, true); await WCT.load(true); renderTasks(); }
 };
 
+window.setTaskField = async (id, key, val) => {
+  const t = WCT.data.tasks.find((x) => x.id === id);
+  if (t) t[key] = val;
+  if (key === 'start' && t && val && t.due && val > t.due) toast('시작일이 마감일보다 늦어요.', true);
+  try { await WCT.api('task.set', { id, [key]: val }); WCT.syncLater(); }
+  catch (e) { toast(e.message, true); await WCT.load(true); renderTasks(); }
+};
+
+// ─────────── 의뢰 폴더
+function renderFolder() {
+  const p = CUR;
+  const box = $('dFolder');
+  if (p.folder) {
+    box.innerHTML = `📁 <code>1. 의뢰/${esc(p.folder)}</code>
+      <button class="g sm" onclick="copyFolder()">경로 복사</button>
+      <span style="flex:1"></span>
+      <button class="g sm" onclick="unlinkFolder()" title="폴더는 지우지 않고 연결만 끊어요">연결 끊기</button>`;
+  } else {
+    box.innerHTML = `<span class="dim">📁 연결된 의뢰 폴더가 없어요</span><span style="flex:1"></span>
+      <button class="b sm" onclick="makeFolder()">폴더 만들기</button>
+      <button class="g sm" onclick="openLink()">기존 폴더 연결</button>`;
+  }
+}
+window.copyFolder = async () => {
+  const okc = await copyText('1. 의뢰/' + CUR.folder);
+  toast(okc ? '경로를 복사했어요.' : '복사하지 못했어요.', !okc);
+};
+window.makeFolder = async () => {
+  const code = normCode($('dCode').value) || CUR.code || '';
+  if (code !== (CUR.code || '')) { toast('코드를 바꿨으면 먼저 저장해 주세요.', true); return; }
+  const def = folderNameOf(code, CUR.name);
+  const name = prompt('만들 폴더 이름 (1. 의뢰 / 올해 안)\n색보정 단독이면 이름 끝에 그대로 두고 다음 질문에서 고르세요.', def);
+  if (!name) return;
+  const colorOnly = confirm('색보정 단독 의뢰인가요?\n\n확인 = 00_ADMIN · 20_IN · 30_WORK · 40_OUT 만\n취소 = 전체 구조');
+  try {
+    const r = await WCT.api('folder.make', { id: CUR.id, folderName: name, colorOnly });
+    CUR.folder = r.folder; renderFolder(); WCT.syncLater();
+    toast('폴더를 만들었어요: ' + r.folder);
+  } catch (e) { toast(e.message, true); }
+};
+window.unlinkFolder = async () => {
+  if (!confirm('이 프로젝트와 폴더의 연결만 끊습니다. NAS 폴더는 그대로 남아요.')) return;
+  try { await WCT.api('folder.link', { id: CUR.id, folder: '' }); CUR.folder = ''; renderFolder(); WCT.syncLater(); }
+  catch (e) { toast(e.message, true); }
+};
+async function loadFolders(year) {
+  $('lFolder').innerHTML = '<option>불러오는 중…</option>';
+  const r = await WCT.api('folder.list', { year });
+  $('lYear').innerHTML = r.years.map((y) => `<option ${y === r.year ? 'selected' : ''}>${y}</option>`).join('');
+  const used = new Set((WCT.data.projects || []).map((p) => p.folder).filter(Boolean));
+  $('lFolder').innerHTML = r.folders.length
+    ? r.folders.map((f) => `<option value="${esc(f)}">${esc(f.split('/')[1])}${used.has(f) ? ' (연결됨)' : ''}</option>`).join('')
+    : '<option value="">폴더가 없어요</option>';
+}
+window.openLink = async () => {
+  $('lMsg').className = 'msg hide';
+  $('linkDlg').showModal();
+  try { await loadFolders(''); } catch (e) { $('lMsg').className = 'msg bad'; $('lMsg').textContent = e.message; }
+};
+$('lSave').onclick = async () => {
+  const folder = $('lFolder').value;
+  if (!folder) return;
+  try {
+    const r = await WCT.api('folder.link', { id: CUR.id, folder });
+    CUR.folder = r.folder; renderFolder(); WCT.syncLater();
+    $('linkDlg').close();
+  } catch (e) { $('lMsg').className = 'msg bad'; $('lMsg').textContent = e.message; }
+};
+
 window.delTask = async (id) => {
   if (!confirm('이 작업을 삭제할까요?')) return;
   await WCT.api('task.delete', { id });
@@ -463,10 +618,13 @@ async function addTask() {
 $('dSave').onclick = async () => {
   const m = $('dMsg');
   const btn = $('dSave');
+  const code = normCode($('dCode').value);
+  const dup = codeTaken(code, CUR.id);
+  if (dup && !confirm(`코드 ${code} 는 '${dup.name}' 에서 이미 쓰고 있어요. 그래도 쓸까요?`)) return;
   btn.disabled = true; btn.textContent = '저장 중…';
   try {
     await WCT.api('project.update', {
-      id: CUR.id, name: CUR.name, client: $('dClient').value.trim(),
+      id: CUR.id, name: CUR.name, client: $('dClient').value.trim(), code,
       stage: $('dStage').value, due: $('dDue').value,
       amount: Number(String($('dAmount').value).replace(/[^\d]/g, '')) || 0,
       owner: $('dOwner').value.trim(), memo: $('dMemo').value,
@@ -494,6 +652,14 @@ $('nSave').onclick = async () => {
   const name = $('nName').value.trim();
   const m = $('nMsg');
   if (!name) { m.className = 'msg bad'; m.textContent = '프로젝트명을 입력하세요.'; return; }
+  const code = normCode($('nCode').value);
+  if (code && !/^[A-Z0-9]{2,6}$/.test(code)) {
+    m.className = 'msg bad'; m.textContent = '코드는 영문 대문자·숫자 2~6글자로 적어 주세요.'; return;
+  }
+  const dup = codeTaken(code);
+  if (dup && !confirm(`코드 ${code} 는 '${dup.name}' 에서 이미 쓰고 있어요. 그래도 쓸까요?`)) return;
+  const makeFolder = $('nMakeFolder').checked;
+  if (makeFolder && !code && !confirm('코드 없이 폴더를 만들까요? (이름: ' + $('nFolderName').value + ')')) return;
   const btn = $('nSave');
   btn.disabled = true; btn.textContent = '만드는 중…';
   try {
@@ -501,15 +667,20 @@ $('nSave').onclick = async () => {
       ? Object.entries(TEMPLATE).flatMap(([stage, arr]) =>
           arr.map((raw) => Object.assign({ stage }, parseTask(raw))))
       : [];
-    await WCT.api('project.add', {
-      name, client: $('nClient').value.trim(), stage: '프리',
+    const r = await WCT.api('project.add', {
+      name, client: $('nClient').value.trim(), stage: '프리', code,
+      makeFolder, folderName: $('nFolderName').value.trim(), colorOnly: $('nColorOnly').checked,
       start: $('nStart').value, due: $('nDue').value,
       amount: Number(String($('nAmount').value).replace(/[^\d]/g, '')) || 0,
       tasks,
     });
-    ['nName', 'nClient', 'nDue', 'nAmount'].forEach((i) => ($(i).value = ''));
+    ['nName', 'nClient', 'nDue', 'nAmount', 'nCode', 'nFolderName'].forEach((i) => ($(i).value = ''));
+    $('nColorOnly').checked = false;
     await WCT.load(true); render();
     $('newDlg').close();
+    if (r.folderError) alert('프로젝트는 만들었지만 폴더는 못 만들었어요.\n\n' + r.folderError +
+      '\n\n프로젝트를 열어서 [폴더 만들기]로 다시 해 보세요.');
+    else if (r.folder) toast('NAS에 폴더를 만들었어요: ' + r.folder);
   } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
   finally { btn.disabled = false; btn.textContent = '만들기'; }
 };

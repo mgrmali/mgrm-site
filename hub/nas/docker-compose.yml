@@ -17,8 +17,12 @@ services:
       - DATA_DIR=/data
       - GROUP_FILE=/qnap/config/group,/qnap/group
       - REVIEW_DIR=/web/review
+      - REQUEST_DIR=/request                   # 의뢰 폴더 (아래 volumes 와 짝)
+      - 'CAL_IDS={"MGRM스케줄":"...","MGRM촬영":"...","MGRM구성":"...","MGRM편집":"...","MGRM D.I":"..."}'
+      # ↑ 구글 캘린더 직접 연동: 캘린더 이름 → 캘린더 ID. 서비스 계정 열쇠는 HubData/google-sa.json
     volumes:
       - /share/Container/mgrm-hub/server.js:/app/server.js:ro
       - /share/HubData:/data                 # 허브 데이터 (QNAP admin 만 접근하는 공유 폴더로 만들 것)
       - /etc/config:/qnap/config:ro            # QNAP 그룹 목록 (읽기 전용) — 허브 그룹 확인용
       - /share/Web:/web                        # 리뷰 영상 폴더 (QNAP 웹 서버가 :8081/review/ 로 내보냄)
+      - "/share/MGRM-Qnap/1. 의뢰:/request"     # 의뢰 폴더 — 새 프로젝트 폴더 자동 생성 (공유 폴더 이름 확인)

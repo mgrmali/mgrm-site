@@ -624,7 +624,7 @@ function buildCalendarEvents(D) {
   (D.projects || []).filter((p) => p.active !== false && p.due && p.stage !== '완료')
     .forEach((p) => {
       ev.push({ key: `proj-${p.id}`, date: p.due, remind: 3,
-        title: `마감 · ${p.name}`,
+        title: p.code ? `[${p.code}] 마감_${p.name}` : `마감 · ${p.name}`,
         desc: (p.client ? `클라이언트: ${p.client}\n` : '') + `단계: ${p.stage}` });
     });
 
@@ -634,7 +634,7 @@ function buildCalendarEvents(D) {
     const p = projById[t.projectId];
     if (!p || p.active === false || p.stage === '완료') return;
     ev.push({ key: `task-${t.id}`, date: t.due, remind: 2,
-      title: `${t.title} · ${p.name}`,
+      title: p.code ? `[${p.code}] ${t.title}` : `${t.title} · ${p.name}`,
       desc: `프로젝트: ${p.name}\n단계: ${t.stage}` +
             (t.assignee ? `\n담당: ${t.assignee}` : '') });
   });

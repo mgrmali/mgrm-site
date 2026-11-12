@@ -2402,6 +2402,13 @@ $('btnCalCheck').onclick = async () => {
   out.textContent = '확인 중…';
   try {
     const r = await WCT.api('calendar.check');
+    if (r.direct) {
+      out.textContent = (r.found ? '✅ NAS 가 구글 캘린더에 직접 넣고 있어요.\n' :
+          '❌ 권한이 없는 캘린더가 있어요. 로봇 계정과 공유했는지 확인하세요.\n') +
+        `   로봇 계정: ${r.robot}\n` + (r.names || []).map((n) => '     · ' + n).join('\n') +
+        `\n   지금까지 보낸 일정 ${r.synced}개\n\n   프로젝트 작업은 바꿀 때마다 자동으로 들어갑니다.`;
+      return;
+    }
     out.textContent = r.found
       ? `✅ '${r.name}' 캘린더를 찾았습니다.\n   지금까지 보낸 일정 ${r.synced}개`
       : `❌ 'MGRM스케줄' 캘린더를 찾지 못했습니다.\n\n` +
@@ -2429,6 +2436,7 @@ $('btnCalSync').onclick = async () => {
     out.textContent = [
       `✅ ${r.calendar} 에 반영했습니다.`,
       `   새로 만듦 ${r.added} · 갱신 ${r.updated} · 삭제 ${r.removed} · 전체 ${r.total}`,
+      r.failed ? `   ⚠️ 실패 ${r.failed}개 — 잠시 뒤 다시 눌러 주세요` : '',
       '', '앞으로의 일정',
       ...list.map((e) => `  ${e.date}  ${e.title}`),
       ev.filter((e) => e.date >= today()).length > 12 ? '  …' : '',
