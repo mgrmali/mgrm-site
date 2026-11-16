@@ -6,6 +6,8 @@
    NAS 꺼짐 : 로그인·허브 화면은 안내만 띄우고,
               외부 정산 정보 제출은 D1 에 잠근 채로 보관했다가 NAS 가 켜지면 넘깁니다 */
 
+import { isMcpPath, handleMcp } from './mcp.js';
+
 const COOKIE = 'mgrm_sess';
 const COOKIE_DOMAIN = '.mgrm.kr';
 const IDLE = 30 * 60;                 // 30분 무활동이면 다시 로그인
@@ -41,6 +43,8 @@ async function handle(req, env, ctx) {
     return out;
   }
   if (p === '/api/health') return health(env);
+  // Claude 커넥터 (src/mcp.js) — 자체 OAuth 로 로그인하므로 쿠키 확인 전에 넘깁니다
+  if (isMcpPath(p)) return handleMcp(req, env, url, { store, hmac, b64e, b64d, same, json });
   if (p === '/' ) return Response.redirect(new URL('/admin.html', url).toString(), 302);
   if (p === '/login') return env.ASSETS.fetch(new Request(new URL('/login.html', url), req));
   if (PUBLIC_FILES.includes(p)) return env.ASSETS.fetch(req);
