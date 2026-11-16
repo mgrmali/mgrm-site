@@ -216,7 +216,7 @@ async function dispatch(m, env, who, req, h) {
       return { jsonrpc: '2.0', id, result: {
         protocolVersion: PROTOCOLS.includes(want) ? want : PROTOCOLS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'mgrm-hub', title: '맹그라미 업무 허브', version: '1.0.0' },
+        serverInfo: { name: 'mgrm-hub', title: '맹그라미 업무 허브', version: '1.1.0' },
         instructions: '맹그라미 업무 허브(hub.mgrm.kr)의 프로젝트·작업·촬영 회차를 읽고 작업을 추가·완료할 수 있습니다. '
           + '하루 요약은 hub_today, 프로젝트 목록은 hub_projects, 한 프로젝트 자세히는 hub_project. 날짜는 한국 시간(YYYY-MM-DD).' } };
     }
@@ -278,6 +278,21 @@ const TOOLS = [
       done: { type: 'boolean', description: '완료면 true, 되돌리면 false' },
       due: { type: 'string', description: '새 마감일 YYYY-MM-DD' },
       title: { type: 'string' }, assignee: { type: 'string' } } },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } },
+  { name: 'hub_save_shoots', title: '허브 촬영 회차 저장',
+    description: '프로젝트의 촬영 회차를 스케줄표 기준으로 한꺼번에 저장. 회차 번호가 같으면 고치고 없으면 새로 만듦. '
+      + '허브가 MGRM촬영 캘린더를 자동으로 맞춤(하루 종일, 장소 칸은 주소가 있을 때만). 목록에 없는 기존 회차는 지우지 않고 missing 으로 돌려줌.',
+    inputSchema: { type: 'object', required: ['project', 'rows'], properties: {
+      project: { type: 'string', description: '프로젝트 ID, 코드, 또는 이름 일부' },
+      version: { type: 'string', description: '스케줄표 버전 (예: 스케줄표 4고 기준 ver.1 (261116)) — 캘린더 메모 끝에 붙음' },
+      rows: { type: 'array', items: { type: 'object', required: ['no'], properties: {
+        no: { type: 'string', description: '회차 번호 (예 1, 2, 추가)' },
+        date: { type: 'string', description: 'YYYY-MM-DD (모르면 비움)' },
+        place: { type: 'string', description: '대표 장소 이름 (제목 괄호에 들어감)' },
+        addr: { type: 'string', description: '도로명 주소 (내비용, 모르면 비움)' },
+        call: { type: 'string', description: '집합 시간' },
+        note: { type: 'string', description: '장소 순서·씬·출연·※특이사항' },
+        cancel: { type: 'boolean', description: '취소된 회차면 true' } } } } } },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } },
 ];
 
@@ -412,6 +427,20 @@ const RUN = {
     return r.ok ? { ok: true, id, project: label(d.pmap.get(t.projectId)), title: b.title || t.title,
       done: b.done === undefined ? t.done : b.done, due: b.due || t.due } : r;
   },
+  async hub_save_shoots(a, env, who, req, h) {
+    const rows = Array.isArray(a.rows) ? a.rows : [];
+    if (!rows.length) return { error: 'rows 가 비어 있어요.' };
+    for (const r of rows) if (r.date && !isDate(r.date)) return { error: `${r.no}회차 날짜는 YYYY-MM-DD 형식이어야 해요.` };
+    const d = await load(env, who, req, h);
+    const p = findProject(d, a.project);
+    if (!p) return { error: `'${a.project}' 프로젝트를 찾지 못했어요.` };
+    const body = { action: 'shoot.bulk', projectId: p.id,
+      rows: rows.map((r) => ({ no: String(r.no || ''), date: r.date || '', place: r.place || '', addr: r.addr || '',
+        call: r.call || '', note: r.note || '', status: r.cancel ? '취소' : '' })) };
+    if (a.version !== undefined) body.version = String(a.version);
+    const r = await call(env, who, req, h, body);
+    return r.ok ? { ok: true, project: label(p), added: r.added, updated: r.updated, missing: r.missing } : r;
+  },
 };
 
 async function call(env, who, req, h, body) {
@@ -443,7 +472,7 @@ function page(err, q, client, status = 200) {
     <button class="b" style="width:100%;margin-top:14px">로그인하고 연결 허용</button>
     <p class="dim" style="font-size:12px;margin-top:18px;line-height:1.7">
       허용하면 <b>${esc(client || 'Claude')}</b>가 허브의 <b>프로젝트·작업·촬영 회차</b>를 읽고,
-      작업을 추가하거나 완료 표시를 할 수 있어요.<br>
+      작업·촬영 회차를 추가하거나 고칠 수 있어요.<br>
       원천징수·지급·금고·매출 같은 돈·개인정보는 열리지 않아요.</p>
   </form>` : '';
   const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">
