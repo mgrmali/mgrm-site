@@ -17,6 +17,9 @@
     <input type="text" id="uid" autocomplete="username" autocapitalize="off" spellcheck="false" autofocus>
     <label>비밀번호</label>
     <input type="password" id="pw" autocomplete="current-password">
+    <label style="display:flex;align-items:center;gap:8px;margin:14px 0 0;font-weight:400;cursor:pointer">
+      <input type="checkbox" id="remember" style="width:auto;margin:0"> 이 기기에서 로그인 유지 (30일)</label>
+    <p class="dim" style="font-size:11.5px;margin:4px 0 0">내 컴퓨터·핸드폰에서만 켜 주세요. 같이 쓰는 컴퓨터에서는 끄세요.</p>
     <button class="b" id="go" style="width:100%;margin-top:14px">로그인</button>
     <div class="msg hide" id="msg"></div>
     <p class="dim" style="font-size:12px;margin-top:18px;line-height:1.7">
@@ -37,7 +40,7 @@ $('f').addEventListener('submit', async (e) => {
   btn.disabled = true; btn.textContent = '확인 중…';
   try {
     const r = await fetch('/api/login', { method: 'POST', credentials: 'same-origin',
-      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user, pw }) });
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user, pw, remember: $('remember').checked }) });
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || '로그인에 실패했습니다.');
     sessionStorage.removeItem('wct'); sessionStorage.removeItem('wct_data');

@@ -12,6 +12,8 @@ const COOKIE = 'mgrm_sess';
 const COOKIE_DOMAIN = '.mgrm.kr';
 const IDLE = 30 * 60;                 // 30분 무활동이면 다시 로그인
 const MAX = 60 * 60 * 14;             // 아무리 길어도 14시간
+const REMEMBER = 60 * 60 * 24 * 30;   // '이 기기에서 로그인 유지': 30일 동안 안 쓰면 다시 로그인
+const REMEMBER_MAX = 60 * 60 * 24 * 90; //   아무리 길어도 90일
 const PUBLIC_FILES = ['/submit.html', '/wct-style.css', '/wct-core.js', '/favicon.png', '/logo.png',
                       '/login.html', '/login'];
 const enc = new TextEncoder();
@@ -64,7 +66,7 @@ async function handle(req, env, ctx) {
   // 화면 — 활동할 때마다 쿠키 만료를 늘려 줍니다
   const res = await env.ASSETS.fetch(req);
   const out = new Response(res.body, res);
-  out.headers.append('set-cookie', cookie(await makeToken(env, who, who.iat), IDLE));
+  out.headers.append('set-cookie', await sessCookie(env, who));
   return out;
 }
 
@@ -98,8 +100,9 @@ async function login(req, env) {
       ip: req.headers.get('cf-connecting-ip') || '' })).json();
   } catch (e) { return json(NAS_DOWN, 503); }
   if (!r.ok) { await new Promise((f) => setTimeout(f, 600)); return json(r, 401); }
-  const who = { user: r.user, name: r.name || r.user, role: r.role };
-  return json({ ok: true, me: who }, 200, { 'set-cookie': cookie(await makeToken(env, who), IDLE) });
+  const who = { user: r.user, name: r.name || r.user, role: r.role, remember: !!b.remember };
+  return json({ ok: true, me: { user: who.user, name: who.name, role: who.role } }, 200,
+    { 'set-cookie': await sessCookie(env, who, true) });
 }
 
 async function rpc(req, env, who) {
@@ -137,7 +140,7 @@ async function uploadRelay(req, env, who, url) {
   if ([502, 503, 504, 530].includes(r.status)) return json(NAS_DOWN, 503);
   // 큰 파일은 오래 걸리니 조각마다 로그인 유지 시간을 늘려 줍니다
   return new Response(r.body, { status: r.status, headers: { 'content-type': 'application/json; charset=utf-8',
-    'set-cookie': cookie(await makeToken(env, who, who.iat), IDLE) } });
+    'set-cookie': await sessCookie(env, who) } });
 }
 
 async function exportCsv(req, env, who, url) {
@@ -249,20 +252,27 @@ function same(a, b) {
   let r = 0; for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return r === 0;
 }
+/* v2 = 보통 로그인 (30분/14시간), v3 = '이 기기에서 로그인 유지' (30일/90일)
+   컬러 다이어리(diary.mgrm.kr)도 같은 형식을 읽습니다 */
 async function makeToken(env, who, issued) {
   const now = Math.floor(Date.now() / 1000);
   const iat = issued || now;
-  const exp = Math.min(now + IDLE, iat + MAX);
-  const body = `v2.${exp}.${iat}.${b64e(who.user)}.${who.role}.${b64e(who.name || '')}`;
+  const exp = who.remember ? Math.min(now + REMEMBER, iat + REMEMBER_MAX) : Math.min(now + IDLE, iat + MAX);
+  const body = `${who.remember ? 'v3' : 'v2'}.${exp}.${iat}.${b64e(who.user)}.${who.role}.${b64e(who.name || '')}`;
   return `${body}.${await hmac(env.SESSION_SECRET, body)}`;
+}
+/* 쿠키 발급·연장. fresh 면 새로 로그인한 것 */
+async function sessCookie(env, who, fresh) {
+  const t = await makeToken(env, who, fresh ? undefined : who.iat);
+  return cookie(t, Math.max(0, +t.split('.')[1] - Math.floor(Date.now() / 1000)));
 }
 async function session(env, t) {
   if (!t) return null;
   const parts = t.split('.');
-  if (parts.length !== 7 || parts[0] !== 'v2') return null;
+  if (parts.length !== 7 || (parts[0] !== 'v2' && parts[0] !== 'v3')) return null;
   if (!(+parts[1] > Date.now() / 1000)) return null;
   if (!same(await hmac(env.SESSION_SECRET, parts.slice(0, 6).join('.')), parts[6])) return null;
-  return { user: b64d(parts[3]), role: parts[4], name: b64d(parts[5]), iat: +parts[2] };
+  return { user: b64d(parts[3]), role: parts[4], name: b64d(parts[5]), iat: +parts[2], remember: parts[0] === 'v3' };
 }
 let COOKIE_HOST = '';   // 요청 호스트 (mgrm.kr 아래일 때만 Domain 을 붙임 — 로컬 시험용)
 function cookie(v, age) {
