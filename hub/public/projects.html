@@ -102,27 +102,31 @@
 
 <!-- 프로젝트 상세 -->
 <dialog id="dlg">
-  <div style="display:flex;align-items:flex-start;gap:12px">
-    <div style="flex:1">
-      <h2 id="dTitle" style="margin-bottom:4px">프로젝트</h2>
-      <div class="dim" id="dSub" style="font-size:12.5px"></div>
+  <div class="dhead">
+    <div style="display:flex;align-items:flex-start;gap:8px">
+      <div style="flex:1;min-width:0">
+        <h2 id="dTitle" style="margin-bottom:4px">프로젝트</h2>
+        <div class="dim" id="dSub" style="font-size:12.5px"></div>
+      </div>
+      <button class="b sm" id="dSave">저장</button>
+      <button class="g sm" onclick="closeDlg($('dlg'))">닫기</button>
     </div>
-    <button class="g sm" onclick="$('dlg').close()">닫기</button>
+    <div class="msg hide" id="dMsg"></div>
   </div>
 
   <div class="row r3" style="margin-top:16px">
-    <div><label>단계</label><select id="dStage"></select></div>
-    <div><label>마감일</label><input type="date" id="dDue"></div>
-    <div><label>계약금액</label><input id="dAmount" inputmode="numeric"></div>
+    <div><label>단계</label><select id="dStage" data-track></select></div>
+    <div><label>마감일</label><input type="date" id="dDue" data-track></div>
+    <div><label>계약금액</label><input id="dAmount" inputmode="numeric" data-track></div>
   </div>
   <div class="row r3">
-    <div><label>코드</label><input id="dCode" maxlength="6" placeholder="예: KSP" style="text-transform:uppercase"></div>
-    <div><label>클라이언트</label><input id="dClient"></div>
-    <div><label>담당</label><input id="dOwner"></div>
+    <div><label>코드</label><input id="dCode" maxlength="6" placeholder="예: KSP" style="text-transform:uppercase" data-track></div>
+    <div><label>클라이언트</label><input id="dClient" data-track></div>
+    <div><label>담당</label><input id="dOwner" data-track></div>
   </div>
   <div class="fbox" id="dFolder"></div>
   <label>메모</label>
-  <textarea id="dMemo" style="min-height:70px"></textarea>
+  <textarea id="dMemo" style="min-height:70px" data-track></textarea>
 
   <div id="dCost" class="note" style="margin-top:14px"></div>
 
@@ -140,20 +144,18 @@
     <select id="newTaskStage" style="width:120px"></select>
   </div>
 
-  <div class="bar" style="margin-top:6px">
-    <button class="b" id="dSave">저장</button>
+  <div class="bar" style="margin-top:18px">
     <span style="flex:1"></span>
     <button class="g" id="dDelete">프로젝트 삭제</button>
   </div>
-  <div class="msg hide" id="dMsg"></div>
 </dialog>
 
 <!-- 새 프로젝트 -->
 <dialog id="newDlg">
   <h2>새 프로젝트</h2>
   <div class="row r2">
-    <div><label>프로젝트명 *</label><input id="nName" placeholder="예: 이안 더 써밋 동래"></div>
-    <div><label>클라이언트</label><input id="nClient"></div>
+    <div><label>프로젝트명 *</label><input id="nName" placeholder="예: 이안 더 써밋 동래" data-track></div>
+    <div><label>클라이언트</label><input id="nClient" data-track></div>
   </div>
   <div class="row r3">
     <div><label>코드 (영문 3글자)</label><input id="nCode" maxlength="6" placeholder="예: KSP" style="text-transform:uppercase"></div>
@@ -186,7 +188,7 @@
   <div class="note" style="margin-top:8px" id="nTplPreview"></div>
   <div class="bar" style="margin-top:14px">
     <button class="b" id="nSave">만들기</button>
-    <button class="g" onclick="$('newDlg').close()">취소</button>
+    <button class="g" onclick="closeDlg($('newDlg'))">취소</button>
   </div>
   <div class="msg hide" id="nMsg"></div>
 </dialog>
@@ -863,6 +865,7 @@ $('dSave').onclick = async () => {
     });
     await WCT.load(true); render();
     m.className = 'msg ok'; m.textContent = '저장했습니다.';
+    delete $('dlg').dataset.dirty;
     setTimeout(() => $('dlg').close(), 700);
   } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
   finally { btn.disabled = false; btn.textContent = '저장'; }

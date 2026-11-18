@@ -668,3 +668,40 @@ function mountHeader(title, backTo = 'admin.html') {
     finally { b.disabled = false; b.textContent = '새로고침'; }
   };
 }
+
+/* ───────── 팝업 공통 (모든 허브 화면)
+   · 팝업 바깥(어두운 곳)을 누르거나 Esc 를 누르면 닫힘
+   · data-track 붙은 칸을 고친 뒤 저장하지 않았으면 닫기 전에 한 번 물어봄
+   · 누르는 즉시 저장되는 것(작업 체크 등)은 data-track 을 안 붙여서 묻지 않음 */
+const DIRTY_ASK = '저장하지 않은 변경이 있어요. 저장하지 않고 닫을까요?';
+function closeDlg(d) {
+  if (d.dataset.dirty && !confirm(DIRTY_ASK)) return false;
+  delete d.dataset.dirty; d.close(); return true;
+}
+(function () {
+  if (typeof HTMLDialogElement === 'undefined') return;
+  const open0 = HTMLDialogElement.prototype.showModal;
+  HTMLDialogElement.prototype.showModal = function () { delete this.dataset.dirty; return open0.apply(this, arguments); };
+  const mark = (e) => {
+    const t = e.target;
+    if (t && t.matches && t.matches('[data-track]')) { const d = t.closest('dialog'); if (d) d.dataset.dirty = '1'; }
+  };
+  document.addEventListener('input', mark, true);
+  document.addEventListener('change', mark, true);
+  const outside = (d, e) => { const r = d.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom; };
+  let downOn = null;   // 바깥에서 눌렀다 바깥에서 뗀 경우만 (글자 드래그하다 밖에서 떼는 건 무시)
+  document.addEventListener('mousedown', (e) => {
+    downOn = e.target && e.target.tagName === 'DIALOG' && e.target.open && outside(e.target, e) ? e.target : null;
+  }, true);
+  document.addEventListener('click', (e) => {
+    const d = e.target;
+    if (!d || d.tagName !== 'DIALOG' || !d.open || downOn !== d || !outside(d, e)) return;
+    downOn = null; closeDlg(d);
+  });
+  document.addEventListener('cancel', (e) => {     // Esc
+    const d = e.target;
+    if (!d || d.tagName !== 'DIALOG') return;
+    if (d.dataset.dirty && !confirm(DIRTY_ASK)) e.preventDefault(); else delete d.dataset.dirty;
+  }, true);
+})();

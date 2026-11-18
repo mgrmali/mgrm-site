@@ -130,6 +130,11 @@ button:disabled{opacity:.45;cursor:not-allowed;filter:none}
 dialog{background:var(--card);color:var(--fg);border:1px solid var(--line);
   border-radius:14px;padding:22px;max-width:620px;width:92%;box-shadow:0 20px 60px rgba(16,16,20,.18)}
 dialog::backdrop{background:rgba(16,16,20,.45)}
+dialog[open]{max-height:88vh;overflow:auto;overscroll-behavior:contain}
+/* 팝업 맨 위 줄 고정: 내용이 길어져도 제목·저장·닫기가 보이게 */
+.dhead{position:sticky;top:-22px;z-index:5;background:var(--card);margin:-22px -22px 0;padding:18px 22px 12px;
+  border-bottom:1px solid var(--line)}
+.dhead .msg{margin:8px 0 0}
 
 pre.out{white-space:pre-wrap;font-size:12.5px;line-height:1.8;background:var(--soft);
   border:1px solid var(--line);border-radius:9px;padding:14px;margin:0}
