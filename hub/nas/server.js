@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.5.0';
+const VERSION = 'hub-store 1.6.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -119,6 +119,8 @@ const SHEETS = {
   '스크립터':       ['키', '프로젝트ID', '작품명', '폴더', '스크립터비번', '보기비번', '활성', '만료일', '메모', '등록일'],
   '스크립터클립':   ['키', '회차폴더', '클립', '씬', '컷', '테이크', '상태', '메모', '수정자', '수정시각'],
   '스크립터코멘트': ['ID', '키', '회차폴더', '클립', '작성자', '내용', '작성시각', '기기', '읽음'],
+  // 1.6.0: 사람마다 이름 + 비밀번호 (이름이 곧 아이디). 페이지의 스크립터비번·보기비번은 더 이상 안 씀
+  '스크립터명단':   ['ID', '키', '이름', '역할', '비번', '활성', '등록일', '마지막접속'],
 };
 const VIDEO_BASE = process.env.VIDEO_BASE || 'https://mgrm.myqnapcloud.com:8081/review/';
 /* 리뷰 영상 올리기: 허브에서 올린 파일을 이 폴더에 저장합니다.
@@ -970,8 +972,12 @@ const GCAL = (() => {
    영상은 리뷰 영상처럼 QNAP 웹 서버(:8081)가 직접 내보냅니다 → SCRIPTER_BASE
    폴더 이름 끝에 무작위 키가 붙어 있어 주소를 짐작할 수 없습니다.
 
+   들어오기: 허브에서 페이지마다 명단(이름·역할·비밀번호 4자리)을 만들고,
+   그 이름 + 그 사람 비밀번호가 맞아야 들어옵니다 (1.6.0). 이름은 서버가 정해서 표시·코멘트·워터마크에 씁니다.
+
    시트
-     스크립터       : 페이지 하나 = 작품 하나 (키, 비밀번호 2개)
+     스크립터       : 페이지 하나 = 작품 하나 (키)
+     스크립터명단   : 들어올 수 있는 사람 (이름, 역할 scripter|viewer, 비밀번호)
      스크립터클립   : 클립마다 씬·컷·테이크·상태·메모 (적힌 것만 한 줄)
      스크립터코멘트 : 보기용으로 들어온 사람들의 코멘트 */
 const SCRIPTER = (() => {
@@ -1128,7 +1134,7 @@ const SCRIPTER = (() => {
     const proj = byId_('프로젝트', r['프로젝트ID']);
     return { key: String(r['키']).trim(), projectId: Number(r['프로젝트ID']) || 0, title: String(r['작품명'] || ''),
       code: proj ? String(proj['코드'] || '') : '', folder: String(r['폴더'] || ''),
-      spw: String(r['스크립터비번'] || ''), vpw: String(r['보기비번'] || ''), active: isOn_(r['활성']),
+      active: isOn_(r['활성']),
       until: ymd_(r['만료일']), memo: String(r['메모'] || ''), createdAt: fmt_(r['등록일']), link: LINK + String(r['키']).trim() };
   }
   function shoots_(projectId) {
@@ -1145,28 +1151,45 @@ const SCRIPTER = (() => {
       s: String(x['씬'] || ''), c: String(x['컷'] || ''), t: String(x['테이크'] || ''), st: String(x['상태'] || ''),
       memo: String(x['메모'] || ''), by: String(x['수정자'] || ''), at: fmt_(x['수정시각']) }));
   }
-  const devHash_ = (dev) => dev ? crypto.createHash('sha256').update('scr:' + String(dev)).digest('hex').slice(0, 24) : '';
-  function commentsOf_(key, dev) {
-    const h = devHash_(dev);
+  function commentsOf_(key, me) {
+    const mk = me ? nkey_(me) : '';
     return rows_('스크립터코멘트').filter((x) => String(x['키']) === key).map((x) => ({ id: Number(x['ID']),
       d: N(x['회차폴더']), clip: N(x['클립']), who: String(x['작성자'] || ''), txt: String(x['내용'] || ''),
-      at: fmt_(x['작성시각']), mine: !!h && String(x['기기']) === h }));
+      at: fmt_(x['작성시각']), mine: !!mk && nkey_(x['작성자']) === mk }));
   }
 
-  /* ── 공개: 비밀번호로 역할 정하기 */
+  /* ── 명단: 이름은 띄어쓰기·대소문자를 빼고 비교 */
+  const nkey_ = (v) => N(v).replace(/\s+/g, '').toLowerCase();
+  const ROLES = { scripter: '스크립터', viewer: '보기·코멘트' };
+  const membersOf_ = (key) => rows_('스크립터명단').filter((x) => String(x['키']) === String(key));
+  function member_(r) {
+    return { id: Number(r['ID']), name: String(r['이름'] || ''), role: r['역할'] === 'scripter' ? 'scripter' : 'viewer',
+      pw: String(r['비번'] || ''), active: isOn_(r['활성']), createdAt: fmt_(r['등록일']), lastAt: fmt_(r['마지막접속']) };
+  }
+  function pin_(key) {
+    const used = new Set(membersOf_(key).map((x) => String(x['비번'])));
+    let p; do { p = String(crypto.randomInt(0, 10000)).padStart(4, '0'); } while (used.has(p) || /^(\d)\1{3}$/.test(p));
+    return p;
+  }
+
+  /* ── 공개: 이름 + 그 사람 비밀번호로 들어오기 */
   function auth_(b) {
     const r = pageRow_(b.p);
     if (!r) return { err: { ok: false, error: 'none' } };
     const pg = page_(r);
     if (!pg.active) return { err: { ok: false, error: 'off', title: pg.title } };
     if (isExpired_(pg.until)) return { err: { ok: false, error: 'expired', title: pg.title } };
-    const lk = b._ip ? 'spw:' + pg.key + ':' + b._ip : '';
-    if (lk && lockedFor_(lk)) return { err: { ok: false, error: 'locked', min: Math.ceil(lockedFor_(lk) / 60000) } };
+    const nk = nkey_(b.name);
+    const lkIp = b._ip ? 'spw:' + pg.key + ':' + b._ip : '';
+    const lkNm = nk ? 'spn:' + pg.key + ':' + nk : '';
+    const wait = Math.max(lkIp ? lockedFor_(lkIp) : 0, lkNm ? lockedFor_(lkNm) : 0);
+    if (wait) return { err: { ok: false, error: 'locked', min: Math.ceil(wait / 60000) } };
     const pw = String(b.pw || '').trim();
-    const role = pw && pw === pg.spw ? 'scripter' : pw && pw === pg.vpw ? 'viewer' : '';
-    if (!role) { if (lk) failed_(lk); return { err: { ok: false, error: 'pw' } }; }
-    if (lk) fails.delete(lk);
-    return { pg, role };
+    const m = nk && pw ? membersOf_(pg.key).find((x) => nkey_(x['이름']) === nk && String(x['비번']) === pw && isOn_(x['활성'])) : null;
+    if (!m) { if (lkIp) failed_(lkIp); if (lkNm) failed_(lkNm); return { err: { ok: false, error: 'pw' } }; }
+    if (lkIp) fails.delete(lkIp);
+    if (lkNm) fails.delete(lkNm);
+    return { pg, role: m['역할'] === 'scripter' ? 'scripter' : 'viewer', me: String(m['이름']), row: m };
   }
   const txt_ = (v, n) => String(v == null ? '' : v).replace(/\r/g, '').trim().slice(0, n);
   const num_ = (v) => String(v == null ? '' : v).replace(/[^0-9A-Za-z\-]/g, '').slice(0, 8);
@@ -1184,10 +1207,11 @@ const SCRIPTER = (() => {
     }
     const x = auth_(b);
     if (x.err) return x.err;
-    const { pg, role } = x;
+    const { pg, role, me } = x;
     if (a === 'scripter.open' || a === 'scripter.sync') {
+      if (a === 'scripter.open') try { patch_(x.row, { '마지막접속': nowStr_() }); } catch {}
       const sc = scan_(pg.folder, a === 'scripter.open' && !!b.fresh);
-      const out = { ok: true, role, sig: sc.sig, marks: marksOf_(pg.key), comments: commentsOf_(pg.key, b.dev) };
+      const out = { ok: true, role, me, sig: sc.sig, marks: marksOf_(pg.key), comments: commentsOf_(pg.key, me) };
       if (a === 'scripter.sync' && b.sig === sc.sig) return out;
       const sh = shoots_(pg.projectId);
       return Object.assign(out, { title: pg.title, code: pg.code,
@@ -1196,11 +1220,11 @@ const SCRIPTER = (() => {
         clips: sc.clips.map((c) => ({ d: c.d, id: c.id, f: c.f, cam: c.cam, tc: c.tc, tcs: c.tcs, dur: c.dur, fps: c.fps, at: c.at })) });
     }
     if (a === 'scripter.mark') {
-      if (role !== 'scripter') return { ok: false, error: '스크립터 비밀번호로 들어와야 표시할 수 있어요.' };
+      if (role !== 'scripter') return { ok: false, error: '스크립터 역할만 표시할 수 있어요.' };
       if (!hasClip_(pg, b.d, b.clip)) return { ok: false, error: '클립을 찾지 못했어요. 새로고침해 주세요.' };
       const st = STATUS.includes(String(b.st)) ? String(b.st) : '';
       const set = { '씬': num_(b.s), '컷': num_(b.c), '테이크': num_(b.t), '상태': st, '메모': txt_(b.memo, 1000),
-        '수정자': txt_(b.by, 40), '수정시각': nowStr_() };
+        '수정자': me, '수정시각': nowStr_() };
       return tx_(() => {
         const r = rows_('스크립터클립').find((y) => String(y['키']) === pg.key && N(y['회차폴더']) === N(b.d) && N(y['클립']) === N(b.clip));
         const empty = !set['씬'] && !set['컷'] && !set['테이크'] && !set['상태'] && !set['메모'];
@@ -1210,13 +1234,12 @@ const SCRIPTER = (() => {
       });
     }
     if (a === 'scripter.comment') {
-      const t = txt_(b.txt, 1000), who = txt_(b.who, 40);
+      const t = txt_(b.txt, 1000), who = me;
       if (!t) return { ok: false, error: '내용을 적어 주세요.' };
-      if (!who) return { ok: false, error: '이름을 적어 주세요.' };
       if (!hasClip_(pg, b.d, b.clip)) return { ok: false, error: '클립을 찾지 못했어요. 새로고침해 주세요.' };
       return tx_(() => {
         const id = nextId_('스크립터코멘트');
-        append_('스크립터코멘트', [id, pg.key, N(b.d), N(b.clip), who, t, nowStr_(), devHash_(b.dev), role === 'scripter']);
+        append_('스크립터코멘트', [id, pg.key, N(b.d), N(b.clip), who, t, nowStr_(), '', role === 'scripter']);
         return { ok: true, id };
       });
     }
@@ -1224,7 +1247,7 @@ const SCRIPTER = (() => {
       return tx_(() => {
         const r = rows_('스크립터코멘트').find((y) => String(y['키']) === pg.key && Number(y['ID']) === Number(b.id));
         if (!r) return { ok: true };
-        if (String(r['기기']) !== devHash_(b.dev)) return { ok: false, error: '내가 쓴 코멘트만 지울 수 있어요.' };
+        if (nkey_(r['작성자']) !== nkey_(me)) return { ok: false, error: '내가 쓴 코멘트만 지울 수 있어요.' };
         remove_(r);
         return { ok: true };
       });
@@ -1288,7 +1311,7 @@ const SCRIPTER = (() => {
         const sc = scan_(p.folder);
         const my = marks.filter((m) => String(m['키']) === p.key);
         const sh = shoots_(p.projectId);
-        return Object.assign(p, { clips: sc.clips.length,
+        return Object.assign(p, { clips: sc.clips.length, members: membersOf_(p.key).map(member_),
           marked: my.filter((m) => m['상태']).length, ok: my.filter((m) => m['상태'] === 'ok').length,
           ng: my.filter((m) => m['상태'] === 'ng').length,
           comments: cms.filter((c) => String(c['키']) === p.key).length,
@@ -1300,11 +1323,7 @@ const SCRIPTER = (() => {
       }) };
     }
     if (a === 'scripter.save') {
-      const spw = String(b.spw || '').trim(), vpw = String(b.vpw || '').trim();
-      if (spw.length < 4 || vpw.length < 4) return { ok: false, error: '비밀번호는 둘 다 4글자 이상으로 정해 주세요.' };
-      if (spw === vpw) return { ok: false, error: '스크립터용과 보기용 비밀번호는 서로 달라야 해요.' };
-      const set = { '작품명': txt_(b.title, 80), '스크립터비번': spw, '보기비번': vpw,
-        '만료일': b.until || '', '활성': b.active !== false, '메모': txt_(b.memo, 500) };
+      const set = { '작품명': txt_(b.title, 80), '만료일': b.until || '', '활성': b.active !== false, '메모': txt_(b.memo, 500) };
       const r = b.key ? pageRow_(b.key) : null;
       if (r) { patch_(r, set); return { ok: true, key: String(r['키']).trim(), link: LINK + String(r['키']).trim() }; }
       const proj = byId_('프로젝트', b.projectId);
@@ -1332,8 +1351,38 @@ const SCRIPTER = (() => {
       if (!r) return { ok: true };
       const key = String(r['키']).trim(), folder = String(r['폴더'] || '');
       remove_(r);
+      membersOf_(key).forEach(remove_);
       if (b.withData) ['스크립터클립', '스크립터코멘트'].forEach((n) => rows_(n).filter((x) => String(x['키']) === key).forEach(remove_));
       return { ok: true, folder };   // 영상 폴더는 지우지 않습니다 (NAS 에서 직접 정리)
+    }
+    if (a === 'scripter.member.save') {
+      const pr = pageRow_(b.key);
+      if (!pr) return { ok: false, error: '페이지를 찾지 못했어요.' };
+      const key = String(pr['키']).trim();
+      const name = txt_(b.name, 40).replace(/\s+/g, ' ');
+      if (!name) return { ok: false, error: '이름을 적어 주세요.' };
+      const role = b.role === 'scripter' ? 'scripter' : 'viewer';
+      const list = membersOf_(key);
+      const cur = b.id ? list.find((x) => Number(x['ID']) === Number(b.id)) : null;
+      if (list.some((x) => x !== cur && nkey_(x['이름']) === nkey_(name)))
+        return { ok: false, error: `'${name}' 은 이미 명단에 있어요. 동명이인이면 '김수연(연출)'처럼 구분해 주세요.` };
+      let pw = String(b.pw == null ? '' : b.pw).trim();
+      if (pw && !/^\d{4,8}$/.test(pw)) return { ok: false, error: '비밀번호는 숫자 4~8자리로 적어 주세요.' };
+      if (pw && list.some((x) => x !== cur && String(x['비번']) === pw)) return { ok: false, error: '다른 사람과 같은 비밀번호예요.' };
+      if (cur) {
+        const set = { '이름': name, '역할': role, '활성': b.active !== false };
+        if (b.newPw) set['비번'] = pin_(key); else if (pw) set['비번'] = pw;
+        patch_(cur, set);
+        return { ok: true, id: Number(cur['ID']) };
+      }
+      const id = nextId_('스크립터명단');
+      append_('스크립터명단', [id, key, name, role, pw || pin_(key), true, nowStr_(), '']);
+      return { ok: true, id };
+    }
+    if (a === 'scripter.member.delete') {
+      const r = rows_('스크립터명단').find((x) => String(x['키']) === String(b.key) && Number(x['ID']) === Number(b.id));
+      if (r) remove_(r);
+      return { ok: true };
     }
     if (a === 'scripter.markRead') {
       rows_('스크립터코멘트').filter((c) => String(c['키']) === String(b.key) && !isTrue_(c['읽음'])).forEach((c) => patch_(c, { '읽음': true }));
@@ -1886,7 +1935,7 @@ function admin_(a, b, who) {
       return { ok: true };
     }
     case 'scripter.list': case 'scripter.save': case 'scripter.folders': case 'scripter.delete':
-    case 'scripter.markRead': case 'scripter.csv':
+    case 'scripter.markRead': case 'scripter.csv': case 'scripter.member.save': case 'scripter.member.delete':
       return SCRIPTER.admin(a, b);
     case 'review.markRead': {
       const map = { comments: '리뷰코멘트', records: '납품기록', intakes: '문진', inquiries: '문의' };

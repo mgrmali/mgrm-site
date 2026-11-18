@@ -19,8 +19,14 @@
   .days td,.days th{padding:6px 8px}
   .bar2{height:6px;border-radius:4px;background:var(--line);overflow:hidden;min-width:80px}
   .bar2 i{display:block;height:100%;background:var(--ci)}
-  .pwrow{display:flex;gap:6px}
-  .pwrow input{flex:1}
+  .mem{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
+  .mem h4{margin:0 0 6px;font-size:13px}
+  .mem td,.mem th{padding:6px 8px;font-size:12.5px}
+  .mem .pin{font-family:monospace;font-size:13.5px;letter-spacing:.12em}
+  .mem tr.off td{opacity:.45}
+  .addrow{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .addrow input{flex:1;min-width:140px}
+  .addrow select{width:auto}
 </style>
 </head>
 <body>
@@ -34,7 +40,8 @@
       작품 하나에 <b>링크 하나</b>예요. 회차가 늘어도 같은 링크를 쓰면 돼요.<br>
       ① 새 페이지를 만들면 NAS <b>Web/scripter/</b> 안에 작품 폴더와 회차 폴더(08회차_1118)가 생겨요.
       ② 회차가 끝나면 프리뷰 MP4(H.264, 원본 클립 이름 그대로)를 그 회차 폴더에 넣어요.
-      ③ 스크립터에게는 링크와 <b>스크립터 비밀번호</b>를, 감독·조감독에게는 같은 링크와 <b>보기용 비밀번호</b>를 보내요.<br>
+      ③ <b>명단</b>에 들어올 사람을 넣어요. 이름이 곧 아이디이고, 비밀번호(숫자 4자리)는 사람마다 자동으로 만들어져요.
+      ④ 사람마다 <b>안내 복사</b>를 눌러 링크·이름·비밀번호를 보내요. 명단에서 빼면 그 사람만 바로 못 들어와요.<br>
       회차 폴더는 프로젝트의 촬영 회차를 보고 만들어요. 회차를 새로 넣었으면 <b>회차 폴더 만들기</b>를 누르세요.
     </div>
     <div class="msg bad hide" id="notReady"></div>
@@ -55,12 +62,6 @@
   <label>작품명 (페이지 맨 위에 보여요)</label>
   <input id="dName" placeholder="유해한 낮">
   <div class="row r2">
-    <div><label>스크립터 비밀번호 (표시·입력)</label>
-      <div class="pwrow"><input id="dSpw" autocomplete="off"><button class="g sm" type="button" onclick="$('dSpw').value=rnd()">만들기</button></div></div>
-    <div><label>보기용 비밀번호 (감독·조감독 · 코멘트)</label>
-      <div class="pwrow"><input id="dVpw" autocomplete="off"><button class="g sm" type="button" onclick="$('dVpw').value=rnd()">만들기</button></div></div>
-  </div>
-  <div class="row r2">
     <div><label>만료일 (비우면 계속 열림)</label><input id="dUntil" type="date"></div>
     <div><label>&nbsp;</label><label style="margin:8px 0 0;display:flex;align-items:center;gap:7px"><input type="checkbox" id="dActive" checked style="width:auto"> 페이지 열기</label></div>
   </div>
@@ -73,10 +74,25 @@
   <div class="msg hide" id="dMsg"></div>
 </dialog>
 
+<dialog id="mdlg">
+  <div style="display:flex;gap:12px;align-items:center">
+    <h2 style="flex:1;margin:0">명단 편집</h2>
+    <button class="g sm" onclick="$('mdlg').close()">닫기</button>
+  </div>
+  <label>이름 (들어올 때 적는 이름 · 화면과 워터마크에 표시)</label>
+  <input id="mName" maxlength="40">
+  <label>역할</label>
+  <select id="mRole"><option value="scripter">스크립터 (씬·컷·테이크, OK/NG 표시)</option><option value="viewer">보기·코멘트</option></select>
+  <label style="display:flex;align-items:center;gap:7px;margin-top:12px"><input type="checkbox" id="mActive" style="width:auto"> 들어올 수 있음 (끄면 명단에는 남기고 막아요)</label>
+  <label style="display:flex;align-items:center;gap:7px"><input type="checkbox" id="mNewPw" style="width:auto"> 비밀번호 새로 만들기 (예전 비밀번호로는 못 들어와요)</label>
+  <div class="bar" style="margin-top:16px"><button class="b" id="mSave">저장</button></div>
+  <div class="msg hide" id="mMsg"></div>
+</dialog>
+
 <script src="wct-core.js"></script>
 <script>
 let PAGES = [], DIR = '', EDIT = '';
-const rnd = () => { const cs = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from(crypto.getRandomValues(new Uint8Array(6)), (n) => cs[n % cs.length]).join(''); };
+const ROLE = { scripter: '스크립터', viewer: '보기·코멘트' };
 
 (async function boot() {
   if (!await WCT.requireAuth(true)) return;
@@ -117,10 +133,24 @@ function render() {
           <td class="n">${d.count}</td><td class="n">${d.marked}</td>
           <td><div class="bar2"><i style="width:${d.count ? Math.round(d.marked / d.count * 100) : 0}%"></i></div></td></tr>`).join('')}
       </tbody></table>` : '<div class="dim" style="font-size:12.5px;margin-top:8px">회차 폴더가 아직 없어요. 프로젝트에 촬영 회차를 넣고 [회차 폴더 만들기]를 누르세요.</div>'}
+      <div class="mem">
+        <h4>명단 <span class="dim" style="font-weight:400">${(p.members || []).filter((m) => m.active).length}명 · 이름 + 비밀번호로 들어와요</span></h4>
+        ${(p.members || []).length ? `<table><thead><tr><th>이름</th><th>역할</th><th>비밀번호</th><th>마지막 접속</th><th></th></tr></thead><tbody>
+          ${p.members.map((m) => `<tr class="${m.active ? '' : 'off'}"><td><b>${esc(m.name)}</b>${m.active ? '' : ' <span class="pill">막힘</span>'}</td>
+            <td>${ROLE[m.role]}</td><td class="pin">${esc(m.pw)}</td><td class="dim">${esc(m.lastAt || '—')}</td>
+            <td style="text-align:right;white-space:nowrap">
+              <button class="g sm" onclick="copyMember('${esc(p.key)}',${m.id})">안내 복사</button>
+              <button class="g sm" onclick="editMember('${esc(p.key)}',${m.id})">편집</button>
+              <button class="g sm" style="color:var(--bad)" onclick="delMember('${esc(p.key)}',${m.id})">빼기</button></td></tr>`).join('')}
+        </tbody></table>` : '<div class="dim" style="font-size:12.5px">아직 아무도 없어요. 아래에서 사람을 추가하세요.</div>'}
+        <div class="addrow">
+          <input id="nm-${esc(p.key)}" placeholder="이름 (예: 김수연)" maxlength="40" onkeydown="if(event.key==='Enter')addMember('${esc(p.key)}')">
+          <select id="rl-${esc(p.key)}"><option value="scripter">스크립터</option><option value="viewer" selected>보기·코멘트</option></select>
+          <button class="b sm" onclick="addMember('${esc(p.key)}')">＋ 사람 추가</button>
+        </div>
+      </div>
       <div class="acts">
         <button class="g sm" onclick="copyLink('${esc(p.key)}')">링크 복사</button>
-        <button class="g sm" onclick="copyMsg('${esc(p.key)}','s')">스크립터 안내 복사</button>
-        <button class="g sm" onclick="copyMsg('${esc(p.key)}','v')">감독·조감독 안내 복사</button>
         <a class="g sm" style="text-decoration:none;display:inline-block;padding:6px 11px;border:1px solid var(--line);border-radius:9px;font-size:12px" href="${esc(p.link)}" target="_blank">열어보기 ↗</a>
         <span style="flex:1"></span>
         <button class="g sm" onclick="makeDays('${esc(p.key)}')">회차 폴더 만들기</button>
@@ -133,12 +163,38 @@ function render() {
 const pg = (k) => PAGES.find((p) => p.key === k);
 async function copyLink(k) { await copyText(pg(k).link); toast('링크를 복사했어요.'); }
 async function copyPath(k) { await copyText(`Web/scripter/${pg(k).folder}/`); toast('NAS 폴더 경로를 복사했어요.'); }
-async function copyMsg(k, who) {
-  const p = pg(k);
-  const body = who === 's'
-    ? `${p.title} 스크립터 클립 확인 페이지예요.\n\n${p.link}\n비밀번호: ${p.spw}\n\n회차마다 촬영 클립이 올라와요. 클립을 보면서 씬·컷·테이크를 적고 OK·NG·KEEP 을 눌러 주세요.\n키보드 1·2·3 으로도 누를 수 있고, 누르면 다음 클립으로 넘어가요.`
-    : `${p.title} 촬영 클립 확인 페이지예요.\n\n${p.link}\n비밀번호: ${p.vpw}\n\n스크립터가 표시한 OK·NG 를 볼 수 있고, 클립마다 코멘트를 남길 수 있어요.`;
-  await copyText(body); toast('안내 문구를 복사했어요.');
+const mem = (k, id) => (pg(k).members || []).find((m) => m.id === id);
+async function copyMember(k, id) {
+  const p = pg(k), m = mem(k, id);
+  const how = m.role === 'scripter'
+    ? `회차마다 촬영 클립이 올라와요. 클립을 보면서 씬·컷·테이크를 적고 OK·NG·KEEP 을 눌러 주세요.\n키보드 1·2·3 으로도 누를 수 있고, 누르면 다음 클립으로 넘어가요.`
+    : `스크립터가 표시한 OK·NG 를 볼 수 있고, 클립마다 코멘트를 남길 수 있어요.`;
+  const body = `${p.title} 촬영 클립 확인 페이지예요.\n\n${p.link}\n이름: ${m.name}\n비밀번호: ${m.pw}\n\n${how}\n화면에 이름이 표시되니 링크와 비밀번호는 본인만 써 주세요.`;
+  await copyText(body); toast(`${m.name} 님 안내 문구를 복사했어요.`);
+}
+async function addMember(k) {
+  const name = $('nm-' + k).value.trim(), role = $('rl-' + k).value;
+  if (!name) { $('nm-' + k).focus(); return; }
+  try { const j = await WCT.api('scripter.member.save', { key: k, name, role }); await refresh();
+    toast(`${name} 님을 추가했어요. [안내 복사]로 보내 주세요.`); } catch (e) { toast(e.message, true); }
+}
+let MEDIT = null;
+function editMember(k, id) {
+  const m = mem(k, id); MEDIT = { k, id };
+  $('mName').value = m.name; $('mRole').value = m.role; $('mActive').checked = m.active; $('mNewPw').checked = false;
+  $('mMsg').className = 'msg hide'; $('mdlg').showModal();
+}
+$('mSave').onclick = async () => {
+  try {
+    await WCT.api('scripter.member.save', { key: MEDIT.k, id: MEDIT.id, name: $('mName').value.trim(), role: $('mRole').value,
+      active: $('mActive').checked, newPw: $('mNewPw').checked });
+    $('mdlg').close(); await refresh(); toast('저장했어요.');
+  } catch (e) { $('mMsg').className = 'msg bad'; $('mMsg').textContent = e.message; }
+};
+async function delMember(k, id) {
+  const m = mem(k, id);
+  if (!confirm(`${m.name} 님을 명단에서 뺄까요?\n바로 못 들어오게 돼요. 이미 남긴 표시·코멘트는 그대로 남아요.`)) return;
+  try { await WCT.api('scripter.member.delete', { key: k, id }); await refresh(); } catch (e) { toast(e.message, true); }
 }
 async function makeDays(k) {
   try { const j = await WCT.api('scripter.folders', { key: k });
@@ -158,14 +214,14 @@ async function markRead(k) { try { await WCT.api('scripter.markRead', { key: k }
 $('btnNew').onclick = () => openDlg('');
 function openDlg(k) {
   EDIT = k;
-  const p = pg(k) || { title: '', spw: rnd(), vpw: rnd(), until: '', active: true, memo: '', projectId: 0 };
+  const p = pg(k) || { title: '', until: '', active: true, memo: '', projectId: 0 };
   const projs = ((WCT.data && WCT.data.projects) || []).filter((x) => x.active !== false || x.id === p.projectId).slice().reverse();
   $('dProj').innerHTML = (k ? '' : '<option value="">프로젝트 고르기…</option>') + projs.map((x) =>
     `<option value="${x.id}">${x.code ? '[' + esc(x.code) + '] ' : ''}${esc(x.name)}${x.client ? ' · ' + esc(x.client) : ''}</option>`).join('');
   $('dProj').value = k ? String(p.projectId) : '';
   $('dProj').disabled = !!k;
   $('dTitle').textContent = k ? `편집 · ${p.title}` : '새 스크립터 페이지';
-  $('dName').value = p.title; $('dSpw').value = p.spw; $('dVpw').value = p.vpw;
+  $('dName').value = p.title;
   $('dUntil').value = p.until || ''; $('dActive').checked = !!p.active; $('dMemo').value = p.memo;
   $('dDelete').classList.toggle('hide', !k);
   $('dMsg').className = 'msg hide';
@@ -181,11 +237,11 @@ $('dSave').onclick = async () => {
   $('dSave').disabled = true;
   try {
     const j = await WCT.api('scripter.save', { key: EDIT, projectId: Number($('dProj').value), title: $('dName').value.trim(),
-      spw: $('dSpw').value.trim(), vpw: $('dVpw').value.trim(), until: $('dUntil').value, active: $('dActive').checked, memo: $('dMemo').value.trim() });
+      until: $('dUntil').value, active: $('dActive').checked, memo: $('dMemo').value.trim() });
     await refresh();
     if (!EDIT) {
       if (j.folderError) return msg(j.folderError);
-      msg(`만들었어요. NAS 폴더: Web/scripter/${j.folder}/` + (j.made && j.made.length ? ` · 회차 폴더 ${j.made.length}개` : ' · 회차 폴더는 아직 없어요 (프로젝트에 촬영 회차를 넣어 주세요)'), true);
+      msg(`만들었어요. NAS 폴더: Web/scripter/${j.folder}/` + (j.made && j.made.length ? ` · 회차 폴더 ${j.made.length}개` : ' · 회차 폴더는 아직 없어요 (프로젝트에 촬영 회차를 넣어 주세요)') + ' — 닫고 카드의 명단에 사람을 넣어 주세요.', true);
       EDIT = j.key; $('dDelete').classList.remove('hide'); $('dProj').disabled = true;
     } else { $('dlg').close(); toast('저장했어요.'); }
   } catch (e) { msg(e.message); }

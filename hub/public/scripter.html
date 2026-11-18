@@ -93,6 +93,16 @@ input:disabled,textarea:disabled{opacity:.75}
 .player{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:16/9}
 .player video{width:100%;height:100%;display:block;background:#000}
 .player__none{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--faint)}
+/* 워터마크: 들어온 사람 이름 + 날짜. 캡처하면 같이 찍힙니다 (화면 클릭은 영상으로 그대로 통과) */
+.wm{position:absolute;pointer-events:none;user-select:none;-webkit-user-select:none;font-weight:700;letter-spacing:.04em;
+  color:#fff;opacity:var(--wmo,.12);white-space:nowrap;font-size:clamp(13px,2.2vw,22px);text-shadow:0 0 2px rgba(0,0,0,.6);
+  transition:left 1.2s ease,top 1.2s ease;z-index:2}
+.fsb{position:absolute;right:10px;top:10px;z-index:3;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.18);
+  color:#eee;border-radius:7px;padding:4px 9px;font-size:12px;opacity:.75}
+.fsb:hover{opacity:1}
+.player:fullscreen,.player:-webkit-full-screen{aspect-ratio:auto;width:100vw;height:100vh;border-radius:0}
+.player:fullscreen video,.player:-webkit-full-screen video{object-fit:contain}
+.player:fullscreen .wm,.player:-webkit-full-screen .wm{font-size:clamp(18px,2.2vw,30px)}
 .info{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:10px 0 8px}
 .info__clip{font-family:var(--mono);font-size:15px;font-weight:600}
 .info__tc{font-family:var(--mono);font-size:15px;color:var(--acc);margin-left:auto}
@@ -151,9 +161,9 @@ input:disabled,textarea:disabled{opacity:.75}
   <div class="gate__box">
     <img src="logo.png" alt="맹그라미">
     <h1 id="gTitle">스크립터 클립 확인</h1>
-    <p id="gSub">비밀번호를 입력해 주세요.</p>
-    <input id="gName" placeholder="이름 (예: 스크립터 김OO)" autocomplete="name" maxlength="40">
-    <input id="gPw" class="pw" type="password" placeholder="비밀번호" autocomplete="current-password">
+    <p id="gSub">안내받은 이름과 비밀번호를 적어 주세요.</p>
+    <input id="gName" placeholder="이름" autocomplete="username" maxlength="40">
+    <input id="gPw" class="pw" type="password" placeholder="비밀번호 (숫자)" inputmode="numeric" autocomplete="current-password">
     <label><input type="checkbox" id="gRemember"> 이 기기에서 비밀번호 기억</label>
     <button class="btn pri" id="gGo" style="width:100%;padding:11px">들어가기</button>
     <div class="gate__msg" id="gMsg"></div>
@@ -164,7 +174,7 @@ input:disabled,textarea:disabled{opacity:.75}
 <div id="app" class="hide">
   <div class="top">
     <div class="top__t"><b id="tTitle"></b><span class="role" id="tRole"></span>
-      <div><span id="tName"></span> · <a href="#" id="tRename" style="color:inherit">이름 바꾸기</a></div></div>
+      <div><span id="tName"></span> · <a href="#" id="tOut" style="color:inherit">나가기</a></div></div>
     <select id="range" aria-label="회차"></select>
     <button class="btn" id="btnRefresh" title="새로 올린 클립 불러오기">새로고침</button>
     <button class="btn hide" id="btnCsv">CSV 내려받기</button>
@@ -192,9 +202,11 @@ input:disabled,textarea:disabled{opacity:.75}
       </aside>
 
       <section class="stage">
-        <div class="player">
-          <video id="v" controls playsinline preload="metadata" controlsList="nodownload noremoteplayback" disableRemotePlayback></video>
+        <div class="player" id="player">
+          <video id="v" controls playsinline preload="metadata" controlsList="nodownload nofullscreen noremoteplayback" disableRemotePlayback disablePictureInPicture></video>
           <div class="player__none" id="vNone">왼쪽 목록에서 클립을 고르세요</div>
+          <div class="wm" id="wm1"></div><div class="wm" id="wm2"></div>
+          <button class="fsb" id="fsBtn" type="button" title="전체 화면 (F)">⛶ 전체 화면</button>
         </div>
         <div class="info">
           <span class="info__clip" id="iClip">—</span>
@@ -223,7 +235,7 @@ input:disabled,textarea:disabled{opacity:.75}
             <div class="save" id="saveMsg"></div>
           </div>
           <div class="tip" id="tip"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> OK·NG·KEEP (누르면 저장되고 다음 클립으로) ·
-            <kbd>↑</kbd><kbd>↓</kbd> 이전·다음 클립 · <kbd>Space</kbd> 재생·정지 · <kbd>←</kbd><kbd>→</kbd> 2초 이동</div>
+            <kbd>↑</kbd><kbd>↓</kbd> 이전·다음 클립 · <kbd>Space</kbd> 재생·정지 · <kbd>←</kbd><kbd>→</kbd> 2초 이동 · <kbd>F</kbd> 전체 화면</div>
         </div>
 
         <div class="panel cms">
@@ -253,10 +265,8 @@ const SS = { get(k) { try { return sessionStorage.getItem(k); } catch { return n
              set(k, v) { try { sessionStorage.setItem(k, v); } catch {} } };
 const LABEL = { ok: 'OK', ng: 'NG', keep: 'KEEP' };
 
-let DEV = LS.get('scr:dev');
-if (!DEV) { DEV = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join(''); LS.set('scr:dev', DEV); }
 
-const S = { pw: '', role: '', name: LS.get('scr:name') || '', title: '', base: '', days: [], clips: [], marks: {}, comments: [],
+const S = { pw: '', role: '', name: LS.get('scr:name:' + P) || '', title: '', base: '', days: [], clips: [], marks: {}, comments: [],
   sig: '', sel: '', range: '', sort: 'time', filt: 'all', q: '', dirty: false, sug: false, list: [] };
 const view = (() => { try { return JSON.parse(LS.get('scr:view:' + P) || '{}'); } catch { return {}; } })();
 if (view.sort) S.sort = view.sort;
@@ -270,14 +280,14 @@ async function call(action, body) {
   let r;
   try {
     r = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign({ action, p: P, pw: S.pw, dev: DEV }, body || {})) });
+      body: JSON.stringify(Object.assign({ action, p: P, name: S.name, pw: S.pw }, body || {})) });
   } catch { throw new Error('인터넷 연결을 확인해 주세요.'); }
   let j; try { j = await r.json(); } catch { throw new Error('서버 응답을 읽지 못했어요.'); }
   if (j.nas === 'down') throw new Error('NAS에 연결할 수 없어요. 잠시 뒤 다시 해 주세요.');
   return j;
 }
 const ERR = { none: '없는 링크예요. 링크를 다시 확인해 주세요.', off: '지금은 닫혀 있는 페이지예요.',
-  expired: '기간이 끝난 페이지예요.', pw: '비밀번호가 맞지 않아요.' };
+  expired: '기간이 끝난 페이지예요.', pw: '이름 또는 비밀번호가 맞지 않아요. 안내받은 그대로 적어 주세요.' };
 const errText = (j) => j.error === 'locked' ? `비밀번호를 여러 번 틀려서 ${j.min}분 동안 잠겼어요.` : (ERR[j.error] || j.error || '문제가 생겼어요.');
 
 /* ───────── 들어가기 */
@@ -290,7 +300,7 @@ const errText = (j) => j.error === 'locked' ? `비밀번호를 여러 번 틀려
     $('gTitle').textContent = m.title || '스크립터 클립 확인';
     document.title = (m.title ? m.title + ' · ' : '') + '스크립터 클립 확인';
   } catch (e) { $('gSub').textContent = e.message; }
-  const saved = SS.get('scr:pw:' + P) || LS.get('scr:pw:' + P);
+  const saved = S.name && (SS.get('scr:pw:' + P) || LS.get('scr:pw:' + P));
   if (saved && S.name) { S.pw = saved; if (await open(true)) return; }
   (S.name ? $('gPw') : $('gName')).focus();
 })();
@@ -299,9 +309,9 @@ $('gPw').onkeydown = (e) => { if (e.key === 'Enter') go(); };
 $('gName').onkeydown = (e) => { if (e.key === 'Enter') $('gPw').focus(); };
 async function go() {
   const name = $('gName').value.trim(), pw = $('gPw').value.trim();
-  if (!name) { $('gMsg').textContent = '이름을 적어 주세요. 표시와 코멘트에 함께 남아요.'; $('gName').focus(); return; }
+  if (!name) { $('gMsg').textContent = '이름을 적어 주세요.'; $('gName').focus(); return; }
   if (!pw) { $('gMsg').textContent = '비밀번호를 적어 주세요.'; $('gPw').focus(); return; }
-  S.name = name; LS.set('scr:name', name); S.pw = pw;
+  S.name = name; S.pw = pw;
   $('gGo').disabled = true; $('gMsg').textContent = '';
   const ok = await open(false);
   $('gGo').disabled = false;
@@ -315,7 +325,9 @@ async function open(silent, fresh) {
   try { j = await call('scripter.open', { fresh: !!fresh }); }
   catch (e) { if (!silent) $('gMsg').textContent = e.message; return false; }
   if (!j.ok) { if (!silent) $('gMsg').textContent = errText(j); return false; }
+  S.name = j.me || S.name; LS.set('scr:name:' + P, S.name);
   apply(j, true);
+  startWm();
   $('gate').classList.add('hide'); $('app').classList.remove('hide');
   startPoll();
   return true;
@@ -324,6 +336,7 @@ async function open(silent, fresh) {
 /* ───────── 받은 자료 정리 */
 const keyOf = (c) => c.d + '/' + c.id;
 function apply(j, full) {
+  if (j.me) S.name = j.me;
   if (j.clips) {
     S.role = j.role; S.title = j.title; S.base = j.base; S.days = j.days; S.clips = j.clips; S.sig = j.sig;
     const byD = {}; S.days.forEach((d, i) => { d.i = i; byD[d.d] = d; }); S.dayBy = byD;
@@ -518,7 +531,7 @@ async function persist(k, st, includeSug) {
   S.marks[k] = m;
   $('saveMsg').textContent = '저장 중…';
   try {
-    const j = await call('scripter.mark', { d: c.d, clip: c.id, s: m.s, c: m.c, t: m.t, st: m.st, memo: m.memo, by: S.name });
+    const j = await call('scripter.mark', { d: c.d, clip: c.id, s: m.s, c: m.c, t: m.t, st: m.st, memo: m.memo });
     if (!j.ok) throw new Error(errText(j));
     m.at = j.at;
     $('saveMsg').textContent = '저장됨 ' + (j.at || '').slice(11);
@@ -586,7 +599,7 @@ async function sendComment() {
   if (!t) { $('cmTxt').focus(); return; }
   $('cmSend').disabled = true;
   try {
-    const j = await call('scripter.comment', { d: c.d, clip: c.id, who: S.name, txt: t });
+    const j = await call('scripter.comment', { d: c.d, clip: c.id, txt: t });
     if (!j.ok) throw new Error(errText(j));
     S.comments.push({ id: j.id, d: c.d, clip: c.id, who: S.name, txt: t, at: new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16).replace('T', ' '), mine: true });
     $('cmTxt').value = ''; renderComments(); renderList();
@@ -617,6 +630,38 @@ function step(d) {
 $('bPrev').onclick = () => step(-1);
 $('bNext').onclick = () => step(1);
 
+/* ───────── 워터마크: 이름 · 날짜, 20초마다 자리 바꾸기 */
+function startWm() {
+  const d = new Date(Date.now() + 9 * 3600e3);
+  const txt = `${S.name} · ${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+  $('player').style.setProperty('--wmo', S.role === 'scripter' ? '.10' : '.16');
+  ['wm1', 'wm2'].forEach((id) => { $(id).textContent = txt; });
+  moveWm(); clearInterval(startWm._t); startWm._t = setInterval(moveWm, 20000);
+}
+function moveWm() {
+  // 두 개를 서로 반대쪽 칸에 둡니다 (가운데는 피함)
+  const spots = [[6, 8], [62, 8], [6, 78], [62, 78], [34, 10], [34, 80], [6, 44], [66, 44]];
+  const a = Math.floor(Math.random() * spots.length), b = (a + 3 + Math.floor(Math.random() * 3)) % spots.length;
+  [[ 'wm1', spots[a]], ['wm2', spots[b]]].forEach(([id, [x, y]]) => {
+    $(id).style.left = (x + Math.random() * 6) + '%'; $(id).style.top = (y + Math.random() * 6) + '%';
+  });
+}
+
+/* ───────── 전체 화면: 워터마크까지 같이 키웁니다 (아이폰은 영상만 커져서 번인 글자만 남아요) */
+function toggleFs() {
+  const el = $('player'), v = $('v');
+  const cur = document.fullscreenElement || document.webkitFullscreenElement;
+  if (cur) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+  if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+}
+$('fsBtn').onclick = toggleFs;
+$('v').addEventListener('dblclick', (e) => { e.preventDefault(); toggleFs(); });
+const fsLabel = () => { $('fsBtn').textContent = (document.fullscreenElement || document.webkitFullscreenElement) ? '⤢ 작게' : '⛶ 전체 화면'; };
+document.addEventListener('fullscreenchange', fsLabel);
+document.addEventListener('webkitfullscreenchange', fsLabel);
+
 /* ───────── 단축키 */
 document.addEventListener('keydown', (e) => {
   if ($('app').classList.contains('hide')) return;
@@ -630,6 +675,7 @@ document.addEventListener('keydown', (e) => {
     step((e.key === 'ArrowDown' || e.key === 'j') ? 1 : -1);
   }
   else if (e.key === ' ') { e.preventDefault(); if (v.paused) v.play().catch(() => {}); else v.pause(); }
+  else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFs(); }
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); v.currentTime = Math.max(0, v.currentTime + (e.key === 'ArrowLeft' ? -2 : 2)); }
 });
 
@@ -651,10 +697,12 @@ $('btnCsv').onclick = async () => {
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   } catch (e) { toast(e.message, true); }
 };
-$('tRename').onclick = (e) => {
+$('tOut').onclick = async (e) => {
   e.preventDefault();
-  const n = (prompt('이름을 적어 주세요', S.name) || '').trim().slice(0, 40);
-  if (n) { S.name = n; LS.set('scr:name', n); $('tName').textContent = n; }
+  if (S.dirty) await flush();
+  try { sessionStorage.removeItem('scr:pw:' + P); } catch {}
+  LS.del('scr:pw:' + P);
+  location.reload();
 };
 
 /* ───────── 10초마다 다른 사람이 표시한 내용 가져오기 */
