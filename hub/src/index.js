@@ -15,7 +15,7 @@ const MAX = 60 * 60 * 14;             // 아무리 길어도 14시간
 const REMEMBER = 60 * 60 * 24 * 30;   // '이 기기에서 로그인 유지': 30일 동안 안 쓰면 다시 로그인
 const REMEMBER_MAX = 60 * 60 * 24 * 90; //   아무리 길어도 90일
 const PUBLIC_FILES = ['/submit.html', '/wct-style.css', '/wct-core.js', '/favicon.png', '/logo.png',
-                      '/login.html', '/login'];
+                      '/login.html', '/login', '/scripter.html'];   // scripter.html: 스크립터 클립 확인 (비밀번호로 엶)
 const enc = new TextEncoder();
 
 export default {
@@ -179,6 +179,12 @@ async function pub(req, env, ctx) {
   let b = {};
   try { b = await req.json(); } catch {}
   const a = pubAction(b);
+  // 스크립터 페이지는 비밀번호를 여러 번 틀리면 잠깁니다 → NAS 가 IP 를 알아야 함
+  if (a.startsWith('scripter.')) {
+    try { return json(await (await store(env, '/public', Object.assign({}, b, { action: a,
+      _ip: req.headers.get('cf-connecting-ip') || '' }))).json()); }
+    catch (e) { if (e instanceof NasError) return json(NAS_DOWN); throw e; }
+  }
   try {
     const r = await (await store(env, '/public', Object.assign({}, b, { action: a }))).json();
     if (a === 'pubkey' && r.ok && r.pub) ctx.waitUntil(kvSet(env, 'pub', r.pub));

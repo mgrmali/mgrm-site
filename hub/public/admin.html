@@ -79,6 +79,12 @@
       <div class="ds">컬러리버브 리뷰 링크 · 코멘트 · 납품 · 문진 · 문의</div>
       <div id="badgeRev"></div>
     </a>
+    <a class="tile adminOnly" href="scripters.html">
+      <div class="ic">📋</div>
+      <div class="tt">스크립터</div>
+      <div class="ds">촬영 클립 확인 링크 · OK/NG · 코멘트</div>
+      <div id="badgeScr"></div>
+    </a>
     <a class="tile" href="https://diary.mgrm.kr/">
       <div class="ic">🎨</div>
       <div class="tt">컬러 다이어리</div>
@@ -157,7 +163,7 @@ async function showHub() {
       $('todayLine').textContent += ` · ${D.company}`;
     }
     renderDue(D); renderStat(D); renderProj(D); renderInv(D);
-    renderVault(D); renderBoard(D); renderSub(D); renderRev(D);
+    renderVault(D); renderBoard(D); renderSub(D); renderRev(D); renderScr(D);
   };
   try {
     await WCT.loadThenRefresh(draw);   // 캐시로 먼저 그리고 뒤에서 갱신
@@ -291,6 +297,12 @@ function renderRev(D) {
   $('badgeRev').innerHTML = parts.length
     ? `<span class="badge hot">새 ${parts.join(' · ')}</span>`
     : (open ? `<span class="badge">리뷰 ${open}건 열림</span>` : '');
+}
+
+function renderScr(D) {
+  const s = D.scripter || {};
+  $('badgeScr').innerHTML = s.unread ? `<span class="badge hot">새 코멘트 ${s.unread}</span>`
+    : (s.pages ? `<span class="badge">${s.pages}개 열림</span>` : '');
 }
 
 function renderVault(D) {

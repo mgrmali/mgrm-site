@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.4.0';
+const VERSION = 'hub-store 1.5.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -115,6 +115,10 @@ const SHEETS = {
              '최종 전달처', '규격서', '추가 버전', '최종 결정권자', '피드백 담당자', '감수 방식', '리뷰 환경', '기타 참고사항',
              '동의: 소스 보관', '동의: 수정 범위', '_유입경로', '_lang', '진행 상태', '읽음', '메모'],
   '문의':   ['접수번호', '접수시각', '이름/회사', '이메일', '문의 분야', '내용', '_유입경로', '진행 상태', '읽음', '메모'],
+  // ── 스크립터 클립 확인 (1.5.0)
+  '스크립터':       ['키', '프로젝트ID', '작품명', '폴더', '스크립터비번', '보기비번', '활성', '만료일', '메모', '등록일'],
+  '스크립터클립':   ['키', '회차폴더', '클립', '씬', '컷', '테이크', '상태', '메모', '수정자', '수정시각'],
+  '스크립터코멘트': ['ID', '키', '회차폴더', '클립', '작성자', '내용', '작성시각', '기기', '읽음'],
 };
 const VIDEO_BASE = process.env.VIDEO_BASE || 'https://mgrm.myqnapcloud.com:8081/review/';
 /* 리뷰 영상 올리기: 허브에서 올린 파일을 이 폴더에 저장합니다.
@@ -424,6 +428,7 @@ function public_(b) {
       email: c['계산서이메일'], notice: c['계산서안내'] } };
   }
   if (a === 'check') return checkToken_(b.t);
+  if (a.startsWith('scripter.')) return SCRIPTER.pub(b);
   if (a === 'submit' || (!a && b.token && b.envelope)) return tx_(() => submit_(b));
   // 컬러리버브 — 예전 폼은 action 없이 '_폼종류' 로 구분해 보냈습니다
   const kind = String(b['_폼종류'] || '');
@@ -957,6 +962,402 @@ const GCAL = (() => {
   return { ready, syncAll, later, check, guess, hubEvents, importShoots };
 })();
 
+// ══════════════════════════════════════════ 스크립터 클립 확인 (hub-store 1.5.0)
+/* 회차마다 프리뷰 MP4 를 NAS 'Web/scripter/<폴더>/<회차폴더>/' 에 넣으면
+   스크립터가 링크 하나로 보면서 씬·컷·테이크와 OK/NG/KEEP 을 적고,
+   감독·조감독은 보기용 비밀번호로 들어와 코멘트를 남깁니다.
+
+   영상은 리뷰 영상처럼 QNAP 웹 서버(:8081)가 직접 내보냅니다 → SCRIPTER_BASE
+   폴더 이름 끝에 무작위 키가 붙어 있어 주소를 짐작할 수 없습니다.
+
+   시트
+     스크립터       : 페이지 하나 = 작품 하나 (키, 비밀번호 2개)
+     스크립터클립   : 클립마다 씬·컷·테이크·상태·메모 (적힌 것만 한 줄)
+     스크립터코멘트 : 보기용으로 들어온 사람들의 코멘트 */
+const SCRIPTER = (() => {
+  const DIR = path.resolve(process.env.SCRIPTER_DIR || path.join(path.dirname(REVIEW_DIR), 'scripter'));
+  const BASE = process.env.SCRIPTER_BASE || VIDEO_BASE.replace(/review\/?$/, 'scripter/');
+  const LINK = process.env.SCRIPTER_LINK || 'https://hub.mgrm.kr/scripter.html?p=';
+  const STATUS = ['ok', 'ng', 'keep'];
+  const LABEL = { ok: 'OK', ng: 'NG', keep: 'KEEP' };
+  const skip = (n) => n.startsWith('.') || n.startsWith('@') || n.startsWith('#') || n.startsWith('~$');
+  const N = (s) => String(s || '').normalize('NFC');
+  const pad2 = (n) => ('0' + n).slice(-2);
+
+  function ready() { try { mkdir_(DIR); fs.accessSync(DIR, fs.constants.W_OK); return true; } catch { return false; } }
+  function mkdir_(p) {
+    fs.mkdirSync(p, { recursive: true });
+    try { fs.chmodSync(p, 0o755); } catch {}        // QNAP 웹 서버가 읽을 수 있게
+  }
+
+  /* ── MP4·MOV 안에서 길이·프레임레이트·시작 타임코드 읽기 (ffprobe 없이) */
+  function readAt_(fd, pos, len) {
+    const b = Buffer.alloc(len);
+    const n = fs.readSync(fd, b, 0, len, pos);
+    return n === len ? b : b.subarray(0, n);
+  }
+  function boxes_(buf, s, e) {
+    const out = [];
+    let p = s;
+    while (p + 8 <= e) {
+      let l = buf.readUInt32BE(p); const t = buf.toString('latin1', p + 4, p + 8); let hd = 8;
+      if (l === 1) { if (p + 16 > e) break; l = Number(buf.readBigUInt64BE(p + 8)); hd = 16; } else if (l === 0) l = e - p;
+      if (l < hd || p + l > e) break;
+      out.push({ t, s: p + hd, e: p + l });
+      p += l;
+    }
+    return out;
+  }
+  const find_ = (buf, box, t) => box && boxes_(buf, box.s, box.e).find((x) => x.t === t);
+  function tcText_(f, base, drop) {
+    if (drop && (base === 30 || base === 60)) {
+      const d = base === 30 ? 2 : 4, per10 = base * 600 - d * 9, per1 = base * 60 - d;
+      const D = Math.floor(f / per10), M = f % per10;
+      f += d * 9 * D + (M > d ? d * Math.floor((M - d) / per1) : 0);
+    }
+    const fr = f % base, s = Math.floor(f / base) % 60, m = Math.floor(f / (base * 60)) % 60, h = Math.floor(f / (base * 3600)) % 24;
+    return `${pad2(h)}:${pad2(m)}:${pad2(s)}${drop ? ';' : ':'}${pad2(fr)}`;
+  }
+  function meta_(file) {
+    const out = { dur: 0, fps: 0, tc: '', tcs: null };
+    let fd;
+    try {
+      fd = fs.openSync(file, 'r');
+      const size = fs.fstatSync(fd).size;
+      let pos = 0, moov = null;
+      while (pos + 8 <= size) {
+        const h = readAt_(fd, pos, 16);
+        if (h.length < 8) break;
+        let len = h.readUInt32BE(0); const type = h.toString('latin1', 4, 8); let hdr = 8;
+        if (len === 1 && h.length >= 16) { len = Number(h.readBigUInt64BE(8)); hdr = 16; } else if (len === 0) len = size - pos;
+        if (len < hdr) break;
+        if (type === 'moov') { if (len <= 64 * 1024 * 1024) moov = readAt_(fd, pos + hdr, len - hdr); break; }
+        pos += len;
+      }
+      if (!moov) return out;
+      const root = { s: 0, e: moov.length };
+      const mvhd = find_(moov, root, 'mvhd');
+      if (mvhd) {
+        const v1 = moov[mvhd.s] === 1;
+        const ts = moov.readUInt32BE(mvhd.s + (v1 ? 20 : 12));
+        const du = v1 ? Number(moov.readBigUInt64BE(mvhd.s + 24)) : moov.readUInt32BE(mvhd.s + 16);
+        if (ts) out.dur = Math.round((du / ts) * 10) / 10;
+      }
+      for (const trak of boxes_(moov, 0, moov.length).filter((x) => x.t === 'trak')) {
+        const mdia = find_(moov, trak, 'mdia');
+        const hdlr = find_(moov, mdia, 'hdlr');
+        const stbl = find_(moov, find_(moov, mdia, 'minf'), 'stbl');
+        if (!hdlr || !stbl) continue;
+        const ht = moov.toString('latin1', hdlr.s + 8, hdlr.s + 12);
+        if (ht === 'vide' && !out.fps) {
+          const mdhd = find_(moov, mdia, 'mdhd'), stts = find_(moov, stbl, 'stts');
+          if (mdhd && stts && moov.readUInt32BE(stts.s + 4) > 0) {
+            const ts = moov.readUInt32BE(mdhd.s + (moov[mdhd.s] === 1 ? 20 : 12));
+            const delta = moov.readUInt32BE(stts.s + 12);
+            if (delta) out.fps = Math.round((ts / delta) * 1000) / 1000;
+          }
+        }
+        if (ht === 'tmcd' && !out.tc) {
+          const stsd = find_(moov, stbl, 'stsd');
+          if (!stsd) continue;
+          const ent = stsd.s + 8;
+          if (moov.toString('latin1', ent + 4, ent + 8) !== 'tmcd') continue;
+          const d = ent + 8;
+          const flags = moov.readUInt32BE(d + 12), tsc = moov.readUInt32BE(d + 16), fdur = moov.readUInt32BE(d + 20);
+          const nf = moov[d + 24];
+          const co = find_(moov, stbl, 'stco') || find_(moov, stbl, 'co64');
+          if (!co || moov.readUInt32BE(co.s + 4) < 1) continue;
+          const off = co.t === 'co64' ? Number(moov.readBigUInt64BE(co.s + 8)) : moov.readUInt32BE(co.s + 8);
+          const fb = readAt_(fd, off, 4);
+          if (fb.length < 4) continue;
+          const frames = fb.readUInt32BE(0);
+          const base = nf || Math.round(tsc / (fdur || 1)) || 24;
+          out.tc = tcText_(frames, base, !!(flags & 1));
+          out.tcs = Math.round((frames / base) * 100) / 100;
+        }
+      }
+    } catch {} finally { if (fd !== undefined) try { fs.closeSync(fd); } catch {} }
+    return out;
+  }
+
+  /* ── 폴더 훑기 (같은 페이지는 15초 동안 결과를 재사용) */
+  const META = new Map();   // 파일 경로 → { size, mtime, m }
+  const SCAN = new Map();   // 폴더 → { at, r }
+  function camOf_(stem) { const m = /^([A-Z])\d{3}[A-Z]\d{3}/i.exec(stem); return m ? m[1].toUpperCase() : ''; }
+  function dayNo_(name) { const m = /^(\d{1,3})\s*(?:회차|회)?/.exec(name); return m ? String(Number(m[1])) : ''; }
+  function scan_(folder, fresh) {
+    const hit = SCAN.get(folder);
+    if (!fresh && hit && Date.now() - hit.at < 15000) return hit.r;
+    const root = path.join(DIR, folder);
+    const days = [], clips = [];
+    let names = [];
+    try { names = fs.readdirSync(root, { withFileTypes: true }).filter((x) => x.isDirectory() && !skip(x.name)).map((x) => x.name); } catch {}
+    names.forEach((dn) => {
+      const files = [];
+      const walk = (abs, rel, depth) => {
+        let list = [];
+        try { list = fs.readdirSync(abs, { withFileTypes: true }); } catch { return; }
+        list.forEach((x) => {
+          if (skip(x.name)) return;
+          if (x.isDirectory() && depth < 2) return walk(path.join(abs, x.name), rel + x.name + '/', depth + 1);
+          if (x.isFile() && VIDEO_EXT.includes(path.extname(x.name).toLowerCase())) files.push(rel + x.name);
+        });
+      };
+      walk(path.join(root, dn), '', 0);
+      let latest = 0;
+      files.forEach((rel) => {
+        const abs = path.join(root, dn, rel);
+        let st; try { st = fs.statSync(abs); } catch { return; }
+        latest = Math.max(latest, st.mtimeMs);
+        let c = META.get(abs);
+        if (!c || c.size !== st.size || c.mtime !== st.mtimeMs) { c = { size: st.size, mtime: st.mtimeMs, m: meta_(abs) }; META.set(abs, c); }
+        const stem = N(path.basename(rel, path.extname(rel)));
+        clips.push({ d: N(dn), id: stem, f: N(rel), cam: camOf_(stem), tc: c.m.tc, tcs: c.m.tcs, dur: c.m.dur,
+          fps: c.m.fps, size: st.size, at: Math.round(st.mtimeMs) });
+      });
+      days.push({ d: N(dn), no: dayNo_(N(dn)), count: files.length, latest: Math.round(latest) });
+    });
+    const r = { days, clips, sig: clips.length + ':' + days.map((x) => x.latest).reduce((a, b) => Math.max(a, b), 0) };
+    SCAN.set(folder, { at: Date.now(), r });
+    return r;
+  }
+
+  /* ── 시트 */
+  const pageRow_ = (key) => rows_('스크립터').find((r) => String(r['키']).trim() === String(key || '').trim());
+  function page_(r) {
+    const proj = byId_('프로젝트', r['프로젝트ID']);
+    return { key: String(r['키']).trim(), projectId: Number(r['프로젝트ID']) || 0, title: String(r['작품명'] || ''),
+      code: proj ? String(proj['코드'] || '') : '', folder: String(r['폴더'] || ''),
+      spw: String(r['스크립터비번'] || ''), vpw: String(r['보기비번'] || ''), active: isOn_(r['활성']),
+      until: ymd_(r['만료일']), memo: String(r['메모'] || ''), createdAt: fmt_(r['등록일']), link: LINK + String(r['키']).trim() };
+  }
+  function shoots_(projectId) {
+    return rows_('회차').filter((x) => Number(x['프로젝트ID']) === Number(projectId) && String(x['상태']) !== '취소');
+  }
+  function dayLabel_(day, shoots) {
+    const s = day.no && shoots.find((x) => String(x['회차']) === day.no);
+    const date = s ? ymd_(s['날짜']) : '';
+    return { date, place: s ? String(s['장소'] || '') : '',
+      label: day.no ? `${day.no}회차` + (date ? ` · ${Number(date.slice(5, 7))}월 ${Number(date.slice(8, 10))}일` : '') : day.d };
+  }
+  function marksOf_(key) {
+    return rows_('스크립터클립').filter((x) => String(x['키']) === key).map((x) => ({ d: N(x['회차폴더']), id: N(x['클립']),
+      s: String(x['씬'] || ''), c: String(x['컷'] || ''), t: String(x['테이크'] || ''), st: String(x['상태'] || ''),
+      memo: String(x['메모'] || ''), by: String(x['수정자'] || ''), at: fmt_(x['수정시각']) }));
+  }
+  const devHash_ = (dev) => dev ? crypto.createHash('sha256').update('scr:' + String(dev)).digest('hex').slice(0, 24) : '';
+  function commentsOf_(key, dev) {
+    const h = devHash_(dev);
+    return rows_('스크립터코멘트').filter((x) => String(x['키']) === key).map((x) => ({ id: Number(x['ID']),
+      d: N(x['회차폴더']), clip: N(x['클립']), who: String(x['작성자'] || ''), txt: String(x['내용'] || ''),
+      at: fmt_(x['작성시각']), mine: !!h && String(x['기기']) === h }));
+  }
+
+  /* ── 공개: 비밀번호로 역할 정하기 */
+  function auth_(b) {
+    const r = pageRow_(b.p);
+    if (!r) return { err: { ok: false, error: 'none' } };
+    const pg = page_(r);
+    if (!pg.active) return { err: { ok: false, error: 'off', title: pg.title } };
+    if (isExpired_(pg.until)) return { err: { ok: false, error: 'expired', title: pg.title } };
+    const lk = b._ip ? 'spw:' + pg.key + ':' + b._ip : '';
+    if (lk && lockedFor_(lk)) return { err: { ok: false, error: 'locked', min: Math.ceil(lockedFor_(lk) / 60000) } };
+    const pw = String(b.pw || '').trim();
+    const role = pw && pw === pg.spw ? 'scripter' : pw && pw === pg.vpw ? 'viewer' : '';
+    if (!role) { if (lk) failed_(lk); return { err: { ok: false, error: 'pw' } }; }
+    if (lk) fails.delete(lk);
+    return { pg, role };
+  }
+  const txt_ = (v, n) => String(v == null ? '' : v).replace(/\r/g, '').trim().slice(0, n);
+  const num_ = (v) => String(v == null ? '' : v).replace(/[^0-9A-Za-z\-]/g, '').slice(0, 8);
+  function hasClip_(pg, d, id) { return scan_(pg.folder).clips.some((c) => c.d === N(d) && c.id === N(id)); }
+
+  function pub(b) {
+    const a = String(b.action || '');
+    if (a === 'scripter.meta') {
+      const r = pageRow_(b.p);
+      if (!r) return { ok: false, error: 'none' };
+      const pg = page_(r);
+      if (!pg.active) return { ok: false, error: 'off', title: pg.title };
+      if (isExpired_(pg.until)) return { ok: false, error: 'expired', title: pg.title };
+      return { ok: true, title: pg.title, code: pg.code };
+    }
+    const x = auth_(b);
+    if (x.err) return x.err;
+    const { pg, role } = x;
+    if (a === 'scripter.open' || a === 'scripter.sync') {
+      const sc = scan_(pg.folder, a === 'scripter.open' && !!b.fresh);
+      const out = { ok: true, role, sig: sc.sig, marks: marksOf_(pg.key), comments: commentsOf_(pg.key, b.dev) };
+      if (a === 'scripter.sync' && b.sig === sc.sig) return out;
+      const sh = shoots_(pg.projectId);
+      return Object.assign(out, { title: pg.title, code: pg.code,
+        base: BASE + encodeURIComponent(pg.folder) + '/',
+        days: sc.days.map((d) => Object.assign({ d: d.d, no: d.no, count: d.count }, dayLabel_(d, sh))),
+        clips: sc.clips.map((c) => ({ d: c.d, id: c.id, f: c.f, cam: c.cam, tc: c.tc, tcs: c.tcs, dur: c.dur, fps: c.fps, at: c.at })) });
+    }
+    if (a === 'scripter.mark') {
+      if (role !== 'scripter') return { ok: false, error: '스크립터 비밀번호로 들어와야 표시할 수 있어요.' };
+      if (!hasClip_(pg, b.d, b.clip)) return { ok: false, error: '클립을 찾지 못했어요. 새로고침해 주세요.' };
+      const st = STATUS.includes(String(b.st)) ? String(b.st) : '';
+      const set = { '씬': num_(b.s), '컷': num_(b.c), '테이크': num_(b.t), '상태': st, '메모': txt_(b.memo, 1000),
+        '수정자': txt_(b.by, 40), '수정시각': nowStr_() };
+      return tx_(() => {
+        const r = rows_('스크립터클립').find((y) => String(y['키']) === pg.key && N(y['회차폴더']) === N(b.d) && N(y['클립']) === N(b.clip));
+        const empty = !set['씬'] && !set['컷'] && !set['테이크'] && !set['상태'] && !set['메모'];
+        if (r) { if (empty) remove_(r); else patch_(r, set); }
+        else if (!empty) append_('스크립터클립', Object.assign({ '키': pg.key, '회차폴더': N(b.d), '클립': N(b.clip) }, set));
+        return { ok: true, at: set['수정시각'] };
+      });
+    }
+    if (a === 'scripter.comment') {
+      const t = txt_(b.txt, 1000), who = txt_(b.who, 40);
+      if (!t) return { ok: false, error: '내용을 적어 주세요.' };
+      if (!who) return { ok: false, error: '이름을 적어 주세요.' };
+      if (!hasClip_(pg, b.d, b.clip)) return { ok: false, error: '클립을 찾지 못했어요. 새로고침해 주세요.' };
+      return tx_(() => {
+        const id = nextId_('스크립터코멘트');
+        append_('스크립터코멘트', [id, pg.key, N(b.d), N(b.clip), who, t, nowStr_(), devHash_(b.dev), role === 'scripter']);
+        return { ok: true, id };
+      });
+    }
+    if (a === 'scripter.uncomment') {
+      return tx_(() => {
+        const r = rows_('스크립터코멘트').find((y) => String(y['키']) === pg.key && Number(y['ID']) === Number(b.id));
+        if (!r) return { ok: true };
+        if (String(r['기기']) !== devHash_(b.dev)) return { ok: false, error: '내가 쓴 코멘트만 지울 수 있어요.' };
+        remove_(r);
+        return { ok: true };
+      });
+    }
+    if (a === 'scripter.csv') {
+      if (role !== 'scripter') return { ok: false, error: '스크립터만 내려받을 수 있어요.' };
+      return { ok: true, csv: csv_(pg, b.d), name: csvName_(pg, b.d) };
+    }
+    return { ok: false, error: 'unknown action' };
+  }
+
+  /* ── CSV (엑셀에서 바로 열리게 BOM 포함) */
+  function csvName_(pg, d) { return `${pg.code || 'SCRIPTER'}_스크립터_${d ? N(d) : '전체'}_${kst_().slice(0, 10)}.csv`; }
+  function csv_(pg, onlyDay) {
+    const sc = scan_(pg.folder, true), sh = shoots_(pg.projectId);
+    const dayInfo = {}; sc.days.forEach((d) => { dayInfo[d.d] = Object.assign({ no: d.no }, dayLabel_(d, sh)); });
+    const mk = {}; marksOf_(pg.key).forEach((m) => { mk[m.d + '\u0000' + m.id] = m; });
+    const cm = {}; commentsOf_(pg.key).forEach((c) => { (cm[c.d + '\u0000' + c.clip] = cm[c.d + '\u0000' + c.clip] || []).push(`${c.who}: ${c.txt}`); });
+    const list = sc.clips.filter((c) => !onlyDay || c.d === N(onlyDay)).sort((x, y) => {
+      const nx = Number(dayInfo[x.d].no) || 9999, ny = Number(dayInfo[y.d].no) || 9999;
+      if (nx !== ny) return nx - ny;
+      if (x.d !== y.d) return x.d.localeCompare(y.d);
+      if (x.tcs != null && y.tcs != null && x.tcs !== y.tcs) return x.tcs - y.tcs;
+      return x.id.localeCompare(y.id);
+    });
+    const q = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const head = ['회차', '날짜', '클립', '카메라', '시작 TC', '길이(초)', '씬', '컷', '테이크', '상태', '스크립터 메모', '코멘트', '수정자', '수정시각'];
+    const lines = list.map((c) => {
+      const m = mk[c.d + '\u0000' + c.id] || {}, di = dayInfo[c.d];
+      return [di.no ? di.no + '회차' : c.d, di.date, c.id, c.cam, c.tc, c.dur, m.s, m.c, m.t, LABEL[m.st] || '', m.memo,
+        (cm[c.d + '\u0000' + c.id] || []).join(' / '), m.by, m.at].map(q).join(',');
+    });
+    return '﻿' + [head.join(','), ...lines].join('\n');
+  }
+
+  /* ── 회차 폴더 만들기: 프로젝트의 촬영 회차마다 '08회차_1118' */
+  function makeDays_(pg) {
+    const root = path.join(DIR, pg.folder);
+    mkdir_(root);
+    const have = new Set();
+    try { fs.readdirSync(root, { withFileTypes: true }).forEach((x) => { if (x.isDirectory()) { const n = dayNo_(N(x.name)); if (n) have.add(n); } }); } catch {}
+    const made = [];
+    shoots_(pg.projectId).forEach((s) => {
+      const no = String(Number(String(s['회차']).replace(/[^0-9]/g, '')) || '');
+      if (!no || have.has(no)) return;
+      const date = ymd_(s['날짜']);
+      const name = `${pad2(no)}회차` + (date ? '_' + date.slice(5, 7) + date.slice(8, 10) : '');
+      mkdir_(path.join(root, name));
+      have.add(no); made.push(name);
+    });
+    SCAN.delete(pg.folder);
+    return made;
+  }
+
+  /* ── 관리 (허브 로그인) */
+  function admin(a, b) {
+    if (a === 'scripter.list') {
+      const pages = rows_('스크립터').map(page_);
+      const marks = rows_('스크립터클립'), cms = rows_('스크립터코멘트');
+      return { ok: true, ready: ready(), dir: DIR, pages: pages.map((p) => {
+        const sc = scan_(p.folder);
+        const my = marks.filter((m) => String(m['키']) === p.key);
+        const sh = shoots_(p.projectId);
+        return Object.assign(p, { clips: sc.clips.length,
+          marked: my.filter((m) => m['상태']).length, ok: my.filter((m) => m['상태'] === 'ok').length,
+          ng: my.filter((m) => m['상태'] === 'ng').length,
+          comments: cms.filter((c) => String(c['키']) === p.key).length,
+          unread: cms.filter((c) => String(c['키']) === p.key && !isTrue_(c['읽음'])).length,
+          days: sc.days.map((d) => {
+            const dm = my.filter((m) => N(m['회차폴더']) === d.d);
+            return Object.assign({ d: d.d, count: d.count, marked: dm.filter((m) => m['상태']).length }, dayLabel_(d, sh));
+          }) });
+      }) };
+    }
+    if (a === 'scripter.save') {
+      const spw = String(b.spw || '').trim(), vpw = String(b.vpw || '').trim();
+      if (spw.length < 4 || vpw.length < 4) return { ok: false, error: '비밀번호는 둘 다 4글자 이상으로 정해 주세요.' };
+      if (spw === vpw) return { ok: false, error: '스크립터용과 보기용 비밀번호는 서로 달라야 해요.' };
+      const set = { '작품명': txt_(b.title, 80), '스크립터비번': spw, '보기비번': vpw,
+        '만료일': b.until || '', '활성': b.active !== false, '메모': txt_(b.memo, 500) };
+      const r = b.key ? pageRow_(b.key) : null;
+      if (r) { patch_(r, set); return { ok: true, key: String(r['키']).trim(), link: LINK + String(r['키']).trim() }; }
+      const proj = byId_('프로젝트', b.projectId);
+      if (!proj) return { ok: false, error: '프로젝트를 골라 주세요.' };
+      if (!set['작품명']) set['작품명'] = String(proj['이름'] || '');
+      let key;
+      do { key = crypto.randomBytes(8).toString('base64url').replace(/[^a-z0-9]/gi, '').slice(0, 8).toLowerCase(); }
+      while (key.length < 8 || pageRow_(key));
+      const code = String(proj['코드'] || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+      const folder = (code || 'SCR') + '_' + key;
+      append_('스크립터', Object.assign({ '키': key, '프로젝트ID': Number(b.projectId), '폴더': folder, '등록일': nowStr_() }, set));
+      const pg = page_(pageRow_(key));
+      let made = [], folderError = '';
+      try { made = makeDays_(pg); } catch (e) { folderError = `NAS 폴더를 만들지 못했어요 (${String(e.message || e)}). 컨테이너 설정을 확인해 주세요.`; }
+      return { ok: true, key, link: pg.link, folder, made, folderError };
+    }
+    if (a === 'scripter.folders') {
+      const r = pageRow_(b.key);
+      if (!r) return { ok: false, error: '페이지를 찾지 못했어요.' };
+      try { return { ok: true, made: makeDays_(page_(r)) }; }
+      catch (e) { return { ok: false, error: `NAS 폴더를 만들지 못했어요 (${String(e.message || e)})` }; }
+    }
+    if (a === 'scripter.delete') {
+      const r = pageRow_(b.key);
+      if (!r) return { ok: true };
+      const key = String(r['키']).trim(), folder = String(r['폴더'] || '');
+      remove_(r);
+      if (b.withData) ['스크립터클립', '스크립터코멘트'].forEach((n) => rows_(n).filter((x) => String(x['키']) === key).forEach(remove_));
+      return { ok: true, folder };   // 영상 폴더는 지우지 않습니다 (NAS 에서 직접 정리)
+    }
+    if (a === 'scripter.markRead') {
+      rows_('스크립터코멘트').filter((c) => String(c['키']) === String(b.key) && !isTrue_(c['읽음'])).forEach((c) => patch_(c, { '읽음': true }));
+      return { ok: true };
+    }
+    if (a === 'scripter.csv') {
+      const r = pageRow_(b.key);
+      if (!r) return { ok: false, error: '페이지를 찾지 못했어요.' };
+      const pg = page_(r);
+      return { ok: true, csv: csv_(pg, b.d), name: csvName_(pg, b.d) };
+    }
+    return { ok: false, error: 'unknown action' };
+  }
+
+  /* 허브 첫 화면 배지용 (폴더는 훑지 않음) */
+  function bundle() {
+    const cms = rows_('스크립터코멘트');
+    return { pages: rows_('스크립터').filter((r) => isOn_(r['활성'])).length,
+      unread: cms.filter((c) => !isTrue_(c['읽음'])).length };
+  }
+
+  return { ready, pub, admin, bundle, meta_, DIR, BASE };
+})();
+
 // ══════════════════════════════════════════ 허브 기능 (로그인 필요)
 const PD_ALLOWED = [
   'bootstrap', 'me', 'project.add', 'project.update', 'project.delete',
@@ -965,7 +1366,7 @@ const PD_ALLOWED = [
   'shoot.save', 'shoot.delete', 'shoot.bulk', 'shoot.import',
 ];
 const READ_ONLY = ['bootstrap', 'me', 'review.videos', 'envelope', 'envelopes', 'unlock', 'user.list',
-                   'recovery.status', 'calendar.check', 'log.list', 'folder.list'];
+                   'recovery.status', 'calendar.check', 'log.list', 'folder.list', 'scripter.list', 'scripter.csv'];
 
 async function rpc_(b) {
   const who = b._who || {};
@@ -1484,6 +1885,9 @@ function admin_(a, b, who) {
       if (r) remove_(r);
       return { ok: true };
     }
+    case 'scripter.list': case 'scripter.save': case 'scripter.folders': case 'scripter.delete':
+    case 'scripter.markRead': case 'scripter.csv':
+      return SCRIPTER.admin(a, b);
     case 'review.markRead': {
       const map = { comments: '리뷰코멘트', records: '납품기록', intakes: '문진', inquiries: '문의' };
       (b.kinds || Object.keys(map)).forEach((k) => {
@@ -1598,6 +2002,7 @@ function bootstrapAdmin_(who) {
       totalTax: Number(r['소득세합계']) || 0, localTax: Number(r['지방소득세']) || 0,
       hometax: fmt_(r['홈택스신고일']), wetax: fmt_(r['위택스신고일']), memo: String(r['메모'] || '') })),
     reviews: reviewsBundle_(),
+    scripter: SCRIPTER.bundle(),
     company: cfgGet_('회사명') || COMPANY_DEFAULT['회사명'],
     companyInfo: companyInfo_(),
     rates: rates_(),
@@ -1828,7 +2233,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
     if (url.pathname === '/health') return send(res, 200, { ok: true, v: VERSION,
-      folder: FOLDER.ready(), calendar: GCAL.ready() ? 'direct' : (GAS_URL ? 'gas' : 'off') });
+      folder: FOLDER.ready(), scripter: SCRIPTER.ready(), calendar: GCAL.ready() ? 'direct' : (GAS_URL ? 'gas' : 'off') });
     if (!okToken(req)) return send(res, 401, { ok: false, error: 'unauthorized' });
 
     if (req.method === 'GET' && url.pathname === '/export') {
@@ -1861,5 +2266,6 @@ server.listen(PORT, () => {
   let rv = '(없음!)';
   try { fs.accessSync(REVIEW_DIR, fs.constants.W_OK); rv = REVIEW_DIR; } catch {}
   console.log(`${VERSION} — :${PORT}, 데이터 ${DATA}, QNAP ${QNAP_URL || '(미설정)'}, 그룹 파일 ${gf || '(없음!)'}, 리뷰 영상 폴더 ${rv}`);
+  console.log(`스크립터 영상 폴더 ${SCRIPTER.ready() ? SCRIPTER.DIR : '(쓸 수 없음!) ' + SCRIPTER.DIR} → ${SCRIPTER.BASE}`);
   console.log(`의뢰 폴더 ${FOLDER.ready() ? FOLDER.ROOT : '(연결 안 됨)'}, 캘린더 ${GCAL.ready() ? '직접 연동' : (GAS_URL ? '앱스스크립트 경유' : '(미설정)')}`);
 });

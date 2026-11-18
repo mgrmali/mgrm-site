@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>스크립터 · 맹그라미</title>
+<link rel="stylesheet" href="wct-style.css">
+<style>
+  .pg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .pg.off{opacity:.55}
+  .pg .hd{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .pg .tt{font-weight:800;font-size:15px}
+  .pg .key{font-family:monospace;color:var(--dim);font-size:12px}
+  .pg .meta{color:var(--dim);font-size:12.5px;margin-top:6px;line-height:1.75}
+  .pg .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .path{font-family:monospace;font-size:12.5px;background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:2px 7px;cursor:pointer}
+  .days{margin-top:10px;font-size:12.5px}
+  .days td,.days th{padding:6px 8px}
+  .bar2{height:6px;border-radius:4px;background:var(--line);overflow:hidden;min-width:80px}
+  .bar2 i{display:block;height:100%;background:var(--ci)}
+  .pwrow{display:flex;gap:6px}
+  .pwrow input{flex:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="bar">
+      <h2 style="margin:0;flex:1">스크립터 클립 확인</h2>
+      <button class="b" id="btnNew">＋ 새 페이지</button>
+    </div>
+    <div class="note">
+      작품 하나에 <b>링크 하나</b>예요. 회차가 늘어도 같은 링크를 쓰면 돼요.<br>
+      ① 새 페이지를 만들면 NAS <b>Web/scripter/</b> 안에 작품 폴더와 회차 폴더(08회차_1118)가 생겨요.
+      ② 회차가 끝나면 프리뷰 MP4(H.264, 원본 클립 이름 그대로)를 그 회차 폴더에 넣어요.
+      ③ 스크립터에게는 링크와 <b>스크립터 비밀번호</b>를, 감독·조감독에게는 같은 링크와 <b>보기용 비밀번호</b>를 보내요.<br>
+      회차 폴더는 프로젝트의 촬영 회차를 보고 만들어요. 회차를 새로 넣었으면 <b>회차 폴더 만들기</b>를 누르세요.
+    </div>
+    <div class="msg bad hide" id="notReady"></div>
+    <label style="display:flex;align-items:center;gap:7px;color:var(--dim);font-size:12.5px;margin:0 0 12px">
+      <input type="checkbox" id="showOff" style="width:auto"> 닫힌 페이지도 보기
+    </label>
+    <div id="pgList"><div class="dim">불러오는 중…</div></div>
+  </div>
+</div>
+
+<dialog id="dlg">
+  <div style="display:flex;gap:12px;align-items:center">
+    <h2 style="flex:1;margin:0" id="dTitle">새 스크립터 페이지</h2>
+    <button class="g sm" onclick="$('dlg').close()">닫기</button>
+  </div>
+  <label>프로젝트</label>
+  <select id="dProj"></select>
+  <label>작품명 (페이지 맨 위에 보여요)</label>
+  <input id="dName" placeholder="유해한 낮">
+  <div class="row r2">
+    <div><label>스크립터 비밀번호 (표시·입력)</label>
+      <div class="pwrow"><input id="dSpw" autocomplete="off"><button class="g sm" type="button" onclick="$('dSpw').value=rnd()">만들기</button></div></div>
+    <div><label>보기용 비밀번호 (감독·조감독 · 코멘트)</label>
+      <div class="pwrow"><input id="dVpw" autocomplete="off"><button class="g sm" type="button" onclick="$('dVpw').value=rnd()">만들기</button></div></div>
+  </div>
+  <div class="row r2">
+    <div><label>만료일 (비우면 계속 열림)</label><input id="dUntil" type="date"></div>
+    <div><label>&nbsp;</label><label style="margin:8px 0 0;display:flex;align-items:center;gap:7px"><input type="checkbox" id="dActive" checked style="width:auto"> 페이지 열기</label></div>
+  </div>
+  <label>메모 (내부용)</label>
+  <input id="dMemo">
+  <div class="bar" style="margin-top:16px">
+    <button class="b" id="dSave">저장</button>
+    <button class="g" id="dDelete" style="margin-left:auto;color:var(--bad)">삭제</button>
+  </div>
+  <div class="msg hide" id="dMsg"></div>
+</dialog>
+
+<script src="wct-core.js"></script>
+<script>
+let PAGES = [], DIR = '', EDIT = '';
+const rnd = () => { const cs = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from(crypto.getRandomValues(new Uint8Array(6)), (n) => cs[n % cs.length]).join(''); };
+
+(async function boot() {
+  if (!await WCT.requireAuth(true)) return;
+  mountHeader('스크립터');
+  window.__onReload = refresh;
+  WCT.load(false).catch(() => {});   // 프로젝트 목록 (새 페이지 만들 때)
+  await refresh();
+})();
+
+async function refresh() {
+  try {
+    const j = await WCT.api('scripter.list');
+    PAGES = j.pages || []; DIR = j.dir || '';
+    $('notReady').classList.toggle('hide', !!j.ready);
+    $('notReady').textContent = `NAS 스크립터 폴더(${DIR})에 쓸 수 없어요. Container Station 에서 Web 공유 폴더 연결을 확인해 주세요.`;
+    render();
+  } catch (e) { $('pgList').innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
+}
+$('showOff').onchange = render;
+
+function render() {
+  const list = PAGES.slice().reverse().filter((p) => $('showOff').checked || p.active);
+  $('pgList').innerHTML = list.length ? list.map((p) => {
+    const exp = p.until && new Date(p.until + 'T23:59:59') < new Date();
+    const days = (p.days || []).filter((d) => d.count > 0 || true);
+    return `<div class="pg ${p.active ? '' : 'off'}">
+      <div class="hd"><span class="tt">${esc(p.title || '(제목 없음)')}</span>
+        ${p.code ? `<span class="pill">${esc(p.code)}</span>` : ''}<span class="key">${esc(p.key)}</span>
+        ${p.active ? (exp ? '<span class="pill bad">만료</span>' : '<span class="pill done">열림</span>') : '<span class="pill">닫힘</span>'}
+        ${p.unread ? `<span class="pill wait">새 코멘트 ${p.unread}</span>` : ''}</div>
+      <div class="meta">
+        NAS 폴더: <span class="path" title="눌러서 복사" onclick="copyPath('${esc(p.key)}')">Web/scripter/${esc(p.folder)}/</span><br>
+        클립 ${p.clips}개 · 표시 ${p.marked}개 (OK ${p.ok} · NG ${p.ng}) · 코멘트 ${p.comments}개
+        ${p.until ? ' · 만료 ' + esc(p.until) : ''}${p.memo ? '<br>메모: ' + esc(p.memo) : ''}
+      </div>
+      ${days.length ? `<table class="days"><thead><tr><th>회차 폴더</th><th>회차</th><th class="n">클립</th><th class="n">표시</th><th style="width:30%"></th></tr></thead><tbody>
+        ${days.map((d) => `<tr><td class="mono" style="font-family:monospace">${esc(d.d)}</td><td>${esc(d.label)}${d.place ? ' · ' + esc(d.place) : ''}</td>
+          <td class="n">${d.count}</td><td class="n">${d.marked}</td>
+          <td><div class="bar2"><i style="width:${d.count ? Math.round(d.marked / d.count * 100) : 0}%"></i></div></td></tr>`).join('')}
+      </tbody></table>` : '<div class="dim" style="font-size:12.5px;margin-top:8px">회차 폴더가 아직 없어요. 프로젝트에 촬영 회차를 넣고 [회차 폴더 만들기]를 누르세요.</div>'}
+      <div class="acts">
+        <button class="g sm" onclick="copyLink('${esc(p.key)}')">링크 복사</button>
+        <button class="g sm" onclick="copyMsg('${esc(p.key)}','s')">스크립터 안내 복사</button>
+        <button class="g sm" onclick="copyMsg('${esc(p.key)}','v')">감독·조감독 안내 복사</button>
+        <a class="g sm" style="text-decoration:none;display:inline-block;padding:6px 11px;border:1px solid var(--line);border-radius:9px;font-size:12px" href="${esc(p.link)}" target="_blank">열어보기 ↗</a>
+        <span style="flex:1"></span>
+        <button class="g sm" onclick="makeDays('${esc(p.key)}')">회차 폴더 만들기</button>
+        <button class="g sm" onclick="csv('${esc(p.key)}')">CSV</button>
+        ${p.unread ? `<button class="g sm" onclick="markRead('${esc(p.key)}')">코멘트 읽음</button>` : ''}
+        <button class="g sm" onclick="openDlg('${esc(p.key)}')">편집</button>
+      </div></div>`;
+  }).join('') : '<div class="dim">스크립터 페이지가 없어요. [새 페이지]로 만들어 보세요.</div>';
+}
+const pg = (k) => PAGES.find((p) => p.key === k);
+async function copyLink(k) { await copyText(pg(k).link); toast('링크를 복사했어요.'); }
+async function copyPath(k) { await copyText(`Web/scripter/${pg(k).folder}/`); toast('NAS 폴더 경로를 복사했어요.'); }
+async function copyMsg(k, who) {
+  const p = pg(k);
+  const body = who === 's'
+    ? `${p.title} 스크립터 클립 확인 페이지예요.\n\n${p.link}\n비밀번호: ${p.spw}\n\n회차마다 촬영 클립이 올라와요. 클립을 보면서 씬·컷·테이크를 적고 OK·NG·KEEP 을 눌러 주세요.\n키보드 1·2·3 으로도 누를 수 있고, 누르면 다음 클립으로 넘어가요.`
+    : `${p.title} 촬영 클립 확인 페이지예요.\n\n${p.link}\n비밀번호: ${p.vpw}\n\n스크립터가 표시한 OK·NG 를 볼 수 있고, 클립마다 코멘트를 남길 수 있어요.`;
+  await copyText(body); toast('안내 문구를 복사했어요.');
+}
+async function makeDays(k) {
+  try { const j = await WCT.api('scripter.folders', { key: k });
+    toast(j.made.length ? `회차 폴더 ${j.made.length}개를 만들었어요: ${j.made.join(', ')}` : '새로 만들 회차 폴더가 없어요.');
+    refresh(); } catch (e) { toast(e.message, true); }
+}
+async function csv(k) {
+  try {
+    const j = await WCT.api('scripter.csv', { key: k });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([j.csv], { type: 'text/csv;charset=utf-8' })); a.download = j.name;
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { toast(e.message, true); }
+}
+async function markRead(k) { try { await WCT.api('scripter.markRead', { key: k }); refresh(); } catch (e) { toast(e.message, true); } }
+
+$('btnNew').onclick = () => openDlg('');
+function openDlg(k) {
+  EDIT = k;
+  const p = pg(k) || { title: '', spw: rnd(), vpw: rnd(), until: '', active: true, memo: '', projectId: 0 };
+  const projs = ((WCT.data && WCT.data.projects) || []).filter((x) => x.active !== false || x.id === p.projectId).slice().reverse();
+  $('dProj').innerHTML = (k ? '' : '<option value="">프로젝트 고르기…</option>') + projs.map((x) =>
+    `<option value="${x.id}">${x.code ? '[' + esc(x.code) + '] ' : ''}${esc(x.name)}${x.client ? ' · ' + esc(x.client) : ''}</option>`).join('');
+  $('dProj').value = k ? String(p.projectId) : '';
+  $('dProj').disabled = !!k;
+  $('dTitle').textContent = k ? `편집 · ${p.title}` : '새 스크립터 페이지';
+  $('dName').value = p.title; $('dSpw').value = p.spw; $('dVpw').value = p.vpw;
+  $('dUntil').value = p.until || ''; $('dActive').checked = !!p.active; $('dMemo').value = p.memo;
+  $('dDelete').classList.toggle('hide', !k);
+  $('dMsg').className = 'msg hide';
+  $('dlg').showModal();
+}
+$('dProj').onchange = () => {
+  const x = ((WCT.data && WCT.data.projects) || []).find((p) => String(p.id) === $('dProj').value);
+  if (x && !$('dName').value) $('dName').value = x.name;
+};
+$('dSave').onclick = async () => {
+  const msg = (t, ok) => { $('dMsg').className = 'msg ' + (ok ? 'ok' : 'bad'); $('dMsg').textContent = t; };
+  if (!EDIT && !$('dProj').value) return msg('프로젝트를 골라 주세요. 회차 폴더를 그 프로젝트의 촬영 회차로 만들어요.');
+  $('dSave').disabled = true;
+  try {
+    const j = await WCT.api('scripter.save', { key: EDIT, projectId: Number($('dProj').value), title: $('dName').value.trim(),
+      spw: $('dSpw').value.trim(), vpw: $('dVpw').value.trim(), until: $('dUntil').value, active: $('dActive').checked, memo: $('dMemo').value.trim() });
+    await refresh();
+    if (!EDIT) {
+      if (j.folderError) return msg(j.folderError);
+      msg(`만들었어요. NAS 폴더: Web/scripter/${j.folder}/` + (j.made && j.made.length ? ` · 회차 폴더 ${j.made.length}개` : ' · 회차 폴더는 아직 없어요 (프로젝트에 촬영 회차를 넣어 주세요)'), true);
+      EDIT = j.key; $('dDelete').classList.remove('hide'); $('dProj').disabled = true;
+    } else { $('dlg').close(); toast('저장했어요.'); }
+  } catch (e) { msg(e.message); }
+  finally { $('dSave').disabled = false; }
+};
+$('dDelete').onclick = async () => {
+  const p = pg(EDIT); if (!p) return;
+  if (!confirm(`'${p.title}' 스크립터 페이지를 지울까요?\n링크가 더 이상 열리지 않아요.`)) return;
+  const withData = confirm('스크립터가 적은 씬·컷·테이크·OK/NG 와 코멘트도 함께 지울까요?\n(취소를 누르면 기록은 남겨 둡니다)');
+  try {
+    const j = await WCT.api('scripter.delete', { key: EDIT, withData });
+    $('dlg').close(); await refresh();
+    toast(`지웠어요. 영상 폴더(Web/scripter/${j.folder}/)는 NAS에서 직접 정리해 주세요.`);
+  } catch (e) { $('dMsg').className = 'msg bad'; $('dMsg').textContent = e.message; }
+};
+</script>
+</body>
+</html>
