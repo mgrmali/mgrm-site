@@ -150,10 +150,10 @@ Zero Trust → Networks → Tunnels → 기존 `color-diary-nas` → Public Host
 - 캘린더에서 직접 고치면 다음 반영 때 허브 내용으로 되돌아갑니다
 
 
-## 8부. 스크립터 클립 확인 (hub-store 1.7.0)
+## 8부. 테이크 체크 (구 스크립터 클립 확인, hub-store 1.7.0)
 
 촬영 클립 프리뷰를 스크립터가 보면서 **씬·컷·테이크**를 적고 **OK / NG / KEEP** 을 표시하는 페이지입니다.
-작품 하나에 링크 하나 (`https://hub.mgrm.kr/scripter.html?p=키`), 회차가 늘어도 같은 링크를 씁니다.
+작품 하나에 링크 하나 (`https://hub.mgrm.kr/take.html?p=키` (예전 `scripter.html` 링크는 자동으로 넘어감)), 회차가 늘어도 같은 링크를 씁니다.
 
 페이지마다 **명단**을 둡니다. 이름이 곧 아이디이고, 비밀번호(숫자 4자리)는 사람마다 따로 자동으로 만들어집니다 (1.6.0).
 이름 + 그 사람 비밀번호가 맞아야 들어오고, 화면·표시·코멘트·워터마크에 그 이름이 찍힙니다.
@@ -171,7 +171,7 @@ Zero Trust → Networks → Tunnels → 기존 `color-diary-nas` → Public Host
   전체 화면은 페이지의 [전체 화면] 버튼으로 워터마크까지 같이 커집니다. 아이폰 전체 화면은 영상만 커지므로 렌더 번인 글자를 함께 쓰세요
 - 이름 비교는 띄어쓰기·대소문자를 무시합니다. 이름마다 5번 틀리면 15분 잠깁니다
 
-- 관리: 허브 홈 → **스크립터** (관리자). 새 페이지를 만들면 NAS `Web/scripter/코드_키/` 와
+- 관리: 허브 홈 → **테이크 체크** (관리자). 새 페이지를 만들면 NAS `Web/scripter/코드_키/` 와
   프로젝트 촬영 회차마다 `08회차_1118` 폴더가 생깁니다. 회차를 새로 넣었으면 [회차 폴더 만들기]
 - 영상: 회차 폴더에 프리뷰 MP4(H.264, **원본 클립 이름 그대로**)를 FTP·Finder 로 넣으면 끝. 하위 폴더 2단계까지 읽습니다
 - 영상 주소는 리뷰 영상처럼 QNAP 웹 서버(:8081)가 내보냅니다 → `https://mgrm.myqnapcloud.com:8081/scripter/…`
@@ -180,7 +180,7 @@ Zero Trust → Networks → Tunnels → 기존 `color-diary-nas` → Public Host
   A·B캠 같은 테이크 자동 채우기에 씁니다. 없으면 클립 이름 순서로 정렬합니다
 - 컨테이너 설정은 **바꿀 것 없음** (기존 `/share/Web:/web` 연결을 그대로 씀). 확인: `/health` 에 `"scripter":true`
 - 필요하면 환경변수: `SCRIPTER_DIR`(기본 `/web/scripter`), `SCRIPTER_BASE`(기본 VIDEO_BASE 의 review → scripter),
-  `SCRIPTER_LINK`(기본 `https://hub.mgrm.kr/scripter.html?p=`)
+  `SCRIPTER_LINK`(기본 `https://hub.mgrm.kr/take.html?p=`)
 - 같은 IP 에서 5번 틀려도 15분 잠깁니다. 페이지를 지워도 영상 폴더는 남습니다 (NAS 에서 직접 정리)
 
 ---

@@ -115,7 +115,7 @@ const SHEETS = {
              '최종 전달처', '규격서', '추가 버전', '최종 결정권자', '피드백 담당자', '감수 방식', '리뷰 환경', '기타 참고사항',
              '동의: 소스 보관', '동의: 수정 범위', '_유입경로', '_lang', '진행 상태', '읽음', '메모'],
   '문의':   ['접수번호', '접수시각', '이름/회사', '이메일', '문의 분야', '내용', '_유입경로', '진행 상태', '읽음', '메모'],
-  // ── 스크립터 클립 확인 (1.5.0)
+  // ── 테이크 체크 (구 스크립터 클립 확인, 1.5.0~)
   '스크립터':       ['키', '프로젝트ID', '작품명', '폴더', '스크립터비번', '보기비번', '활성', '만료일', '메모', '등록일'],
   '스크립터클립':   ['키', '회차폴더', '클립', '씬', '컷', '테이크', '상태', '메모', '수정자', '수정시각'],
   '스크립터코멘트': ['ID', '키', '회차폴더', '클립', '작성자', '내용', '작성시각', '기기', '읽음'],
@@ -966,7 +966,7 @@ const GCAL = (() => {
   return { ready, syncAll, later, check, guess, hubEvents, importShoots };
 })();
 
-// ══════════════════════════════════════════ 스크립터 클립 확인 (hub-store 1.5.0)
+// ══════════════════════════════════════════ 테이크 체크 (구 스크립터 클립 확인, hub-store 1.5.0~)
 /* 회차마다 프리뷰 MP4 를 NAS 'Web/scripter/<폴더>/<회차폴더>/' 에 넣으면
    스크립터가 링크 하나로 보면서 씬·컷·테이크와 OK/NG/KEEP 을 적고,
    감독·조감독은 보기용 비밀번호로 들어와 코멘트를 남깁니다.
@@ -985,7 +985,7 @@ const GCAL = (() => {
 const SCRIPTER = (() => {
   const DIR = path.resolve(process.env.SCRIPTER_DIR || path.join(path.dirname(REVIEW_DIR), 'scripter'));
   const BASE = process.env.SCRIPTER_BASE || VIDEO_BASE.replace(/review\/?$/, 'scripter/');
-  const LINK = process.env.SCRIPTER_LINK || 'https://hub.mgrm.kr/scripter.html?p=';
+  const LINK = process.env.SCRIPTER_LINK || 'https://hub.mgrm.kr/take.html?p=';
   const STATUS = ['ok', 'ng', 'keep'];
   const LABEL = { ok: 'OK', ng: 'NG', keep: 'KEEP' };
   const skip = (n) => n.startsWith('.') || n.startsWith('@') || n.startsWith('#') || n.startsWith('~$');
@@ -1300,7 +1300,7 @@ const SCRIPTER = (() => {
   }
 
   /* ── CSV (엑셀에서 바로 열리게 BOM 포함) */
-  function csvName_(pg, d) { return `${pg.code || 'SCRIPTER'}_스크립터_${d ? N(d) : '전체'}_${kst_().slice(0, 10)}.csv`; }
+  function csvName_(pg, d) { return `${pg.code || 'TAKE'}_테이크체크_${d ? N(d) : '전체'}_${kst_().slice(0, 10)}.csv`; }
   function csv_(pg, onlyDay) {
     const sc = scan_(pg.folder, true), sh = shoots_(pg.projectId);
     const dayInfo = {}; sc.days.forEach((d) => { dayInfo[d.d] = Object.assign({ no: d.no }, dayLabel_(d, sh)); });

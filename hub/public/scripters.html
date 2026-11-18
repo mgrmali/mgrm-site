@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>스크립터 · 맹그라미</title>
+<title>테이크 체크 · 맹그라미</title>
 <link rel="stylesheet" href="wct-style.css">
 <style>
   .pg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
@@ -33,7 +33,7 @@
 <div class="wrap">
   <div class="card">
     <div class="bar">
-      <h2 style="margin:0;flex:1">스크립터 클립 확인</h2>
+      <h2 style="margin:0;flex:1">테이크 체크</h2>
       <button class="b" id="btnNew">＋ 새 페이지</button>
     </div>
     <div class="note">
@@ -127,7 +127,7 @@ const ROLE = { scripter: '스크립터', viewer: '보기·코멘트' };
 
 (async function boot() {
   if (!await WCT.requireAuth(true)) return;
-  mountHeader('스크립터');
+  mountHeader('테이크 체크');
   window.__onReload = refresh;
   WCT.load(false).catch(() => {});   // 프로젝트 목록 (새 페이지 만들 때)
   await refresh();
@@ -136,7 +136,7 @@ const ROLE = { scripter: '스크립터', viewer: '보기·코멘트' };
 async function refresh() {
   try {
     const j = await WCT.api('scripter.list');
-    PAGES = j.pages || []; DIR = j.dir || '';
+    PAGES = (j.pages || []).map((x) => Object.assign(x, { link: location.origin + '/take.html?p=' + x.key })); DIR = j.dir || '';
     $('notReady').classList.toggle('hide', !!j.ready);
     $('notReady').textContent = `NAS 스크립터 폴더(${DIR})에 쓸 수 없어요. Container Station 에서 Web 공유 폴더 연결을 확인해 주세요.`;
     render();
@@ -200,7 +200,9 @@ function render() {
       </div></div>`;
   }).join('') : '<div class="dim">스크립터 페이지가 없어요. [새 페이지]로 만들어 보세요.</div>';
 }
-const pg = (k) => PAGES.find((p) => p.key === k);
+// 링크는 새 주소(take.html)로 만듭니다. 예전 scripter.html 링크도 자동으로 넘어가요
+const TAKE_URL = location.origin + '/take.html?p=';
+const pg = (k) => { const p = PAGES.find((x) => x.key === k); if (p) p.link = TAKE_URL + p.key; return p; };
 async function copyLink(k) { await copyText(pg(k).link); toast('링크를 복사했어요.'); }
 async function copyPath(k) { await copyText(`Web/scripter/${pg(k).folder}/`); toast('NAS 폴더 경로를 복사했어요.'); }
 const mem = (k, id) => (pg(k).members || []).find((m) => m.id === id);
@@ -209,7 +211,7 @@ async function copyMember(k, id) {
   const how = m.role === 'scripter'
     ? `회차마다 촬영 클립이 올라와요. 클립을 보면서 씬·컷·테이크를 적고 OK·NG·KEEP 을 눌러 주세요.\n키보드 1·2·3 으로도 누를 수 있고, 누르면 다음 클립으로 넘어가요.`
     : `스크립터가 표시한 OK·NG 를 볼 수 있고, 클립마다 코멘트를 남길 수 있어요.`;
-  const body = `${p.title} 촬영 클립 확인 페이지예요.\n\n${p.link}\n이름: ${m.name}\n비밀번호: ${m.pw}\n\n${how}\n화면에 이름이 표시되고 접속·재생 기록이 남아요. 링크와 비밀번호는 본인만 써 주세요.`;
+  const body = `${p.title} 테이크 체크 페이지예요.\n그날 찍은 테이크를 보고 OK·NG 를 확인하는 곳이에요.\n\n${p.link}\n이름: ${m.name}\n비밀번호: ${m.pw}\n\n${how}\n화면에 이름이 표시되고 접속·재생 기록이 남아요. 링크와 비밀번호는 본인만 써 주세요.`;
   await copyText(body); toast(`${m.name} 님 안내 문구를 복사했어요.`);
 }
 async function addMember(k) {
@@ -240,7 +242,7 @@ async function xlTemplate() {
   try {
     const X = await xlLib();
     xlSave(X, [['이름', '소속', '역할', '비밀번호'], ['김수연', '연출부', '스크립터', ''], ['이감독', '연출부', '보기', ''],
-      ['박조감', '연출부', '보기', '']], '스크립터명단_양식.xlsx', [14, 14, 12, 12]);
+      ['박조감', '연출부', '보기', '']], '테이크체크_명단_양식.xlsx', [14, 14, 12, 12]);
   } catch (e) { toast(e.message, true); }
 }
 async function xlResult(k) {
@@ -248,7 +250,7 @@ async function xlResult(k) {
     const X = await xlLib(), p = pg(k);
     const aoa = [['이름', '소속', '역할', '비밀번호', '링크', '상태']].concat((p.members || []).map((m) =>
       [m.name, m.org || '', ROLE[m.role], m.pw, p.link, m.active ? '들어올 수 있음' : '막힘']));
-    xlSave(X, aoa, `${p.code || 'SCRIPTER'}_스크립터명단_${new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10)}.xlsx`, [14, 14, 12, 10, 52, 14]);
+    xlSave(X, aoa, `${p.code || 'TAKE'}_테이크체크_명단_${new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10)}.xlsx`, [14, 14, 12, 10, 52, 14]);
   } catch (e) { toast(e.message, true); }
 }
 let XKEY = '', XROWS = [];
