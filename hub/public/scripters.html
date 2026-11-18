@@ -38,7 +38,7 @@
     </div>
     <div class="note">
       작품 하나에 <b>링크 하나</b>예요. 회차가 늘어도 같은 링크를 쓰면 돼요.<br>
-      ① 새 페이지를 만들면 NAS <b>Web/scripter/</b> 안에 작품 폴더와 회차 폴더(08회차_1118)가 생겨요.
+      ① 새 페이지를 만들면 NAS <b>Web/take/</b> 안에 작품 폴더와 회차 폴더(08회차_1118)가 생겨요.
       ② 회차가 끝나면 프리뷰 MP4(H.264, 원본 클립 이름 그대로)를 그 회차 폴더에 넣어요.
       ③ <b>명단</b>에 들어올 사람을 넣어요. 이름이 곧 아이디이고, 비밀번호(숫자 4자리)는 사람마다 자동으로 만들어져요.
       ④ 사람마다 <b>안내 복사</b>를 눌러 링크·이름·비밀번호를 보내요. 명단에서 빼면 그 사람만 바로 못 들어와요.<br>
@@ -122,7 +122,7 @@
 
 <script src="wct-core.js"></script>
 <script>
-let PAGES = [], DIR = '', EDIT = '';
+let PAGES = [], DIR = '', EDIT = '', SHARE = 'Web/take';
 const ROLE = { scripter: '스크립터', viewer: '보기·코멘트' };
 
 (async function boot() {
@@ -136,9 +136,9 @@ const ROLE = { scripter: '스크립터', viewer: '보기·코멘트' };
 async function refresh() {
   try {
     const j = await WCT.api('scripter.list');
-    PAGES = (j.pages || []).map((x) => Object.assign(x, { link: location.origin + '/take.html?p=' + x.key })); DIR = j.dir || '';
+    PAGES = (j.pages || []).map((x) => Object.assign(x, { link: location.origin + '/take.html?p=' + x.key })); DIR = j.dir || ''; if (DIR) SHARE = 'Web/' + DIR.replace(/\/+$/, '').split('/').pop();
     $('notReady').classList.toggle('hide', !!j.ready);
-    $('notReady').textContent = `NAS 스크립터 폴더(${DIR})에 쓸 수 없어요. Container Station 에서 Web 공유 폴더 연결을 확인해 주세요.`;
+    $('notReady').textContent = `NAS 테이크 체크 폴더(${DIR})에 쓸 수 없어요. Container Station 에서 Web 공유 폴더 연결을 확인해 주세요.`;
     render();
   } catch (e) { $('pgList').innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
 }
@@ -155,7 +155,7 @@ function render() {
         ${p.active ? (exp ? '<span class="pill bad">만료</span>' : '<span class="pill done">열림</span>') : '<span class="pill">닫힘</span>'}
         ${p.unread ? `<span class="pill wait">새 코멘트 ${p.unread}</span>` : ''}</div>
       <div class="meta">
-        NAS 폴더: <span class="path" title="눌러서 복사" onclick="copyPath('${esc(p.key)}')">Web/scripter/${esc(p.folder)}/</span><br>
+        NAS 폴더: <span class="path" title="눌러서 복사" onclick="copyPath('${esc(p.key)}')">${SHARE}/${esc(p.folder)}/</span><br>
         클립 ${p.clips}개 · 표시 ${p.marked}개 (OK ${p.ok} · NG ${p.ng}) · 코멘트 ${p.comments}개
         ${p.until ? ' · 만료 ' + esc(p.until) : ''}${p.memo ? '<br>메모: ' + esc(p.memo) : ''}
       </div>
@@ -204,7 +204,7 @@ function render() {
 const TAKE_URL = location.origin + '/take.html?p=';
 const pg = (k) => { const p = PAGES.find((x) => x.key === k); if (p) p.link = TAKE_URL + p.key; return p; };
 async function copyLink(k) { await copyText(pg(k).link); toast('링크를 복사했어요.'); }
-async function copyPath(k) { await copyText(`Web/scripter/${pg(k).folder}/`); toast('NAS 폴더 경로를 복사했어요.'); }
+async function copyPath(k) { await copyText(`${SHARE}/${pg(k).folder}/`); toast('NAS 폴더 경로를 복사했어요.'); }
 const mem = (k, id) => (pg(k).members || []).find((m) => m.id === id);
 async function copyMember(k, id) {
   const p = pg(k), m = mem(k, id);
@@ -412,7 +412,7 @@ $('dSave').onclick = async () => {
     await refresh();
     if (!EDIT) {
       if (j.folderError) return msg(j.folderError);
-      msg(`만들었어요. NAS 폴더: Web/scripter/${j.folder}/` + (j.made && j.made.length ? ` · 회차 폴더 ${j.made.length}개` : ' · 회차 폴더는 아직 없어요 (프로젝트에 촬영 회차를 넣어 주세요)') + ' — 닫고 카드의 명단에 사람을 넣어 주세요.', true);
+      msg(`만들었어요. NAS 폴더: ${SHARE}/${j.folder}/` + (j.made && j.made.length ? ` · 회차 폴더 ${j.made.length}개` : ' · 회차 폴더는 아직 없어요 (프로젝트에 촬영 회차를 넣어 주세요)') + ' — 닫고 카드의 명단에 사람을 넣어 주세요.', true);
       EDIT = j.key; $('dDelete').classList.remove('hide'); $('dProj').disabled = true;
     } else { $('dlg').close(); toast('저장했어요.'); }
   } catch (e) { msg(e.message); }
@@ -425,7 +425,7 @@ $('dDelete').onclick = async () => {
   try {
     const j = await WCT.api('scripter.delete', { key: EDIT, withData });
     $('dlg').close(); await refresh();
-    toast(`지웠어요. 영상 폴더(Web/scripter/${j.folder}/)는 NAS에서 직접 정리해 주세요.`);
+    toast(`지웠어요. 영상 폴더(${SHARE}/${j.folder}/)는 NAS에서 직접 정리해 주세요.`);
   } catch (e) { $('dMsg').className = 'msg bad'; $('dMsg').textContent = e.message; }
 };
 </script>

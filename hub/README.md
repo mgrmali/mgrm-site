@@ -171,15 +171,15 @@ Zero Trust → Networks → Tunnels → 기존 `color-diary-nas` → Public Host
   전체 화면은 페이지의 [전체 화면] 버튼으로 워터마크까지 같이 커집니다. 아이폰 전체 화면은 영상만 커지므로 렌더 번인 글자를 함께 쓰세요
 - 이름 비교는 띄어쓰기·대소문자를 무시합니다. 이름마다 5번 틀리면 15분 잠깁니다
 
-- 관리: 허브 홈 → **테이크 체크** (관리자). 새 페이지를 만들면 NAS `Web/scripter/코드_키/` 와
+- 관리: 허브 홈 → **테이크 체크** (관리자). 새 페이지를 만들면 NAS `Web/take/코드_키/` 와
   프로젝트 촬영 회차마다 `08회차_1118` 폴더가 생깁니다. 회차를 새로 넣었으면 [회차 폴더 만들기]
 - 영상: 회차 폴더에 프리뷰 MP4(H.264, **원본 클립 이름 그대로**)를 FTP·Finder 로 넣으면 끝. 하위 폴더 2단계까지 읽습니다
-- 영상 주소는 리뷰 영상처럼 QNAP 웹 서버(:8081)가 내보냅니다 → `https://mgrm.myqnapcloud.com:8081/scripter/…`
+- 영상 주소는 리뷰 영상처럼 QNAP 웹 서버(:8081)가 내보냅니다 → `https://mgrm.myqnapcloud.com:8081/take/…`
   폴더 이름 끝의 무작위 키 때문에 주소를 짐작할 수 없습니다
 - 파일 안의 **시작 타임코드·길이**를 NAS 가 직접 읽습니다 (ffprobe 필요 없음). 타임코드가 있으면 '촬영 순서' 정렬과
   A·B캠 같은 테이크 자동 채우기에 씁니다. 없으면 클립 이름 순서로 정렬합니다
 - 컨테이너 설정은 **바꿀 것 없음** (기존 `/share/Web:/web` 연결을 그대로 씀). 확인: `/health` 에 `"scripter":true`
-- 필요하면 환경변수: `SCRIPTER_DIR`(기본 `/web/scripter`), `SCRIPTER_BASE`(기본 VIDEO_BASE 의 review → scripter),
+- 필요하면 환경변수: `SCRIPTER_DIR`(기본 `/web/take`), `SCRIPTER_BASE`(기본 VIDEO_BASE 의 review → take),
   `SCRIPTER_LINK`(기본 `https://hub.mgrm.kr/take.html?p=`)
 - 같은 IP 에서 5번 틀려도 15분 잠깁니다. 페이지를 지워도 영상 폴더는 남습니다 (NAS 에서 직접 정리)
 

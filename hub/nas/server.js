@@ -967,7 +967,7 @@ const GCAL = (() => {
 })();
 
 // ══════════════════════════════════════════ 테이크 체크 (구 스크립터 클립 확인, hub-store 1.5.0~)
-/* 회차마다 프리뷰 MP4 를 NAS 'Web/scripter/<폴더>/<회차폴더>/' 에 넣으면
+/* 회차마다 프리뷰 MP4 를 NAS 'Web/take/<폴더>/<회차폴더>/' 에 넣으면
    스크립터가 링크 하나로 보면서 씬·컷·테이크와 OK/NG/KEEP 을 적고,
    감독·조감독은 보기용 비밀번호로 들어와 코멘트를 남깁니다.
 
@@ -983,8 +983,18 @@ const GCAL = (() => {
      스크립터클립   : 클립마다 씬·컷·테이크·상태·메모 (적힌 것만 한 줄)
      스크립터코멘트 : 보기용으로 들어온 사람들의 코멘트 */
 const SCRIPTER = (() => {
-  const DIR = path.resolve(process.env.SCRIPTER_DIR || path.join(path.dirname(REVIEW_DIR), 'scripter'));
-  const BASE = process.env.SCRIPTER_BASE || VIDEO_BASE.replace(/review\/?$/, 'scripter/');
+  const DIR = path.resolve(process.env.SCRIPTER_DIR || path.join(path.dirname(REVIEW_DIR), 'take'));
+  const BASE = process.env.SCRIPTER_BASE || VIDEO_BASE.replace(/review\/?$/, 'take/');
+  // 이름을 '테이크 체크'로 바꾸면서 영상 폴더도 Web/scripter → Web/take (1.7.0).
+  // 예전 폴더가 있고 새 폴더가 없으면 켤 때 한 번 이름만 바꿉니다 (안의 작품·회차 폴더와 영상은 그대로)
+  (function moveOld_() {
+    if (process.env.SCRIPTER_DIR) return;
+    const old = path.join(path.dirname(REVIEW_DIR), 'scripter');
+    try {
+      if (fs.existsSync(old) && !fs.existsSync(DIR)) { fs.renameSync(old, DIR); console.log(`[take] 영상 폴더 이름 바꿈: ${old} → ${DIR}`); }
+      else if (fs.existsSync(old)) console.log(`[take] 예전 폴더 ${old} 가 남아 있어요. 안의 작품 폴더를 ${DIR} 로 옮겨 주세요.`);
+    } catch (e) { console.log('[take] 예전 폴더를 옮기지 못했어요:', e.message); }
+  })();
   const LINK = process.env.SCRIPTER_LINK || 'https://hub.mgrm.kr/take.html?p=';
   const STATUS = ['ok', 'ng', 'keep'];
   const LABEL = { ok: 'OK', ng: 'NG', keep: 'KEEP' };
@@ -2395,6 +2405,6 @@ server.listen(PORT, () => {
   let rv = '(없음!)';
   try { fs.accessSync(REVIEW_DIR, fs.constants.W_OK); rv = REVIEW_DIR; } catch {}
   console.log(`${VERSION} — :${PORT}, 데이터 ${DATA}, QNAP ${QNAP_URL || '(미설정)'}, 그룹 파일 ${gf || '(없음!)'}, 리뷰 영상 폴더 ${rv}`);
-  console.log(`스크립터 영상 폴더 ${SCRIPTER.ready() ? SCRIPTER.DIR : '(쓸 수 없음!) ' + SCRIPTER.DIR} → ${SCRIPTER.BASE}`);
+  console.log(`테이크 체크 영상 폴더 ${SCRIPTER.ready() ? SCRIPTER.DIR : '(쓸 수 없음!) ' + SCRIPTER.DIR} → ${SCRIPTER.BASE}`);
   console.log(`의뢰 폴더 ${FOLDER.ready() ? FOLDER.ROOT : '(연결 안 됨)'}, 캘린더 ${GCAL.ready() ? '직접 연동' : (GAS_URL ? '앱스스크립트 경유' : '(미설정)')}`);
 });
