@@ -179,10 +179,10 @@ async function pub(req, env, ctx) {
   let b = {};
   try { b = await req.json(); } catch {}
   const a = pubAction(b);
-  // 스크립터 페이지는 비밀번호를 여러 번 틀리면 잠깁니다 → NAS 가 IP 를 알아야 함
+  // 스크립터 페이지: 비밀번호 잠금과 접속 기록 때문에 NAS 가 IP·기기를 알아야 함
   if (a.startsWith('scripter.')) {
     try { return json(await (await store(env, '/public', Object.assign({}, b, { action: a,
-      _ip: req.headers.get('cf-connecting-ip') || '' }))).json()); }
+      _ip: req.headers.get('cf-connecting-ip') || '', _ua: (req.headers.get('user-agent') || '').slice(0, 300) }))).json()); }
     catch (e) { if (e instanceof NasError) return json(NAS_DOWN); throw e; }
   }
   try {

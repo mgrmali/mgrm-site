@@ -81,6 +81,8 @@
   </div>
   <label>이름 (들어올 때 적는 이름 · 화면과 워터마크에 표시)</label>
   <input id="mName" maxlength="40">
+  <label>소속 (워터마크에 함께 표시 · 비워도 돼요)</label>
+  <input id="mOrg" maxlength="30" placeholder="연출부">
   <label>역할</label>
   <select id="mRole"><option value="scripter">스크립터 (씬·컷·테이크, OK/NG 표시)</option><option value="viewer">보기·코멘트</option></select>
   <label style="display:flex;align-items:center;gap:7px;margin-top:12px"><input type="checkbox" id="mActive" style="width:auto"> 들어올 수 있음 (끄면 명단에는 남기고 막아요)</label>
@@ -88,6 +90,35 @@
   <div class="bar" style="margin-top:16px"><button class="b" id="mSave">저장</button></div>
   <div class="msg hide" id="mMsg"></div>
 </dialog>
+
+<dialog id="xdlg" style="max-width:820px">
+  <div style="display:flex;gap:12px;align-items:center">
+    <h2 style="flex:1;margin:0">엑셀 명단 미리보기</h2>
+    <button class="g sm" onclick="$('xdlg').close()">닫기</button>
+  </div>
+  <div class="note" id="xSum" style="margin-top:10px"></div>
+  <div style="max-height:52vh;overflow:auto"><table id="xTbl"></table></div>
+  <div class="bar" style="margin-top:14px">
+    <button class="b" id="xApply">적용</button>
+    <button class="g hide" id="xResult">명단 엑셀 받기 (비밀번호 포함)</button>
+  </div>
+  <div class="msg hide" id="xMsg"></div>
+</dialog>
+
+<dialog id="ldlg" style="max-width:900px">
+  <div style="display:flex;gap:12px;align-items:center">
+    <h2 style="flex:1;margin:0" id="lTitle">접속·재생 기록</h2>
+    <button class="g sm" onclick="$('ldlg').close()">닫기</button>
+  </div>
+  <div class="addrow">
+    <select id="lWho"></select>
+    <input id="lClip" placeholder="클립 이름으로 찾기 (예: A002C003)">
+    <button class="g sm" onclick="loadLog()">찾기</button>
+  </div>
+  <div class="dim" id="lNote" style="font-size:12px;margin:8px 0"></div>
+  <div style="max-height:56vh;overflow:auto"><table id="lTbl"></table></div>
+</dialog>
+<input type="file" id="xFile" accept=".xlsx,.xls,.csv" class="hide">
 
 <script src="wct-core.js"></script>
 <script>
@@ -135,18 +166,27 @@ function render() {
       </tbody></table>` : '<div class="dim" style="font-size:12.5px;margin-top:8px">회차 폴더가 아직 없어요. 프로젝트에 촬영 회차를 넣고 [회차 폴더 만들기]를 누르세요.</div>'}
       <div class="mem">
         <h4>명단 <span class="dim" style="font-weight:400">${(p.members || []).filter((m) => m.active).length}명 · 이름 + 비밀번호로 들어와요</span></h4>
-        ${(p.members || []).length ? `<table><thead><tr><th>이름</th><th>역할</th><th>비밀번호</th><th>마지막 접속</th><th></th></tr></thead><tbody>
+        ${(p.members || []).length ? `<table><thead><tr><th>이름</th><th>소속</th><th>역할</th><th>비밀번호</th><th>마지막 접속</th><th></th></tr></thead><tbody>
           ${p.members.map((m) => `<tr class="${m.active ? '' : 'off'}"><td><b>${esc(m.name)}</b>${m.active ? '' : ' <span class="pill">막힘</span>'}</td>
-            <td>${ROLE[m.role]}</td><td class="pin">${esc(m.pw)}</td><td class="dim">${esc(m.lastAt || '—')}</td>
+            <td>${esc(m.org || '')}</td><td>${ROLE[m.role]}</td><td class="pin">${esc(m.pw)}</td><td class="dim">${esc(m.lastAt || '—')}</td>
             <td style="text-align:right;white-space:nowrap">
+              <button class="g sm" onclick="openLog('${esc(p.key)}','${esc(m.name)}')">기록</button>
               <button class="g sm" onclick="copyMember('${esc(p.key)}',${m.id})">안내 복사</button>
               <button class="g sm" onclick="editMember('${esc(p.key)}',${m.id})">편집</button>
               <button class="g sm" style="color:var(--bad)" onclick="delMember('${esc(p.key)}',${m.id})">빼기</button></td></tr>`).join('')}
         </tbody></table>` : '<div class="dim" style="font-size:12.5px">아직 아무도 없어요. 아래에서 사람을 추가하세요.</div>'}
         <div class="addrow">
           <input id="nm-${esc(p.key)}" placeholder="이름 (예: 김수연)" maxlength="40" onkeydown="if(event.key==='Enter')addMember('${esc(p.key)}')">
+          <input id="og-${esc(p.key)}" placeholder="소속 (예: 연출부)" maxlength="30" style="max-width:160px" onkeydown="if(event.key==='Enter')addMember('${esc(p.key)}')">
           <select id="rl-${esc(p.key)}"><option value="scripter">스크립터</option><option value="viewer" selected>보기·코멘트</option></select>
           <button class="b sm" onclick="addMember('${esc(p.key)}')">＋ 사람 추가</button>
+        </div>
+        <div class="addrow" style="margin-top:6px">
+          <button class="g sm" onclick="xlTemplate()">엑셀 양식 받기</button>
+          <button class="g sm" onclick="xlPick('${esc(p.key)}')">엑셀로 명단 올리기</button>
+          <button class="g sm" onclick="xlResult('${esc(p.key)}')" ${(p.members || []).length ? '' : 'disabled'}>명단 엑셀 받기 (비밀번호 포함)</button>
+          <span style="flex:1"></span>
+          <button class="g sm" onclick="openLog('${esc(p.key)}','')">접속·재생 기록</button>
         </div>
       </div>
       <div class="acts">
@@ -169,24 +209,153 @@ async function copyMember(k, id) {
   const how = m.role === 'scripter'
     ? `회차마다 촬영 클립이 올라와요. 클립을 보면서 씬·컷·테이크를 적고 OK·NG·KEEP 을 눌러 주세요.\n키보드 1·2·3 으로도 누를 수 있고, 누르면 다음 클립으로 넘어가요.`
     : `스크립터가 표시한 OK·NG 를 볼 수 있고, 클립마다 코멘트를 남길 수 있어요.`;
-  const body = `${p.title} 촬영 클립 확인 페이지예요.\n\n${p.link}\n이름: ${m.name}\n비밀번호: ${m.pw}\n\n${how}\n화면에 이름이 표시되니 링크와 비밀번호는 본인만 써 주세요.`;
+  const body = `${p.title} 촬영 클립 확인 페이지예요.\n\n${p.link}\n이름: ${m.name}\n비밀번호: ${m.pw}\n\n${how}\n화면에 이름이 표시되고 접속·재생 기록이 남아요. 링크와 비밀번호는 본인만 써 주세요.`;
   await copyText(body); toast(`${m.name} 님 안내 문구를 복사했어요.`);
 }
 async function addMember(k) {
-  const name = $('nm-' + k).value.trim(), role = $('rl-' + k).value;
+  const name = $('nm-' + k).value.trim(), role = $('rl-' + k).value, org = $('og-' + k).value.trim();
   if (!name) { $('nm-' + k).focus(); return; }
-  try { const j = await WCT.api('scripter.member.save', { key: k, name, role }); await refresh();
+  try { const j = await WCT.api('scripter.member.save', { key: k, name, role, org }); await refresh();
     toast(`${name} 님을 추가했어요. [안내 복사]로 보내 주세요.`); } catch (e) { toast(e.message, true); }
 }
+/* ───────── 엑셀: 양식·올리기·결과 (SheetJS 는 필요할 때만 불러옴) */
+let XLSXP = null;
+function xlLib() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (!XLSXP) XLSXP = new Promise((ok, no) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    sc.onload = () => ok(window.XLSX); sc.onerror = () => { XLSXP = null; no(new Error('엑셀 도구를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.')); };
+    document.head.appendChild(sc);
+  });
+  return XLSXP;
+}
+function xlSave(X, aoa, name, widths) {
+  const ws = X.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = (widths || []).map((w) => ({ wch: w }));
+  const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, '명단');
+  X.writeFile(wb, name);
+}
+async function xlTemplate() {
+  try {
+    const X = await xlLib();
+    xlSave(X, [['이름', '소속', '역할', '비밀번호'], ['김수연', '연출부', '스크립터', ''], ['이감독', '연출부', '보기', ''],
+      ['박조감', '연출부', '보기', '']], '스크립터명단_양식.xlsx', [14, 14, 12, 12]);
+  } catch (e) { toast(e.message, true); }
+}
+async function xlResult(k) {
+  try {
+    const X = await xlLib(), p = pg(k);
+    const aoa = [['이름', '소속', '역할', '비밀번호', '링크', '상태']].concat((p.members || []).map((m) =>
+      [m.name, m.org || '', ROLE[m.role], m.pw, p.link, m.active ? '들어올 수 있음' : '막힘']));
+    xlSave(X, aoa, `${p.code || 'SCRIPTER'}_스크립터명단_${new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10)}.xlsx`, [14, 14, 12, 10, 52, 14]);
+  } catch (e) { toast(e.message, true); }
+}
+let XKEY = '', XROWS = [];
+function xlPick(k) { XKEY = k; $('xFile').value = ''; $('xFile').click(); }
+const nk = (v) => String(v || '').normalize('NFC').replace(/\s+/g, '').toLowerCase();
+$('xFile').onchange = async () => {
+  const f = $('xFile').files[0]; if (!f) return;
+  try {
+    const X = await xlLib();
+    const wb = X.read(await f.arrayBuffer(), { type: 'array' });
+    const aoa = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' });
+    XROWS = parseRows(aoa);
+    previewImport();
+  } catch (e) { toast(e.message || '파일을 읽지 못했어요.', true); }
+};
+function parseRows(aoa) {
+  // 첫 10줄 안에서 '이름' 칸이 있는 줄을 머리줄로 봅니다. 없으면 A=이름, B=소속, C=역할, D=비밀번호
+  const find = (row, re) => row.findIndex((c) => re.test(String(c).replace(/\s+/g, '')));
+  let h = -1, col = { name: 0, org: 1, role: 2, pw: 3 };
+  for (let i = 0; i < Math.min(10, aoa.length); i++) {
+    const r = aoa[i] || [], n = find(r, /^(이름|성명|성함|name)$/i);
+    if (n >= 0) { h = i; col = { name: n, org: find(r, /소속|부서|파트|팀|department/i), role: find(r, /역할|권한|role/i), pw: find(r, /비밀번호|비번|암호|pw|password/i) }; break; }
+  }
+  const out = [];
+  aoa.slice(h + 1).forEach((r, i) => {
+    const g = (c) => (c >= 0 ? String(r[c] == null ? '' : r[c]).trim() : '');
+    const name = g(col.name), org = g(col.org), role = g(col.role);
+    let pw = g(col.pw).replace(/\s+/g, '');
+    if (/^\d{1,3}$/.test(pw)) pw = pw.padStart(4, '0');    // 엑셀이 앞자리 0 을 지운 경우
+    if (!name && !org && !role && !pw) return;
+    out.push({ line: h + 2 + i, name, org, role, pw });
+  });
+  return out;
+}
+function previewImport() {
+  const p = pg(XKEY), have = new Set((p.members || []).map((m) => nk(m.name))), usedPw = new Set((p.members || []).map((m) => m.pw));
+  const seen = new Set();
+  XROWS.forEach((r) => {
+    r.roleV = /스크립터|scripter/i.test(r.role) ? 'scripter' : 'viewer';
+    if (!r.name) r.st = ['bad', '이름이 비어 있어요'];
+    else if (have.has(nk(r.name))) r.st = ['skip', '이미 있음 · 건너뜀'];
+    else if (seen.has(nk(r.name))) r.st = ['bad', '파일 안에 같은 이름이 또 있어요'];
+    else if (r.pw && !/^\d{4,8}$/.test(r.pw)) r.st = ['bad', '비밀번호는 숫자 4~8자리'];
+    else if (r.pw && usedPw.has(r.pw)) r.st = ['bad', '다른 사람과 같은 비밀번호'];
+    else { r.st = ['new', '새로 추가']; seen.add(nk(r.name)); if (r.pw) usedPw.add(r.pw); }
+  });
+  const n = (k) => XROWS.filter((r) => r.st[0] === k).length;
+  $('xSum').innerHTML = `${esc(p.title)} 명단에 <b>${n('new')}명을 새로 추가</b>해요. 이미 있음 ${n('skip')}명 · 오류 ${n('bad')}줄` +
+    (n('bad') ? '<br>오류 줄은 빼고 적용돼요. 엑셀을 고쳐서 다시 올려도 돼요.' : '');
+  const pill = { new: 'done', skip: '', bad: 'bad' };
+  $('xTbl').innerHTML = '<thead><tr><th class="n">줄</th><th>이름</th><th>소속</th><th>역할</th><th>비밀번호</th><th>결과</th></tr></thead><tbody>' +
+    XROWS.map((r) => `<tr><td class="n">${r.line}</td><td><b>${esc(r.name)}</b></td><td>${esc(r.org)}</td><td>${ROLE[r.roleV]}</td>
+      <td class="pin">${r.pw ? esc(r.pw) : '<span class="dim">자동</span>'}</td><td><span class="pill ${pill[r.st[0]]}">${esc(r.st[1])}</span></td></tr>`).join('') + '</tbody>';
+  $('xApply').disabled = !n('new'); $('xApply').textContent = `${n('new')}명 적용`;
+  $('xApply').classList.remove('hide'); $('xResult').classList.add('hide');
+  $('xMsg').className = 'msg hide';
+  $('xdlg').showModal();
+}
+$('xApply').onclick = async () => {
+  const rows = XROWS.filter((r) => r.st[0] === 'new').map((r) => ({ line: r.line, name: r.name, org: r.org, role: r.roleV, pw: r.pw }));
+  $('xApply').disabled = true;
+  try {
+    const j = await WCT.api('scripter.member.import', { key: XKEY, rows });
+    await refresh();
+    $('xMsg').className = 'msg ok';
+    $('xMsg').textContent = `${j.added.length}명을 추가했어요.` + (j.skipped.length ? ` 이미 있음 ${j.skipped.length}명.` : '') +
+      (j.errors.length ? ` 오류: ${j.errors.map((e) => `${e.line}줄 ${e.why}`).join(', ')}` : '') + ' 비밀번호가 담긴 명단 엑셀을 받아서 나눠 주세요.';
+    $('xApply').classList.add('hide'); $('xResult').classList.remove('hide');
+  } catch (e) { $('xMsg').className = 'msg bad'; $('xMsg').textContent = e.message; $('xApply').disabled = false; }
+};
+$('xResult').onclick = () => xlResult(XKEY);
+
+/* ───────── 접속·재생 기록 */
+let LKEY = '';
+function openLog(k, who) {
+  LKEY = k; const p = pg(k);
+  $('lTitle').textContent = `접속·재생 기록 · ${p.title}`;
+  $('lWho').innerHTML = '<option value="">모든 사람</option>' + (p.members || []).map((m) => `<option>${esc(m.name)}</option>`).join('');
+  $('lWho').value = who || ''; $('lClip').value = '';
+  $('ldlg').showModal(); loadLog();
+}
+$('lWho').onchange = loadLog;
+$('lClip').onkeydown = (e) => { if (e.key === 'Enter') loadLog(); };
+async function loadLog() {
+  $('lNote').textContent = '불러오는 중…';
+  try {
+    const j = await WCT.api('scripter.log', { key: LKEY, name: $('lWho').value, clip: $('lClip').value.trim() });
+    $('lNote').textContent = `${j.total}줄` + (j.total > j.rows.length ? ` 중 최근 ${j.rows.length}줄` : '') +
+      ` · ${j.keepDays}일 지난 기록은 자동으로 지워져요 · 같은 클립을 10분 안에 다시 연 건 한 번으로 쳐요`;
+    $('lTbl').innerHTML = j.rows.length ? '<thead><tr><th>시각</th><th>이름</th><th>종류</th><th>회차 · 클립</th><th>기기</th><th>IP</th></tr></thead><tbody>' +
+      j.rows.map((r) => `<tr><td style="white-space:nowrap">${esc(r.at)}</td><td><b>${esc(r.who)}</b></td>
+        <td>${r.kind === '접속' ? '<span class="pill">접속</span>' : '재생'}</td>
+        <td style="font-family:monospace;font-size:12px">${r.clip ? esc(r.d) + ' · ' + esc(r.clip) : ''}</td>
+        <td>${esc(r.dev)}</td><td class="dim" style="font-family:monospace;font-size:12px">${esc(r.ip)}</td></tr>`).join('') + '</tbody>'
+      : '<tbody><tr><td class="dim">기록이 없어요.</td></tr></tbody>';
+  } catch (e) { $('lNote').textContent = e.message; }
+}
+
 let MEDIT = null;
 function editMember(k, id) {
   const m = mem(k, id); MEDIT = { k, id };
-  $('mName').value = m.name; $('mRole').value = m.role; $('mActive').checked = m.active; $('mNewPw').checked = false;
+  $('mName').value = m.name; $('mOrg').value = m.org || ''; $('mRole').value = m.role; $('mActive').checked = m.active; $('mNewPw').checked = false;
   $('mMsg').className = 'msg hide'; $('mdlg').showModal();
 }
 $('mSave').onclick = async () => {
   try {
-    await WCT.api('scripter.member.save', { key: MEDIT.k, id: MEDIT.id, name: $('mName').value.trim(), role: $('mRole').value,
+    await WCT.api('scripter.member.save', { key: MEDIT.k, id: MEDIT.id, name: $('mName').value.trim(), org: $('mOrg').value.trim(), role: $('mRole').value,
       active: $('mActive').checked, newPw: $('mNewPw').checked });
     $('mdlg').close(); await refresh(); toast('저장했어요.');
   } catch (e) { $('mMsg').className = 'msg bad'; $('mMsg').textContent = e.message; }

@@ -167,6 +167,7 @@ input:disabled,textarea:disabled{opacity:.75}
     <label><input type="checkbox" id="gRemember"> 이 기기에서 비밀번호 기억</label>
     <button class="btn pri" id="gGo" style="width:100%;padding:11px">들어가기</button>
     <div class="gate__msg" id="gMsg"></div>
+    <p style="font-size:12px;color:var(--faint);margin:14px 0 0;line-height:1.6">접속과 재생 기록이 남고, 화면에 이름이 표시돼요.<br>링크와 비밀번호는 본인만 써 주세요.</p>
   </div>
 </div>
 
@@ -325,7 +326,7 @@ async function open(silent, fresh) {
   try { j = await call('scripter.open', { fresh: !!fresh }); }
   catch (e) { if (!silent) $('gMsg').textContent = e.message; return false; }
   if (!j.ok) { if (!silent) $('gMsg').textContent = errText(j); return false; }
-  S.name = j.me || S.name; LS.set('scr:name:' + P, S.name);
+  S.name = j.me || S.name; S.org = j.org || ''; LS.set('scr:name:' + P, S.name);
   apply(j, true);
   startWm();
   $('gate').classList.add('hide'); $('app').classList.remove('hide');
@@ -336,7 +337,7 @@ async function open(silent, fresh) {
 /* ───────── 받은 자료 정리 */
 const keyOf = (c) => c.d + '/' + c.id;
 function apply(j, full) {
-  if (j.me) S.name = j.me;
+  if (j.me) { S.name = j.me; S.org = j.org || ''; }
   if (j.clips) {
     S.role = j.role; S.title = j.title; S.base = j.base; S.days = j.days; S.clips = j.clips; S.sig = j.sig;
     const byD = {}; S.days.forEach((d, i) => { d.i = i; byD[d.d] = d; }); S.dayBy = byD;
@@ -621,6 +622,14 @@ function tick() {
 $('v').addEventListener('timeupdate', tick);
 $('v').addEventListener('seeked', tick);
 $('v').addEventListener('contextmenu', (e) => e.preventDefault());
+// 재생 기록: 클립마다 처음 재생할 때 한 번 (같은 클립 10분 안 중복은 서버가 건너뜀)
+let playedKey = '';
+$('v').addEventListener('play', () => {
+  const c = clipBy(S.sel);
+  if (!c || playedKey === S.sel) return;
+  playedKey = S.sel;
+  call('scripter.play', { d: c.d, clip: c.id }).catch(() => {});
+});
 $('v').addEventListener('error', () => { if ($('v').getAttribute('src')) toast('영상을 불러오지 못했어요. 파일 형식(H.264 MP4)을 확인해 주세요.', true); });
 
 function step(d) {
@@ -631,12 +640,16 @@ $('bPrev').onclick = () => step(-1);
 $('bNext').onclick = () => step(1);
 
 /* ───────── 워터마크: 이름 · 날짜, 20초마다 자리 바꾸기 */
+function wmText() {
+  const d = new Date(Date.now() + 9 * 3600e3), p = (n) => String(n).padStart(2, '0');
+  return [S.name, S.org, `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`].filter(Boolean).join(' · ');
+}
 function startWm() {
-  const d = new Date(Date.now() + 9 * 3600e3);
-  const txt = `${S.name} · ${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
   $('player').style.setProperty('--wmo', S.role === 'scripter' ? '.10' : '.16');
-  ['wm1', 'wm2'].forEach((id) => { $(id).textContent = txt; });
-  moveWm(); clearInterval(startWm._t); startWm._t = setInterval(moveWm, 20000);
+  const put = () => { const t = wmText(); ['wm1', 'wm2'].forEach((id) => { $(id).textContent = t; }); };
+  put(); moveWm();
+  clearInterval(startWm._t); startWm._t = setInterval(moveWm, 20000);
+  clearInterval(startWm._c); startWm._c = setInterval(put, 15000);   // 시각은 1분 단위로 바뀜
 }
 function moveWm() {
   // 두 개를 서로 반대쪽 칸에 둡니다 (가운데는 피함)

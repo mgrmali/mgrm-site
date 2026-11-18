@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.6.0';
+const VERSION = 'hub-store 1.7.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -120,7 +120,9 @@ const SHEETS = {
   '스크립터클립':   ['키', '회차폴더', '클립', '씬', '컷', '테이크', '상태', '메모', '수정자', '수정시각'],
   '스크립터코멘트': ['ID', '키', '회차폴더', '클립', '작성자', '내용', '작성시각', '기기', '읽음'],
   // 1.6.0: 사람마다 이름 + 비밀번호 (이름이 곧 아이디). 페이지의 스크립터비번·보기비번은 더 이상 안 씀
-  '스크립터명단':   ['ID', '키', '이름', '역할', '비번', '활성', '등록일', '마지막접속'],
+  '스크립터명단':   ['ID', '키', '이름', '역할', '비번', '활성', '등록일', '마지막접속', '소속'],
+  // 1.7.0: 접속·재생 기록 (같은 사람·같은 클립 재생은 10분 안이면 한 번만, 90일 지나면 자동 삭제)
+  '스크립터기록':   ['키', '이름', '종류', '회차폴더', '클립', '시각', 'IP', '기기'],
 };
 const VIDEO_BASE = process.env.VIDEO_BASE || 'https://mgrm.myqnapcloud.com:8081/review/';
 /* 리뷰 영상 올리기: 허브에서 올린 파일을 이 폴더에 저장합니다.
@@ -1163,7 +1165,7 @@ const SCRIPTER = (() => {
   const ROLES = { scripter: '스크립터', viewer: '보기·코멘트' };
   const membersOf_ = (key) => rows_('스크립터명단').filter((x) => String(x['키']) === String(key));
   function member_(r) {
-    return { id: Number(r['ID']), name: String(r['이름'] || ''), role: r['역할'] === 'scripter' ? 'scripter' : 'viewer',
+    return { id: Number(r['ID']), name: String(r['이름'] || ''), org: String(r['소속'] || ''), role: r['역할'] === 'scripter' ? 'scripter' : 'viewer',
       pw: String(r['비번'] || ''), active: isOn_(r['활성']), createdAt: fmt_(r['등록일']), lastAt: fmt_(r['마지막접속']) };
   }
   function pin_(key) {
@@ -1171,6 +1173,32 @@ const SCRIPTER = (() => {
     let p; do { p = String(crypto.randomInt(0, 10000)).padStart(4, '0'); } while (used.has(p) || /^(\d)\1{3}$/.test(p));
     return p;
   }
+
+  /* ── 접속·재생 기록 */
+  const KEEP_DAYS = 90;
+  const PLAYED = new Map();        // 키|이름|회차|클립 → 마지막 기록 시각 (10분 안 중복은 건너뜀)
+  function device_(ua) {
+    ua = String(ua || '');
+    const os = /iPhone/.test(ua) ? '아이폰' : /iPad/.test(ua) ? '아이패드' : /Android/.test(ua) ? '안드로이드'
+      : /Macintosh|Mac OS X/.test(ua) ? '맥' : /Windows/.test(ua) ? '윈도우' : /Linux/.test(ua) ? '리눅스' : '';
+    const br = /SamsungBrowser/.test(ua) ? '삼성 인터넷' : /Edg\//.test(ua) ? '엣지' : /Whale/.test(ua) ? '웨일'
+      : /KAKAOTALK/i.test(ua) ? '카카오톡' : /NAVER/.test(ua) ? '네이버' : /Firefox|FxiOS/.test(ua) ? '파이어폭스'
+      : /CriOS|Chrome/.test(ua) ? '크롬' : /Safari/.test(ua) ? '사파리' : '';
+    return [os, br].filter(Boolean).join(' ') || ua.slice(0, 40);
+  }
+  function log_(pg, me, kind, b, d, clip) {
+    try {
+      append_('스크립터기록', { '키': pg.key, '이름': me, '종류': kind, '회차폴더': d ? N(d) : '', '클립': clip ? N(clip) : '',
+        '시각': nowStr_(), 'IP': String(b._ip || ''), '기기': device_(b._ua) });
+    } catch (e) { console.log('[scripter] 기록 실패', e.message); }
+  }
+  function purge_() {
+    const cut = new Date(Date.now() + 9 * 3600e3 - KEEP_DAYS * 864e5).toISOString().slice(0, 16).replace('T', ' ');
+    let n = 0;
+    try { tx_(() => { rows_('스크립터기록').forEach((r) => { if (String(r['시각']) < cut) { remove_(r); n++; } }); }); } catch {}
+    if (n) console.log(`[scripter] ${KEEP_DAYS}일 지난 기록 ${n}줄 지움`);
+  }
+  setTimeout(purge_, 30e3); setInterval(purge_, 24 * 3600e3);
 
   /* ── 공개: 이름 + 그 사람 비밀번호로 들어오기 */
   function auth_(b) {
@@ -1189,7 +1217,7 @@ const SCRIPTER = (() => {
     if (!m) { if (lkIp) failed_(lkIp); if (lkNm) failed_(lkNm); return { err: { ok: false, error: 'pw' } }; }
     if (lkIp) fails.delete(lkIp);
     if (lkNm) fails.delete(lkNm);
-    return { pg, role: m['역할'] === 'scripter' ? 'scripter' : 'viewer', me: String(m['이름']), row: m };
+    return { pg, role: m['역할'] === 'scripter' ? 'scripter' : 'viewer', me: String(m['이름']), org: String(m['소속'] || ''), row: m };
   }
   const txt_ = (v, n) => String(v == null ? '' : v).replace(/\r/g, '').trim().slice(0, n);
   const num_ = (v) => String(v == null ? '' : v).replace(/[^0-9A-Za-z\-]/g, '').slice(0, 8);
@@ -1209,15 +1237,27 @@ const SCRIPTER = (() => {
     if (x.err) return x.err;
     const { pg, role, me } = x;
     if (a === 'scripter.open' || a === 'scripter.sync') {
-      if (a === 'scripter.open') try { patch_(x.row, { '마지막접속': nowStr_() }); } catch {}
+      if (a === 'scripter.open') {
+        try { patch_(x.row, { '마지막접속': nowStr_() }); } catch {}
+        if (!b.fresh) log_(pg, me, '접속', b);
+      }
       const sc = scan_(pg.folder, a === 'scripter.open' && !!b.fresh);
-      const out = { ok: true, role, me, sig: sc.sig, marks: marksOf_(pg.key), comments: commentsOf_(pg.key, me) };
+      const out = { ok: true, role, me, org: x.org, sig: sc.sig, marks: marksOf_(pg.key), comments: commentsOf_(pg.key, me) };
       if (a === 'scripter.sync' && b.sig === sc.sig) return out;
       const sh = shoots_(pg.projectId);
       return Object.assign(out, { title: pg.title, code: pg.code,
         base: BASE + encodeURIComponent(pg.folder) + '/',
         days: sc.days.map((d) => Object.assign({ d: d.d, no: d.no, count: d.count }, dayLabel_(d, sh))),
         clips: sc.clips.map((c) => ({ d: c.d, id: c.id, f: c.f, cam: c.cam, tc: c.tc, tcs: c.tcs, dur: c.dur, fps: c.fps, at: c.at })) });
+    }
+    if (a === 'scripter.play') {
+      if (!hasClip_(pg, b.d, b.clip)) return { ok: true };
+      const k = [pg.key, nkey_(me), N(b.d), N(b.clip)].join('|');
+      if (Date.now() - (PLAYED.get(k) || 0) < 10 * 60e3) return { ok: true };
+      PLAYED.set(k, Date.now());
+      if (PLAYED.size > 20000) PLAYED.clear();
+      log_(pg, me, '재생', b, b.d, b.clip);
+      return { ok: true };
     }
     if (a === 'scripter.mark') {
       if (role !== 'scripter') return { ok: false, error: '스크립터 역할만 표시할 수 있어요.' };
@@ -1352,6 +1392,7 @@ const SCRIPTER = (() => {
       const key = String(r['키']).trim(), folder = String(r['폴더'] || '');
       remove_(r);
       membersOf_(key).forEach(remove_);
+      rows_('스크립터기록').filter((x) => String(x['키']) === key).forEach(remove_);
       if (b.withData) ['스크립터클립', '스크립터코멘트'].forEach((n) => rows_(n).filter((x) => String(x['키']) === key).forEach(remove_));
       return { ok: true, folder };   // 영상 폴더는 지우지 않습니다 (NAS 에서 직접 정리)
     }
@@ -1369,15 +1410,53 @@ const SCRIPTER = (() => {
       let pw = String(b.pw == null ? '' : b.pw).trim();
       if (pw && !/^\d{4,8}$/.test(pw)) return { ok: false, error: '비밀번호는 숫자 4~8자리로 적어 주세요.' };
       if (pw && list.some((x) => x !== cur && String(x['비번']) === pw)) return { ok: false, error: '다른 사람과 같은 비밀번호예요.' };
+      const org = txt_(b.org, 30);
       if (cur) {
-        const set = { '이름': name, '역할': role, '활성': b.active !== false };
+        const set = { '이름': name, '역할': role, '활성': b.active !== false, '소속': org };
         if (b.newPw) set['비번'] = pin_(key); else if (pw) set['비번'] = pw;
         patch_(cur, set);
         return { ok: true, id: Number(cur['ID']) };
       }
       const id = nextId_('스크립터명단');
-      append_('스크립터명단', [id, key, name, role, pw || pin_(key), true, nowStr_(), '']);
+      append_('스크립터명단', [id, key, name, role, pw || pin_(key), true, nowStr_(), '', org]);
       return { ok: true, id };
+    }
+    if (a === 'scripter.member.import') {
+      // 엑셀 한꺼번에: 이미 있는 이름은 건너뜀, 비밀번호 비면 자동
+      const pr = pageRow_(b.key);
+      if (!pr) return { ok: false, error: '페이지를 찾지 못했어요.' };
+      const key = String(pr['키']).trim();
+      const rows = Array.isArray(b.rows) ? b.rows.slice(0, 500) : [];
+      const added = [], skipped = [], errors = [];
+      {   // 관리 요청은 이미 한 묶음(트랜잭션) 안에서 돌아갑니다
+        rows.forEach((r, i) => {
+          const name = txt_(r.name, 40).replace(/\s+/g, ' ');
+          const line = Number(r.line) || i + 2;
+          if (!name) return errors.push({ line, name: '', why: '이름이 비어 있어요' });
+          const list = membersOf_(key);
+          if (list.some((x) => nkey_(x['이름']) === nkey_(name))) return skipped.push({ line, name });
+          let pw = String(r.pw == null ? '' : r.pw).trim();
+          if (pw && !/^\d{4,8}$/.test(pw)) return errors.push({ line, name, why: '비밀번호는 숫자 4~8자리' });
+          if (pw && list.some((x) => String(x['비번']) === pw)) return errors.push({ line, name, why: '다른 사람과 같은 비밀번호' });
+          const role = /스크립터|scripter/i.test(String(r.role || '')) ? 'scripter' : 'viewer';
+          const id = nextId_('스크립터명단');
+          append_('스크립터명단', [id, key, name, role, pw || pin_(key), true, nowStr_(), '', txt_(r.org, 30)]);
+          added.push({ line, name });
+        });
+      }
+      return { ok: true, added, skipped, errors };
+    }
+    if (a === 'scripter.log') {
+      const pr = pageRow_(b.key);
+      if (!pr) return { ok: false, error: '페이지를 찾지 못했어요.' };
+      const key = String(pr['키']).trim();
+      const nk = b.name ? nkey_(b.name) : '', ck = b.clip ? N(b.clip).toLowerCase() : '';
+      const list = rows_('스크립터기록').filter((x) => String(x['키']) === key
+        && (!nk || nkey_(x['이름']) === nk) && (!ck || N(x['클립']).toLowerCase().includes(ck)))
+        .map((x) => ({ who: String(x['이름']), kind: String(x['종류']), d: N(x['회차폴더']), clip: N(x['클립']),
+          at: String(x['시각']), ip: String(x['IP']), dev: String(x['기기']) }))
+        .sort((p, q) => (p.at < q.at ? 1 : p.at > q.at ? -1 : 0));
+      return { ok: true, total: list.length, rows: list.slice(0, 500), keepDays: KEEP_DAYS };
     }
     if (a === 'scripter.member.delete') {
       const r = rows_('스크립터명단').find((x) => String(x['키']) === String(b.key) && Number(x['ID']) === Number(b.id));
@@ -1415,7 +1494,7 @@ const PD_ALLOWED = [
   'shoot.save', 'shoot.delete', 'shoot.bulk', 'shoot.import',
 ];
 const READ_ONLY = ['bootstrap', 'me', 'review.videos', 'envelope', 'envelopes', 'unlock', 'user.list',
-                   'recovery.status', 'calendar.check', 'log.list', 'folder.list', 'scripter.list', 'scripter.csv'];
+                   'recovery.status', 'calendar.check', 'log.list', 'folder.list', 'scripter.list', 'scripter.csv', 'scripter.log'];
 
 async function rpc_(b) {
   const who = b._who || {};
@@ -1936,6 +2015,7 @@ function admin_(a, b, who) {
     }
     case 'scripter.list': case 'scripter.save': case 'scripter.folders': case 'scripter.delete':
     case 'scripter.markRead': case 'scripter.csv': case 'scripter.member.save': case 'scripter.member.delete':
+    case 'scripter.member.import': case 'scripter.log':
       return SCRIPTER.admin(a, b);
     case 'review.markRead': {
       const map = { comments: '리뷰코멘트', records: '납품기록', intakes: '문진', inquiries: '문의' };
