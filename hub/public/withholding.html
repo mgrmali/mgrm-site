@@ -577,6 +577,13 @@
 
 <script src="wct-core.js"></script>
 <script>
+// 입력 중인 팝업을 바깥 클릭·Esc 로 실수로 닫지 않게: 고친 칸이 있으면 한 번 물어봄 (wct-core.js 팝업 공통)
+['#pDlg input, #pDlg select, #pDlg textarea',
+ '#prName, #prKind, #prGross, #prTax, #prNp, #prHi, #prEi',
+ '#uId, #uName, #uMemo, #uDlg select'].forEach((q) =>
+  document.querySelectorAll(q).forEach((el) => { el.dataset.track = ''; }));
+</script>
+<script>
 const TABS = ['수신함', '인력', '지급', '원천세', '월별 신고', '설정'];
 
 (async function init() {
@@ -2018,6 +2025,7 @@ function renderPrTable() {
 
 function prReset() {
   prEditId = null;
+  delete $('prDlg').dataset.dirty;   // 저장·취소 뒤에는 창이 열려 있어도 '고친 것 없음'
   $('prFormTitle').textContent = '＋ 새 대상자';
   $('prName').value = ''; $('prKind').value = '대표';
   $('prGross').value = ''; $('prTax').value = '';
@@ -2259,6 +2267,8 @@ function showCredentials(uid, name, pw) {
   ].join('\n');
   $('uResultText').textContent = text;
   $('uResult').classList.remove('hide');
+  // 임시 비밀번호는 이 창에서 한 번만 보이므로, 바깥을 누르거나 Esc 로 닫기 전에 확인
+  $('uDlg').dataset.ask = '임시 비밀번호는 지금만 보여요. 복사하거나 적어 두셨나요? 닫을까요?';
   $('uSave').classList.add('hide');
   $('uMsg').className = 'msg ok';
   $('uMsg').textContent = '계정을 만들었습니다.';

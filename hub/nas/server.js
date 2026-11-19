@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.10.0';
+const VERSION = 'hub-store 1.10.1';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -2265,7 +2265,10 @@ function bootstrapAdmin_(who) {
       label: String(r['라벨'] || ''), fileId: String(r['파일ID']),
       size: Number(r['크기']) || 0, status: String(r['상태']) })),
     invites: rows_('초대').map((r) => ({ token: String(r['토큰']), label: String(r['라벨'] || ''),
-      role: String(r['역할'] || ''), expires: fmt_(r['만료']), used: fmt_(r['사용']) })),
+      role: String(r['역할'] || ''), expires: fmt_(r['만료']), used: fmt_(r['사용']),
+      // 화면이 정원·제출 수·닫힘으로 상태를 그림 (1.10.1 전에는 빠져 있어서 모두 '1회용·열림'으로 보였음)
+      cap: Number(r['정원']) || 1, closed: isTrue_(r['차단']),
+      count: Number(r['제출수']) || (r['사용'] ? (Number(r['정원']) || 1) : 0) })),
     people: rows_('인력').map(mapPerson_),
     vendors: rows_('거래처').map(mapVendor_),
     projects: rows_('프로젝트').map(mapProject_),
