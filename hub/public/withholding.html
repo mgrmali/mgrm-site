@@ -1238,7 +1238,7 @@ $('whtSave').onclick = async () => {
   const wt = wageRows.reduce((x, r) => x + r.tax, 0);
   const wl = wageRows.reduce((x, r) => x + r.localTax, 0);
   const m = $('whtMsg');
-  const today = today();
+  const doneDay = today();   // 이름이 today 와 같으면 오류가 나서 버튼이 안 눌렸음
   if (!confirm(`${ym} 지급분을 신고 완료로 기록할까요?\n\n` +
     `홈택스 ${won(a.tax + wt)}원 / 위택스 ${won(a.local + wl)}원\n\n` +
     `※ 실제 신고·납부를 마친 뒤에 누르세요.`)) return;
@@ -1249,7 +1249,7 @@ $('whtSave').onclick = async () => {
       wageCount: wageRows.length,
       wageGross: wageRows.reduce((x, r) => x + r.gross, 0), wageTax: wt,
       totalTax: a.tax + wt, localTax: a.local + wl,
-      hometax: today, wetax: today });
+      hometax: doneDay, wetax: doneDay });
     m.className = 'msg ok'; m.textContent = '기록했습니다.';
     await refreshAll(true);
   } catch (e) { m.className = 'msg bad'; m.textContent = e.message; }
