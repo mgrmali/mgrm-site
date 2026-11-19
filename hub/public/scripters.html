@@ -63,6 +63,7 @@
       <select id="flt"><option value="on">진행 중</option><option value="off">만료·닫힘·완료</option><option value="all">전체</option></select>
     </div>
     <div id="pgList"><div class="dim">불러오는 중…</div></div>
+    <div id="orphans"></div>
   </div>
 </div>
 
@@ -156,7 +157,23 @@ async function refresh() {
     $('notReady').classList.toggle('hide', !!j.ready);
     $('notReady').textContent = `NAS 테이크 체크 폴더(${DIR})에 쓸 수 없어요. Container Station 에서 Web 공유 폴더 연결을 확인해 주세요.`;
     render();
+    loadOrphans();
   } catch (e) { $('pgList').innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
+}
+// ③ 주인 없는 폴더 (지운 페이지·프로젝트가 남긴 영상 폴더)
+async function loadOrphans() {
+  let j; try { j = await WCT.api('scripter.orphans'); } catch { return; }
+  const list = j.list || [];
+  $('orphans').innerHTML = list.length ? `<div class="note" style="margin-top:16px">
+      <b>정리할 폴더 ${list.length}개</b> <span class="dim">· 어느 페이지에도 연결되지 않은 ${SHARE} 안의 폴더예요. [휴지통으로]를 누르면 NAS 휴지통으로 옮겨요.</span>
+      <table style="margin-top:8px"><tbody>${list.map((o) => `<tr><td style="font-family:monospace">${esc(o.name)}</td>
+        <td class="n dim">파일 ${o.files}개 · ${o.mb}MB</td>
+        <td style="text-align:right"><button class="g sm" onclick="trashOrphan('${esc(o.name)}')">휴지통으로</button></td></tr>`).join('')}</tbody></table></div>` : '';
+}
+async function trashOrphan(name) {
+  if (!confirm(`${SHARE}/${name}/ 폴더를 NAS 휴지통으로 옮길까요?`)) return;
+  try { const j = await WCT.api('scripter.trash', { name }); toast(`옮겼어요: ${j.moved}`); loadOrphans(); }
+  catch (e) { toast(e.message, true); }
 }
 let OPEN = new URLSearchParams(location.search).get('open') || '';   // 허브 프로젝트 창의 [열기]로 오면 그 작품을 펼침
 $('q').oninput = render;
@@ -463,12 +480,14 @@ $('dSave').onclick = async () => {
 };
 $('dDelete').onclick = async () => {
   const p = pg(EDIT); if (!p) return;
-  if (!confirm(`'${p.title}' 스크립터 페이지를 지울까요?\n링크가 더 이상 열리지 않아요.`)) return;
+  if (!confirm(`'${p.title}' 테이크 체크 페이지를 지울까요?\n링크가 더 이상 열리지 않아요.`)) return;
   const withData = confirm('스크립터가 적은 씬·컷·테이크·OK/NG 와 코멘트도 함께 지울까요?\n(취소를 누르면 기록은 남겨 둡니다)');
+  const withVideo = confirm(`영상 폴더(${SHARE}/${p.folder}/)도 NAS 휴지통으로 옮길까요?\n(휴지통에서 되살릴 수 있어요 · 취소를 누르면 폴더는 그대로 둡니다)`);
   try {
-    const j = await WCT.api('scripter.delete', { key: EDIT, withData });
+    const j = await WCT.api('scripter.delete', { key: EDIT, withData, withVideo });
     $('dlg').close(); await refresh();
-    toast(`지웠어요. 영상 폴더(${SHARE}/${j.folder}/)는 NAS에서 직접 정리해 주세요.`);
+    toast(j.moved ? `지웠어요. 영상 폴더는 ${j.moved} 로 옮겼어요.`
+      : j.moveError ? `페이지는 지웠지만 영상 폴더를 옮기지 못했어요: ${j.moveError}` : '지웠어요. 영상 폴더는 그대로 남겨 뒀어요.');
   } catch (e) { $('dMsg').className = 'msg bad'; $('dMsg').textContent = e.message; }
 };
 </script>

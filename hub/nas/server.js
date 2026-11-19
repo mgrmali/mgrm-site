@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.8.0';
+const VERSION = 'hub-store 1.9.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -1003,10 +1003,65 @@ const SCRIPTER = (() => {
   const pad2 = (n) => ('0' + n).slice(-2);
 
   function ready() { try { mkdir_(DIR); fs.accessSync(DIR, fs.constants.W_OK); return true; } catch { return false; } }
-  function mkdir_(p) {
-    fs.mkdirSync(p, { recursive: true });
-    try { fs.chmodSync(p, 0o755); } catch {}        // QNAP 웹 서버가 읽을 수 있게
+  /* 권한 (1.9.0): 서버는 컨테이너 안에서 root 로 돌아서, 만든 폴더 주인이 root 가 됩니다.
+     File Station 에서도 지우고 고칠 수 있게 Web 공유 폴더와 같은 주인·그룹 + 누구나 쓰기(777, 의뢰 폴더와 같음) */
+  function own_(p) {
+    try { const o = fs.statSync(path.dirname(DIR)); fs.chownSync(p, o.uid, o.gid); } catch {}
+    try { fs.chmodSync(p, 0o777); } catch {}
   }
+  function mkdir_(p) {
+    const made = !fs.existsSync(p);
+    fs.mkdirSync(p, { recursive: true });
+    if (made || p === DIR) own_(p);
+  }
+  function fixOwners_() {            // 예전(1.5~1.8)에 755·root 로 만든 폴더를 한 번 고침
+    const walk = (dir, depth) => {
+      own_(dir);
+      if (depth > 3) return;
+      let list = []; try { list = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      list.forEach((x) => { if (x.isDirectory() && !skip(x.name)) walk(path.join(dir, x.name), depth + 1); });
+    };
+    try { if (fs.existsSync(DIR)) walk(DIR, 0); } catch {}
+  }
+  setTimeout(fixOwners_, 5e3);
+
+  /* 휴지통: 영상 폴더는 바로 지우지 않고 Web 공유 폴더 휴지통(@Recycle)으로 옮깁니다.
+     휴지통이 꺼져 있으면 Web/take/@지운폴더 로 옮겨 둡니다 (File Station 에서 비우면 됨) */
+  function trash_(abs) {
+    const web = path.dirname(DIR);
+    let bin = path.join(web, '@Recycle');
+    if (!fs.existsSync(bin)) { bin = path.join(DIR, '@지운폴더'); mkdir_(bin); }
+    const stamp = kst_().slice(0, 16).replace(/[-:T ]/g, '').replace(/^(\d{8})(\d{4})$/, '$1-$2');
+    let dst = path.join(bin, `take_${path.basename(abs)}_${stamp}`), i = 2;
+    while (fs.existsSync(dst)) dst = path.join(bin, `take_${path.basename(abs)}_${stamp}_${i++}`);
+    fs.renameSync(abs, dst);
+    SCAN.delete(path.basename(abs));
+    return (bin.endsWith('@Recycle') ? 'Web 휴지통(@Recycle)/' : 'Web/take/@지운폴더/') + path.basename(dst);
+  }
+  function orphans_() {             // 어느 페이지에도 연결되지 않은 작품 폴더
+    const used = new Set(rows_('스크립터').map((r) => String(r['폴더'] || '')));
+    let list = []; try { list = fs.readdirSync(DIR, { withFileTypes: true }); } catch {}
+    return list.filter((x) => x.isDirectory() && !skip(x.name) && !used.has(N(x.name)) && !used.has(x.name)).map((x) => {
+      let files = 0, bytes = 0;
+      const walk = (d, depth) => { let l = []; try { l = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+        l.forEach((y) => { const q = path.join(d, y.name);
+          if (y.isDirectory() && depth < 3) walk(q, depth + 1);
+          else if (y.isFile()) { files++; try { bytes += fs.statSync(q).size; } catch {} } }); };
+      walk(path.join(DIR, x.name), 0);
+      return { name: N(x.name), files, mb: Math.round(bytes / 1048576) };
+    });
+  }
+  // 1.9.0 으로 처음 켤 때 한 번: 주인 없는 폴더(지운 페이지·프로젝트가 남긴 것)를 휴지통으로
+  setTimeout(() => {
+    const flag = path.join(DATA, 'take-cleanup-1.9.0.done');
+    if (fs.existsSync(flag)) return;
+    try {
+      const list = orphans_();
+      list.forEach((o) => { try { console.log(`[take] 주인 없는 폴더 정리: ${o.name} → ${trash_(path.join(DIR, o.name))}`); }
+        catch (e) { console.log(`[take] ${o.name} 정리 실패: ${e.message}`); } });
+      fs.writeFileSync(flag, kst_() + ` · ${list.length}개 정리\n`);
+    } catch (e) { console.log('[take] 첫 정리 실패:', e.message); }
+  }, 8e3);
 
   /* ── MP4·MOV 안에서 길이·프레임레이트·시작 타임코드 읽기 (ffprobe 없이) */
   function readAt_(fd, pos, len) {
@@ -1423,7 +1478,19 @@ const SCRIPTER = (() => {
       membersOf_(key).forEach(remove_);
       rows_('스크립터기록').filter((x) => String(x['키']) === key).forEach(remove_);
       if (b.withData) ['스크립터클립', '스크립터코멘트'].forEach((n) => rows_(n).filter((x) => String(x['키']) === key).forEach(remove_));
-      return { ok: true, folder };   // 영상 폴더는 지우지 않습니다 (NAS 에서 직접 정리)
+      let moved = '';
+      if (b.withVideo && folder && fs.existsSync(path.join(DIR, folder))) {
+        try { moved = trash_(path.join(DIR, folder)); } catch (e) { return { ok: true, folder, moveError: e.message }; }
+      }
+      return { ok: true, folder, moved };   // withVideo 가 아니면 영상 폴더는 그대로 둡니다
+    }
+    if (a === 'scripter.orphans') return { ok: true, list: orphans_() };
+    if (a === 'scripter.trash') {
+      const name = N(b.name || '');
+      if (!name || name.includes('/') || name.includes('..') || skip(name)) return { ok: false, error: '폴더 이름이 올바르지 않아요.' };
+      if (!orphans_().some((o) => o.name === name)) return { ok: false, error: '페이지에 연결된 폴더는 여기서 지울 수 없어요. 페이지를 지울 때 함께 지워 주세요.' };
+      try { return { ok: true, moved: trash_(path.join(DIR, name)) }; }
+      catch (e) { return { ok: false, error: `옮기지 못했어요: ${e.message}` }; }
     }
     if (a === 'scripter.member.save') {
       const pr = pageRow_(b.key);
@@ -1523,7 +1590,7 @@ const PD_ALLOWED = [
   'shoot.save', 'shoot.delete', 'shoot.bulk', 'shoot.import',
 ];
 const READ_ONLY = ['bootstrap', 'me', 'review.videos', 'envelope', 'envelopes', 'unlock', 'user.list',
-                   'recovery.status', 'calendar.check', 'log.list', 'folder.list', 'scripter.list', 'scripter.csv', 'scripter.log', 'scripter.summary'];
+                   'recovery.status', 'calendar.check', 'log.list', 'folder.list', 'scripter.list', 'scripter.csv', 'scripter.log', 'scripter.summary', 'scripter.orphans'];
 
 async function rpc_(b) {
   const who = b._who || {};
@@ -2044,7 +2111,7 @@ function admin_(a, b, who) {
     }
     case 'scripter.list': case 'scripter.save': case 'scripter.folders': case 'scripter.delete':
     case 'scripter.markRead': case 'scripter.csv': case 'scripter.member.save': case 'scripter.member.delete':
-    case 'scripter.member.import': case 'scripter.log': case 'scripter.summary':
+    case 'scripter.member.import': case 'scripter.log': case 'scripter.summary': case 'scripter.orphans': case 'scripter.trash':
       return SCRIPTER.admin(a, b);
     case 'review.markRead': {
       const map = { comments: '리뷰코멘트', records: '납품기록', intakes: '문진', inquiries: '문의' };

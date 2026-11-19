@@ -898,6 +898,13 @@ $('dDelete').onclick = async () => {
     `이 프로젝트로 등록된 지급 기록이 ${lb.count}건 있습니다.\n` +
     `지급 기록은 남지만 프로젝트 연결이 끊깁니다.\n\n계속할까요?`)) return;
   if (!confirm('프로젝트와 작업이 모두 삭제됩니다. 되돌릴 수 없습니다.')) return;
+  // 테이크 체크 페이지가 있으면 같이 지울지 물어봄 (영상 폴더는 NAS 휴지통으로)
+  if (WCT.isAdmin()) {
+    let tk = null; try { tk = (await WCT.api('scripter.summary', { projectId: CUR.id })).page; } catch {}
+    if (tk && confirm(`이 프로젝트의 테이크 체크 페이지 '${tk.title}' 도 같이 지울까요?\n명단·표시·코멘트·기록을 지우고, 영상 폴더는 NAS 휴지통으로 옮겨요.\n(취소를 누르면 테이크 체크는 그대로 남아요)`)) {
+      try { await WCT.api('scripter.delete', { key: tk.key, withData: true, withVideo: true }); } catch (e) { alert('테이크 체크 페이지를 지우지 못했어요: ' + e.message); }
+    }
+  }
   await WCT.api('project.delete', { id: CUR.id });
   await WCT.load(true); render();
   $('dlg').close();

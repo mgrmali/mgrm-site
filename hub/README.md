@@ -150,7 +150,7 @@ Zero Trust → Networks → Tunnels → 기존 `color-diary-nas` → Public Host
 - 캘린더에서 직접 고치면 다음 반영 때 허브 내용으로 되돌아갑니다
 
 
-## 8부. 테이크 체크 (구 스크립터 클립 확인, hub-store 1.8.0)
+## 8부. 테이크 체크 (구 스크립터 클립 확인, hub-store 1.9.0)
 
 촬영 클립 프리뷰를 스크립터가 보면서 **씬·컷·테이크**를 적고 **OK / NG / KEEP** 을 표시하는 페이지입니다.
 작품 하나에 링크 하나 (`https://hub.mgrm.kr/take.html?p=키` (예전 `scripter.html` 링크는 자동으로 넘어감)), 회차가 늘어도 같은 링크를 씁니다.
@@ -183,7 +183,12 @@ Zero Trust → Networks → Tunnels → 기존 `color-diary-nas` → Public Host
 - 컨테이너 설정은 **바꿀 것 없음** (기존 `/share/Web:/web` 연결을 그대로 씀). 확인: `/health` 에 `"scripter":true`
 - 필요하면 환경변수: `SCRIPTER_DIR`(기본 `/web/take`), `SCRIPTER_BASE`(기본 VIDEO_BASE 의 review → take),
   `SCRIPTER_LINK`(기본 `https://hub.mgrm.kr/take.html?p=`)
-- 같은 IP 에서 5번 틀려도 15분 잠깁니다. 페이지를 지워도 영상 폴더는 남습니다 (NAS 에서 직접 정리)
+- 같은 IP 에서 5번 틀려도 15분 잠깁니다
+- 폴더 권한(1.9.0): 허브가 만드는 폴더는 Web 공유 폴더와 같은 주인 + 777 → File Station 에서도 지울 수 있음.
+  1.9.0 으로 처음 켤 때 예전 폴더 권한도 한 번 고침
+- 지우기(1.9.0): 페이지를 지울 때 '영상 폴더도 휴지통으로'를 고르면 Web/@Recycle(휴지통이 꺼져 있으면 Web/take/@지운폴더)로 옮김.
+  허브 프로젝트를 지울 때 테이크 체크 페이지도 같이 지울지 물어봄. 어느 페이지에도 연결 안 된 폴더는
+  관리 화면 아래 '정리할 폴더'에서 [휴지통으로]. 1.9.0 으로 처음 켤 때 이런 폴더를 한 번 자동으로 휴지통으로 옮김
 
 ---
 
