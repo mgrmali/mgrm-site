@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.10.1';
+const VERSION = 'hub-store 1.10.2';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -2025,8 +2025,10 @@ function admin_(a, b, who) {
     }
 
     case 'payment.markReported':
+      // by:'pay' = 간이지급명세서처럼 지급일의 달 기준 (지급일이 비면 귀속월). 예전 화면은 귀속월로 보냄
       rows_('지급').forEach((r) => {
-        if (ym_(r['귀속월']) === String(b.ym) && String(r['상태']) !== '예정') patch_(r, { '상태': '신고완료' });
+        const m = b.by === 'pay' ? (ymd_(r['지급일']).slice(0, 7) || ym_(r['귀속월'])) : ym_(r['귀속월']);
+        if (m === String(b.ym) && String(r['상태']) !== '예정') patch_(r, { '상태': '신고완료' });
       });
       return { ok: true };
 

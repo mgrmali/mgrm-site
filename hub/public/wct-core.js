@@ -526,14 +526,17 @@ function whtDeadline(payYm) {
   return new Date(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 10);
 }
 
-/** 간이지급명세서: 귀속월의 '다음 달 말일'
+/** 간이지급명세서(사업·기타소득): 지급월의 '다음 달 말일' (소득세법: 소득 지급일이 속하는 달의 다음 달 말일)
     new Date(y, monthIndex, 0) 은 monthIndex 직전 달의 말일을 준다.
     m 이 1~12 이므로 다음 달 말일은 monthIndex = m + 1 이다.
-    (예: 2026-08 귀속 → new Date(2026, 9, 0) = 2026-09-30) */
+    (예: 2026-08 지급 → new Date(2026, 9, 0) = 2026-09-30) */
 function stmtDeadline(ym) {
   const [y, m] = ym.split('-').map(Number);
   return m === 12 ? new Date(y + 1, 1, 0) : new Date(y, m + 1, 0);
 }
+
+/** 지급 한 건이 신고에 잡히는 달 = 실제 지급일의 달 (지급일이 비어 있으면 귀속월로 대신) */
+const payMonth = (p) => (p.payDate || '').slice(0, 7) || p.ym || '';
 
 function dday(date) {
   const left = Math.ceil((date - new Date()) / 86400000);
@@ -601,11 +604,11 @@ function buildCalendarEvents(D) {
             '업무 허브 → 원천징수 → 원천세 탭 → [신고 순서 보기]' });
   });
 
-  // 간이지급명세서 — 귀속월 기준 (원천세와 날짜가 다릅니다)
+  // 간이지급명세서 — 지급월 기준, 다음 달 말일 (원천세는 다음 달 10일)
   [...new Set((D.payments || []).filter((p) => p.status === '지급완료')
-    .map((p) => p.ym))].sort().forEach((m) => {
+    .map(payMonth).filter(Boolean))].sort().forEach((m) => {
     ev.push({ key: `stmt-${m}`, date: ymd(stmtDeadline(m)), remind: 3,
-      title: `지급명세서 · ${shortYm(m, Y)} 귀속`,
+      title: `지급명세서 · ${shortYm(m, Y)} 지급분`,
       desc: '업무 허브 → 원천징수 → 월별 신고 탭 → [엑셀 만들기]' });
   });
 

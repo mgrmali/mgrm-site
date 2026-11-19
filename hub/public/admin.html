@@ -194,7 +194,7 @@ function renderDue(D) {
 
   const un = {};
   (D.payments || []).filter((p) => p.status === '지급완료')
-    .forEach((p) => { un[p.ym] = (un[p.ym] || 0) + 1; });
+    .forEach((p) => { const m = payMonth(p); if (m) un[m] = (un[m] || 0) + 1; });
   Object.keys(un).sort().forEach((ym) => {
     items.push({ ym, what: `지급명세서 · ${un[ym]}건`,
       date: stmtDeadline(ym), d: dday(stmtDeadline(ym)) });
