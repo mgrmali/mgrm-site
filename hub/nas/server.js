@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.10.2';
+const VERSION = 'hub-store 1.10.3';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -798,6 +798,45 @@ const GCAL = (() => {
   }
 
   /** 허브 프로젝트·작업으로 일정 만들기 */
+  /** 세금 일정 — 예전에는 원천징수 화면(브라우저)이 계산해 [캘린더로 보내기]로 보냈음.
+      이제 NAS 가 직접 계산해서 지급·급여·신고 기록이 바뀌면 자동으로 맞춤 (1.10.3) */
+  const TAX_PREFIX = ['wht-', 'stmt-', 'vat-', 'corp-'];
+  function taxEvents() {
+    const ev = [];
+    const Y = Number(kst_().slice(0, 4));
+    const day = (t) => new Date(t).toISOString().slice(0, 10);
+    const short = (ym) => { const [y, m] = ym.split('-').map(Number); return y === Y ? `${m}월` : `${String(y).slice(2)}년 ${m}월`; };
+    const pays = rows_('지급').map(mapPay_);
+    const payMonth = (x) => (x.payDate || '').slice(0, 7) || x.ym || '';
+    const done = new Set(rows_('원천세').filter((r) => fmt_(r['홈택스신고일'])).map((r) => ym_(r['지급연월'])));
+    // 원천세 — 지급월의 다음 달 10일 (급여만 있어도 신고 대상)
+    const whtMonths = new Set([...pays.filter((x) => x.status !== '예정').map(payMonth),
+      ...rows_('급여').map((r) => ym_(r['지급연월']))].filter(Boolean));
+    [...whtMonths].sort().forEach((m) => {
+      const [y, mm] = m.split('-').map(Number), ok = done.has(m);
+      ev.push({ key: `wht-${m}`, date: day(Date.UTC(y, mm, 10)), remind: ok ? 0 : 3, cal: DEFAULT_CAL,
+        title: `${ok ? '✓ ' : ''}원천세 · ${short(m)} 지급분`,
+        desc: '홈택스(소득세)와 위택스(지방소득세)를 둘 다 하셔야 합니다.\n' +
+              '업무 허브 → 원천징수 → 원천세 탭 → [신고 순서 보기]\n끝나면 [신고 완료로 기록] (일정에 ✓ 표시)' });
+    });
+    // 간이지급명세서(사업·기타소득) — 지급월의 다음 달 말일. 신고완료 표시하면 일정이 빠짐
+    [...new Set(pays.filter((x) => x.status === '지급완료').map(payMonth).filter(Boolean))].sort().forEach((m) => {
+      const [y, mm] = m.split('-').map(Number);
+      ev.push({ key: `stmt-${m}`, date: day(Date.UTC(y, mm + 1, 0)), remind: 3, cal: DEFAULT_CAL,
+        title: `지급명세서 · ${short(m)} 지급분`,
+        desc: '업무 허브 → 원천징수 → 월별 신고 탭 → [엑셀 만들기] → 홈택스 제출 → [신고완료 표시]' });
+    });
+    // 부가세 · 법인세
+    [Y - 1, Y, Y + 1].forEach((yy) => [
+      [`vat-${yy}-1`, `${yy}-04-25`, '부가세 · 1기 예정 (1~3월)'], [`vat-${yy}-2`, `${yy}-07-25`, '부가세 · 1기 확정 (4~6월)'],
+      [`vat-${yy}-3`, `${yy}-10-25`, '부가세 · 2기 예정 (7~9월)'], [`vat-${yy}-4`, `${yy + 1}-01-25`, '부가세 · 2기 확정 (10~12월)'],
+    ].forEach(([key, date, title]) => ev.push({ key, date, title, remind: 5, cal: DEFAULT_CAL, desc: '업무 허브 → 세금계산서 → 부가세 탭' })));
+    [Y, Y + 1].forEach((yy) => ev.push({ key: `corp-${yy}`, date: `${yy}-03-31`, remind: 14, cal: DEFAULT_CAL,
+      title: `법인세 · ${yy - 1}년 귀속`, desc: '결산·세무조정이 필요합니다. 세무사에게 맡기세요.' }));
+    const cut = kst_(Date.now() - 365 * 86400e3).slice(0, 10);
+    return ev.filter((e) => e.date >= cut);
+  }
+
   function hubEvents() {
     const ev = [];
     const cut = kst_(Date.now() - 365 * 86400e3).slice(0, 10);
@@ -929,9 +968,9 @@ const GCAL = (() => {
   /** [캘린더로 보내기] 버튼 — 세금 일정(브라우저가 계산) + 허브 일정 전부 */
   async function syncAll(clientEvents) {
     if (!load_()) return { ok: false, error: '캘린더 연동이 아직 설정되지 않았습니다.' };
-    const own = (k) => AUTO_PREFIX.some((p) => k.startsWith(p));
+    const own = (k) => AUTO_PREFIX.concat(TAX_PREFIX).some((p) => k.startsWith(p));
     const want = (clientEvents || []).filter((e) => e && !own(String(e.key)))
-      .map((e) => Object.assign({}, e, { cal: DEFAULT_CAL })).concat(hubEvents());
+      .map((e) => Object.assign({}, e, { cal: DEFAULT_CAL })).concat(hubEvents(), taxEvents());
     try {
       const r = await run_(() => apply_(want, () => true));
       return Object.assign({ ok: true, calendar: 'MGRM 캘린더' }, r);
@@ -943,7 +982,7 @@ const GCAL = (() => {
     if (!load_()) return;
     clearTimeout(timer);
     timer = setTimeout(() => {
-      run_(() => apply_(hubEvents(), (k) => AUTO_PREFIX.some((p) => k.startsWith(p))))
+      run_(() => apply_(hubEvents().concat(taxEvents()), (k) => AUTO_PREFIX.concat(TAX_PREFIX).some((p) => k.startsWith(p))))
         .then((r) => { if (r.added || r.updated || r.removed || r.failed) console.log('캘린더 자동 반영', r); })
         .catch((e) => console.error('캘린더 자동 반영 실패', e.message));
     }, 4000);
@@ -963,7 +1002,9 @@ const GCAL = (() => {
       synced: rows_('캘린더').length, robot: sa.client_email, direct: true };
   }
 
-  return { ready, syncAll, later, check, guess, hubEvents, importShoots };
+  // 켤 때 한 번, 그 뒤 하루 한 번 (해가 바뀌면 부가세·법인세 일정이 새로 생기고, 1년 지난 것은 빠짐)
+  setTimeout(later, 30e3); setInterval(later, 24 * 3600e3);
+  return { ready, syncAll, later, check, guess, hubEvents, taxEvents, importShoots };
 })();
 
 // ══════════════════════════════════════════ 테이크 체크 (구 스크립터 클립 확인, hub-store 1.5.0~)
@@ -1692,7 +1733,7 @@ async function rpc_(b) {
   const run = () => admin_(a, b, who);
   const res = READ_ONLY.includes(a) ? run() : tx_(run);
   // 프로젝트·작업이 바뀌면 캘린더를 뒤에서 조용히 맞춥니다 (직접 연동일 때만)
-  if (res && res.ok && /^(project|task|folder|shoot)\./.test(a) && a !== 'folder.list') GCAL.later();
+  if (res && res.ok && /^(project|task|folder|shoot|payment|payroll|wht)\./.test(a) && a !== 'folder.list') GCAL.later();
   if (!READ_ONLY.includes(a) || a === 'envelope' || a === 'envelopes' || a === 'unlock') {
     log_(who.user, role, a, b._ip, res && res.ok);
   }
