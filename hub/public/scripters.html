@@ -179,7 +179,7 @@ let OPEN = new URLSearchParams(location.search).get('open') || '';   // 허브 �
 $('q').oninput = render;
 $('flt').onchange = render;
 const isExp = (p) => !!p.until && new Date(p.until + 'T23:59:59') < new Date();
-const isOn = (p) => p.active && !isExp(p) && p.stage !== '완료';
+const isOn = (p) => p.active && !isExp(p) && p.stage !== '완료' && !p.lost;
 function ago(t) {
   if (!t) return '—';
   const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
@@ -201,7 +201,7 @@ function render() {
   $('pgList').innerHTML = head + (list.length ? list.map((p) => {
     const exp = isExp(p);
     const days = p.days || [];
-    const st = !p.active ? '<span class="pill">닫힘</span>' : exp ? '<span class="pill bad">만료</span>'
+    const st = p.lost ? '<span class="pill bad">프로젝트 없음</span>' : !p.active ? '<span class="pill">닫힘</span>' : exp ? '<span class="pill bad">만료</span>'
       : p.stage === '완료' ? '<span class="pill">완료</span>' : '<span class="pill done">열림</span>';
     const pct = p.clips ? Math.round(p.marked / p.clips * 100) : 0;
     const row = `<div class="r1" onclick="togglePg('${esc(p.key)}')">

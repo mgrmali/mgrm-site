@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.9.0';
+const VERSION = 'hub-store 1.9.1';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -1038,8 +1038,20 @@ const SCRIPTER = (() => {
     SCAN.delete(path.basename(abs));
     return (bin.endsWith('@Recycle') ? 'Web 휴지통(@Recycle)/' : 'Web/take/@지운폴더/') + path.basename(dst);
   }
-  function orphans_() {             // 어느 페이지에도 연결되지 않은 작품 폴더
-    const used = new Set(rows_('스크립터').map((r) => String(r['폴더'] || '')));
+  // 허브 프로젝트가 지워졌는데 남아 있는 테이크 체크 페이지 (1.9.0 전에는 프로젝트를 지워도 페이지가 남았음)
+  const lostPages_ = () => rows_('스크립터').filter((r) => !byId_('프로젝트', r['프로젝트ID']));
+  function dropPage_(r, withVideo) {
+    const key = String(r['키']).trim(), folder = String(r['폴더'] || '');
+    remove_(r);
+    ['스크립터명단', '스크립터기록', '스크립터클립', '스크립터코멘트'].forEach((n) =>
+      rows_(n).filter((x) => String(x['키']) === key).forEach(remove_));
+    let moved = '';
+    if (withVideo && folder && fs.existsSync(path.join(DIR, folder))) moved = trash_(path.join(DIR, folder));
+    return { key, folder, moved };
+  }
+  function orphans_() {             // 어느 페이지에도 연결되지 않은 작품 폴더 (프로젝트가 지워진 페이지의 폴더 포함)
+    const lost = new Set(lostPages_().map((r) => String(r['키']).trim()));
+    const used = new Set(rows_('스크립터').filter((r) => !lost.has(String(r['키']).trim())).map((r) => String(r['폴더'] || '')));
     let list = []; try { list = fs.readdirSync(DIR, { withFileTypes: true }); } catch {}
     return list.filter((x) => x.isDirectory() && !skip(x.name) && !used.has(N(x.name)) && !used.has(x.name)).map((x) => {
       let files = 0, bytes = 0;
@@ -1051,11 +1063,22 @@ const SCRIPTER = (() => {
       return { name: N(x.name), files, mb: Math.round(bytes / 1048576) };
     });
   }
-  // 1.9.0 으로 처음 켤 때 한 번: 주인 없는 폴더(지운 페이지·프로젝트가 남긴 것)를 휴지통으로
+  function cleanLost_() {           // 프로젝트가 지워진 페이지 → 페이지·명단·기록 지우고 영상 폴더는 휴지통으로
+    const out = [];
+    lostPages_().forEach((r) => {
+      try { const d = tx_(() => dropPage_(r, false)); out.push(d);
+        if (d.folder && fs.existsSync(path.join(DIR, d.folder))) d.moved = trash_(path.join(DIR, d.folder));
+        console.log(`[take] 프로젝트가 지워진 페이지 정리: ${d.key} (${d.folder}) → ${d.moved || '폴더 없음'}`); }
+      catch (e) { console.log('[take] 페이지 정리 실패:', e.message); }
+    });
+    return out;
+  }
+  // 1.9.1 로 처음 켤 때 한 번: 프로젝트가 지워진 페이지와 주인 없는 폴더를 휴지통으로
   setTimeout(() => {
-    const flag = path.join(DATA, 'take-cleanup-1.9.0.done');
+    const flag = path.join(DATA, 'take-cleanup-1.9.1.done');
     if (fs.existsSync(flag)) return;
     try {
+      cleanLost_();
       const list = orphans_();
       list.forEach((o) => { try { console.log(`[take] 주인 없는 폴더 정리: ${o.name} → ${trash_(path.join(DIR, o.name))}`); }
         catch (e) { console.log(`[take] ${o.name} 정리 실패: ${e.message}`); } });
@@ -1424,7 +1447,7 @@ const SCRIPTER = (() => {
         const sh = shoots_(p.projectId);
         const proj = byId_('프로젝트', p.projectId);
         return Object.assign(p, { clips: sc.clips.length, members: membersOf_(p.key).map(member_),
-          lastAt: last[p.key] || '', stage: proj ? String(proj['단계'] || '') : '',
+          lastAt: last[p.key] || '', stage: proj ? String(proj['단계'] || '') : '', lost: !proj,
           marked: my.filter((m) => m['상태']).length, ok: my.filter((m) => m['상태'] === 'ok').length,
           ng: my.filter((m) => m['상태'] === 'ng').length,
           comments: cms.filter((c) => String(c['키']) === p.key).length,
@@ -1489,7 +1512,8 @@ const SCRIPTER = (() => {
       const name = N(b.name || '');
       if (!name || name.includes('/') || name.includes('..') || skip(name)) return { ok: false, error: '폴더 이름이 올바르지 않아요.' };
       if (!orphans_().some((o) => o.name === name)) return { ok: false, error: '페이지에 연결된 폴더는 여기서 지울 수 없어요. 페이지를 지울 때 함께 지워 주세요.' };
-      try { return { ok: true, moved: trash_(path.join(DIR, name)) }; }
+      const lost = lostPages_().find((r) => N(r['폴더']) === name);
+      try { if (lost) return { ok: true, moved: dropPage_(lost, true).moved }; return { ok: true, moved: trash_(path.join(DIR, name)) }; }
       catch (e) { return { ok: false, error: `옮기지 못했어요: ${e.message}` }; }
     }
     if (a === 'scripter.member.save') {
