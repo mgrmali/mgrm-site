@@ -9,150 +9,165 @@
 <link rel="icon" href="favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/gh/moonspam/NanumSquare@2.0/nanumsquare.css" rel="stylesheet">
 <style>
 /* 테이크 체크 — 업무 허브(hub.mgrm.kr) 공개 페이지
-   화면은 색 판단에 방해되지 않게 중립 회색 바탕을 씁니다 */
+   색 판단에 방해되지 않게 중립 회색 바탕, 포인트는 맹그라미 CI 핑크 하나만 */
 :root{
-  --ink:#0E0E11; --panel:#17171C; --panel2:#1F1F26; --line:#2C2C35; --line2:#3A3A45;
-  --text:#F1F0F4; --muted:#9C99A6; --faint:#6E6B78;
-  --ok:#3DBE7A; --ok-bg:rgba(61,190,122,.16); --ng:#F0605A; --ng-bg:rgba(240,96,90,.16);
-  --keep:#E9A93A; --keep-bg:rgba(233,169,58,.16); --acc:#E8789F; --acc-bg:rgba(232,120,159,.14);
-  --sans:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --ink:#111113; --panel:#18181B; --panel2:#202024; --line:#2A2A2F; --line2:#38383F;
+  --text:#E9E9EC; --muted:#8B8B93; --faint:#5E5E66;
+  --ci:#E84278; --ci-bg:#26161D;
+  --ok:#3FB37F; --ng:#E5534B; --keep:#D9A13B;
+  --sans:'NanumSquare','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  --en:'Montserrat','NanumSquare',sans-serif;
   --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  --r:4px;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--ink);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
-button,input,select,textarea{font-family:inherit;font-size:14px;color:var(--text)}
+html,body{margin:0;background:var(--ink);color:var(--text);font-family:var(--sans);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font-family:inherit;font-size:13px;color:var(--text)}
 button{cursor:pointer}
 .hide{display:none!important}
-input,select,textarea{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;outline:none;width:100%}
-input:focus,select:focus,textarea:focus{border-color:var(--acc)}
-input:disabled,textarea:disabled{opacity:.75}
-.btn{background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:7px 12px;font-size:13px;white-space:nowrap}
-.btn:hover{border-color:var(--muted)}
-.btn.pri{background:var(--acc);border-color:var(--acc);color:#1a0d12;font-weight:700}
+input,select,textarea{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;outline:none;width:100%}
+input:focus,select:focus,textarea:focus{border-color:var(--ci)}
+input:disabled,textarea:disabled{opacity:.8}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);height:28px;padding:0 10px;font-size:12px;white-space:nowrap;
+  display:inline-flex;align-items:center;gap:5px;color:var(--text)}
+.btn:hover{border-color:var(--line2);background:#26262B}
+.btn.pri{background:var(--ci);border-color:var(--ci);color:#fff;font-weight:700}
+.btn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.5}
+.en{font-family:var(--en);letter-spacing:.08em}
 .mono{font-family:var(--mono)}
 .dim{color:var(--muted)}
 
 /* 들어가기 */
 .gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-.gate__box{width:100%;max-width:360px;text-align:center}
-.gate__box img{height:20px;margin-bottom:22px;filter:invert(1)}
-.gate__box h1{font-size:20px;margin:0 0 6px}
-.gate__box p{color:var(--muted);margin:0 0 22px}
-.gate__box input{margin-bottom:10px;text-align:center}
-.gate__box .pw{letter-spacing:.2em;font-family:var(--mono)}
-.gate__box label{display:flex;align-items:center;justify-content:center;gap:7px;color:var(--muted);font-size:13px;margin:4px 0 14px}
-.gate__box label input{width:auto;margin:0}
-.gate__msg{min-height:20px;color:var(--ng);font-size:13px;margin-top:10px}
+.gate__box{width:100%;max-width:320px}
+.gate__box .sym{height:18px;display:block;margin-bottom:26px}
+.gate__box h1{font-size:19px;font-weight:800;margin:0}
+.gate__box .sub{font-family:var(--en);font-size:10px;letter-spacing:.14em;color:var(--muted);margin:3px 0 22px}
+.gate__box .lb{display:block;font-size:11px;color:var(--muted);margin:10px 0 4px}
+.gate__box .pw{letter-spacing:.3em;font-family:var(--mono)}
+.gate__box .chk{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;margin:12px 0 14px}
+.gate__box .chk input{width:auto;margin:0}
+.gate__msg{min-height:18px;color:var(--ng);font-size:12px;margin-top:8px}
+.gate__note{font-size:11px;color:var(--faint);margin-top:18px;padding-top:12px;border-top:1px solid var(--line);line-height:1.6}
 
 /* 머리 */
-.top{position:sticky;top:0;z-index:20;background:rgba(14,14,17,.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
-  padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.top__t{flex:1;min-width:160px}
-.top__t b{font-size:15px}
-.top__t div{font-size:12px;color:var(--muted)}
-.role{font-size:11px;padding:2px 8px;border-radius:6px;margin-left:6px;vertical-align:2px}
-.role.s{background:var(--acc-bg);color:var(--acc)}
-.role.v{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
-.top select{width:auto;max-width:200px;padding:6px 8px;font-size:13px}
-.top .btn{padding:6px 10px}
+.top{position:sticky;top:0;z-index:20;background:var(--ink);border-bottom:1px solid var(--line);
+  padding:8px 16px;display:flex;align-items:center;gap:10px}
+.top .sym{height:14px;flex:none}
+.top__t{flex:1;min-width:0;line-height:1.25}
+.top__t b{font-size:14px;font-weight:800;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top__t span{font-family:var(--en);font-size:9.5px;letter-spacing:.14em;color:var(--muted)}
+.top select{width:auto;max-width:190px;height:28px;padding:0 8px;font-size:12px}
+.who{display:inline-flex;align-items:center;gap:6px;font-size:12px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel2);white-space:nowrap}
+.who i{width:6px;height:6px;border-radius:50%;background:var(--ci)}
+.who .r{color:var(--muted)}
+.who a{color:var(--faint);text-decoration:none;margin-left:4px}
+.who a:hover{color:var(--text)}
 
-.wrap{max-width:1400px;margin:0 auto;padding:12px 16px 40px}
-.stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:12px}
-.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 12px;cursor:pointer}
-.stat span{font-size:11.5px;color:var(--muted)}
-.stat b{display:block;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
-.stat.on{border-color:var(--acc)}
-.c-ok{color:var(--ok)!important}.c-ng{color:var(--ng)!important}.c-keep{color:var(--keep)!important}
+/* 상태 탭 (누르면 거르기) */
+.tabs{display:flex;align-items:flex-end;gap:18px;padding:0 16px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.tab{padding:8px 0 7px;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;font-size:12.5px;user-select:none}
+.tab b{color:var(--text);font-weight:700;margin-left:5px;font-family:var(--mono);font-size:12px}
+.tab.on{color:var(--text);border-color:var(--ci)}
+.tab.ok b{color:var(--ok)}.tab.ng b{color:var(--ng)}.tab.keep b{color:var(--keep)}
 
-.main{display:grid;grid-template-columns:330px minmax(0,1fr);gap:14px;align-items:start}
-.side{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;position:sticky;top:70px;
-  max-height:calc(100vh - 86px);display:flex;flex-direction:column}
-.side__head{padding:10px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
-.chips{display:flex;gap:4px;flex-wrap:wrap}
-.chip{font-size:12px;padding:3px 9px;border-radius:6px;border:1px solid var(--line2);background:transparent;color:var(--muted)}
-.chip.on{background:var(--panel2);color:var(--text);border-color:var(--muted)}
+.main{display:grid;grid-template-columns:300px minmax(0,1fr);align-items:start;max-width:1500px;margin:0 auto}
+.side{border-right:1px solid var(--line);position:sticky;top:45px;height:calc(100vh - 45px - 38px);display:flex;flex-direction:column}
+.side__head{padding:8px;border-bottom:1px solid var(--line);display:flex;gap:6px}
+.side__head input{flex:1;height:28px;padding:0 9px}
+.side__head select{width:auto;height:28px;padding:0 6px;font-size:12px}
 .list{overflow:auto;flex:1}
-.grp{position:sticky;top:0;background:#202028;font-size:11.5px;color:var(--muted);padding:5px 10px;display:flex;justify-content:space-between;border-bottom:1px solid var(--line);z-index:1}
-.row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer}
+.grp{position:sticky;top:0;background:var(--panel);font-size:11px;color:var(--muted);padding:4px 10px;display:flex;justify-content:space-between;border-bottom:1px solid var(--line);z-index:1}
+.grp span:last-child{font-family:var(--mono)}
+.row{display:grid;grid-template-columns:72px minmax(0,1fr) auto 38px;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line);cursor:pointer}
 .row:hover{background:var(--panel2)}
-.row.sel{background:var(--acc-bg);box-shadow:inset 3px 0 0 var(--acc)}
-.row__m{flex:1;min-width:0}
-.row__t{font-weight:600;font-size:13.5px}
-.row__t.blank{color:var(--keep);font-weight:500}
-.row__s{font-family:var(--mono);font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.row__c{font-size:11px;color:var(--muted)}
-.bd{font-size:11px;padding:2px 7px;border-radius:5px;min-width:40px;text-align:center;font-weight:600}
-.bd.ok{background:var(--ok-bg);color:var(--ok)}.bd.ng{background:var(--ng-bg);color:var(--ng)}
-.bd.keep{background:var(--keep-bg);color:var(--keep)}.bd.none{background:var(--panel2);color:var(--faint);font-weight:400}
-.empty{padding:20px 12px;color:var(--muted);font-size:13px;text-align:center;line-height:1.7}
+.row.sel{background:var(--ci-bg);box-shadow:inset 2px 0 0 var(--ci)}
+.row__t{font-family:var(--mono);font-size:12.5px;font-weight:600}
+.row__t.blank{color:var(--keep);font-family:var(--sans);font-weight:400;font-size:12px}
+.row__s{font-family:var(--mono);font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row__c{font-family:var(--mono);font-size:10.5px;color:var(--muted);display:inline-flex;align-items:center;gap:3px}
+.row__c svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:1.4}
+.bd{font-family:var(--en);font-size:10px;font-weight:700;letter-spacing:.06em;text-align:right;color:var(--faint)}
+.bd.ok{color:var(--ok)}.bd.ng{color:var(--ng)}.bd.keep{color:var(--keep)}
+.empty{padding:18px 12px;color:var(--muted);font-size:12px;line-height:1.7}
 
-.stage{min-width:0}
-.player{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:16/9}
+.stage{min-width:0;padding:12px 16px 40px}
+.player{position:relative;background:#000;border-radius:var(--r);overflow:hidden;aspect-ratio:16/9}
 .player video{width:100%;height:100%;display:block;background:#000}
-.player__none{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--faint)}
-/* 워터마크: 들어온 사람 이름 + 날짜. 캡처하면 같이 찍힙니다 (화면 클릭은 영상으로 그대로 통과) */
-.wm{position:absolute;pointer-events:none;user-select:none;-webkit-user-select:none;font-weight:700;letter-spacing:.04em;
+.player__none{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:12px}
+/* 워터마크: 들어온 사람 이름·소속·시각. 캡처하면 같이 찍힙니다 (클릭은 영상으로 그대로 통과) */
+.wm{position:absolute;pointer-events:none;user-select:none;-webkit-user-select:none;font-weight:800;letter-spacing:.04em;
   color:#fff;opacity:var(--wmo,.12);white-space:nowrap;font-size:clamp(13px,2.2vw,22px);text-shadow:0 0 2px rgba(0,0,0,.6);
   transition:left 1.2s ease,top 1.2s ease;z-index:2}
-.fsb{position:absolute;right:10px;top:10px;z-index:3;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.18);
-  color:#eee;border-radius:7px;padding:4px 9px;font-size:12px;opacity:.75}
+.fsb{position:absolute;right:8px;top:8px;z-index:3;width:28px;height:28px;padding:0;justify-content:center;
+  background:rgba(0,0,0,.5);border-color:rgba(255,255,255,.15);opacity:.7}
 .fsb:hover{opacity:1}
 .player:fullscreen,.player:-webkit-full-screen{aspect-ratio:auto;width:100vw;height:100vh;border-radius:0}
 .player:fullscreen video,.player:-webkit-full-screen video{object-fit:contain}
 .player:fullscreen .wm,.player:-webkit-full-screen .wm{font-size:clamp(18px,2.2vw,30px)}
-.info{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:10px 0 8px}
-.info__clip{font-family:var(--mono);font-size:15px;font-weight:600}
-.info__tc{font-family:var(--mono);font-size:15px;color:var(--acc)}
-.fstep{margin-left:auto;display:flex;gap:6px}
-.fstep .btn{padding:5px 10px;font-size:12.5px}
-.info__m{font-size:12px;color:var(--muted);width:100%}
-.mnav{display:none;width:100%;gap:8px}.mnav .btn{flex:1}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
-.sct{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.sct label{font-size:11.5px;color:var(--muted);display:block;margin-bottom:3px}
-.sct input{font-size:18px;text-align:center;font-weight:600;padding:8px 6px;font-variant-numeric:tabular-nums}
-.sct input.sug{color:var(--faint);font-style:italic;font-weight:400}
-.hint{font-size:12px;color:var(--faint);margin:6px 0 10px;min-height:18px}
-.acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.big{height:48px;border-radius:10px;font-size:16px;font-weight:700;background:transparent;border:1.5px solid}
-.big small{font-size:11px;font-weight:400;opacity:.6;margin-left:4px}
+.info{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:9px 0 2px}
+.info__clip{font-family:var(--mono);font-size:13.5px;font-weight:600}
+.info__tc{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--ci);min-width:96px;text-align:right}
+.fstep{margin-left:auto;display:flex;gap:5px}
+.info__m{font-family:var(--mono);font-size:10.5px;color:var(--muted);width:100%;margin-bottom:8px}
+.mnav{display:none;width:100%;gap:6px}.mnav .btn{flex:1;justify-content:center}
+.sct{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.sct div{border:1px solid var(--line);border-radius:var(--r);background:var(--panel2);padding:4px 8px 2px}
+.sct div:focus-within{border-color:var(--ci)}
+.sct label{font-family:var(--en);font-size:9.5px;letter-spacing:.12em;color:var(--faint);display:block}
+.sct input{border:0;background:transparent;padding:0 0 2px;font-family:var(--mono);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.sct input.sug{color:var(--faint)}
+.hint{font-size:11px;color:var(--faint);margin:5px 0 8px;min-height:16px;font-family:var(--mono)}
+.acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.big{height:40px;border-radius:var(--r);font-family:var(--en);font-size:13px;font-weight:700;letter-spacing:.1em;background:transparent;border:1px solid}
+.big small{font-family:var(--mono);font-size:10px;font-weight:400;opacity:.5;margin-left:6px;letter-spacing:0}
 .big.ok{border-color:var(--ok);color:var(--ok)}.big.ng{border-color:var(--ng);color:var(--ng)}.big.keep{border-color:var(--keep);color:var(--keep)}
-.big.ok.on{background:var(--ok);color:#06210f}.big.ng.on{background:var(--ng);color:#2a0705}.big.keep.on{background:var(--keep);color:#2a1a02}
-.vstat{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
-.vstat .bd{font-size:14px;padding:5px 14px}
-.memo{margin-top:10px}
-.memo textarea{min-height:56px;resize:vertical;line-height:1.55}
-.save{font-size:11.5px;color:var(--faint);text-align:right;margin-top:4px;min-height:16px}
-.tip{font-size:11.5px;color:var(--faint);margin-top:8px;line-height:1.7}
-.tip kbd{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);border-radius:4px;padding:0 5px;color:var(--muted)}
+.big.ok.on{background:var(--ok);color:#0b1f15}.big.ng.on{background:var(--ng);color:#230806}.big.keep.on{background:var(--keep);color:#241805}
+.vstat{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);height:40px;border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.vstat .bd{font-size:12px}
+.memo{margin-top:8px}
+.memo textarea{min-height:52px;resize:vertical;line-height:1.55}
+.save{font-family:var(--mono);font-size:10.5px;color:var(--faint);text-align:right;margin-top:3px;min-height:15px}
 
-.cms{margin-top:12px}
-.cms h3{font-size:13px;margin:0 0 8px;display:flex;align-items:center;gap:6px}
-.cm{padding:8px 0;border-bottom:1px solid var(--line)}
+.cms{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.cms h3{font-size:12px;font-weight:700;color:var(--muted);margin:0 0 6px}
+.cms h3 span{font-family:var(--mono);color:var(--text);margin-left:4px}
+.cm{padding:7px 0;border-bottom:1px solid var(--line)}
 .cm:last-of-type{border-bottom:0}
-.cm__h{font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
-.cm__h b{color:var(--text);font-weight:600}
-.cm__h button{margin-left:auto;background:none;border:0;color:var(--faint);font-size:12px;padding:0}
-.cm__t{white-space:pre-wrap;word-break:break-word;margin-top:2px}
-.compose{display:flex;gap:8px;margin-top:8px}
-.compose textarea{min-height:40px;height:40px;resize:none;flex:1}
+.cm__h{font-size:11.5px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.cm__h b{color:var(--text);font-weight:700}
+.cm__h .t{font-family:var(--mono);font-size:10.5px}
+.cm__h button{margin-left:auto;background:none;border:0;color:var(--faint);font-size:11px;padding:0}
+.cm__h button:hover{color:var(--ng)}
+.cm__t{white-space:pre-wrap;word-break:break-word;margin-top:2px;font-size:12.5px}
+.compose{display:flex;gap:6px;margin-top:8px}
+.compose textarea{min-height:34px;height:34px;resize:none;flex:1;padding:7px 9px}
+.compose .btn{height:34px}
 
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#2A2A33;border:1px solid var(--line2);
-  padding:10px 16px;border-radius:10px;font-size:13px;z-index:99;opacity:0;transition:opacity .2s;pointer-events:none}
+/* 단축키 (? 버튼) */
+.keys{position:fixed;right:16px;bottom:16px;z-index:30}
+.keys__pop{position:absolute;right:0;bottom:36px;width:230px;background:var(--panel);border:1px solid var(--line2);border-radius:var(--r);padding:10px 12px;font-size:11.5px;color:var(--muted);line-height:1.9}
+.keys__pop kbd{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);border-radius:3px;padding:0 4px;color:var(--text);margin-right:2px}
+.keys .btn{width:28px;justify-content:center;padding:0;font-family:var(--en);font-weight:700}
+
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line2);
+  padding:8px 14px;border-radius:var(--r);font-size:12px;z-index:99;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.on{opacity:1}.toast.bad{border-color:var(--ng);color:#ffb3af}
-.foot{text-align:center;color:var(--faint);font-size:11px;margin-top:30px}
 
 @media(max-width:900px){
   .main{grid-template-columns:1fr}
-  .side{position:static;max-height:none;order:2}
+  .side{position:static;height:auto;border-right:0;border-top:1px solid var(--line);order:2}
   .list{max-height:60vh}
-  .stage{order:1}
-  .stats{grid-template-columns:repeat(3,minmax(0,1fr))}
-  .tip{display:none}
-  .mnav{display:flex}
+  .stage{order:1;padding:10px 12px 16px}
+  .top{padding:8px 12px;flex-wrap:wrap;position:static}
+  .top select{max-width:none;flex:1}
+  .tabs{padding:0 12px;gap:14px}
+  .keys{display:none}
+  .mnav{display:flex;margin-bottom:8px}
 }
 </style>
 </head>
@@ -161,98 +176,103 @@ input:disabled,textarea:disabled{opacity:.75}
 <!-- 들어가기 -->
 <div class="gate" id="gate">
   <div class="gate__box">
-    <img src="logo.png" alt="맹그라미">
+    <img class="sym" src="mgrm-symbol.svg" alt="맹그라미">
     <h1 id="gTitle">테이크 체크</h1>
-    <p id="gSub">안내받은 이름과 비밀번호를 적어 주세요.</p>
-    <input id="gName" placeholder="이름" autocomplete="username" maxlength="40">
-    <input id="gPw" class="pw" type="password" placeholder="비밀번호 (숫자)" inputmode="numeric" autocomplete="current-password">
-    <label><input type="checkbox" id="gRemember"> 이 기기에서 비밀번호 기억</label>
-    <button class="btn pri" id="gGo" style="width:100%;padding:11px">들어가기</button>
+    <div class="sub">TAKE CHECK</div>
+    <div id="gSub" class="dim" style="font-size:12px"></div>
+    <label class="lb" for="gName">이름</label>
+    <input id="gName" autocomplete="username" maxlength="40">
+    <label class="lb" for="gPw">비밀번호</label>
+    <input id="gPw" class="pw" type="password" inputmode="numeric" autocomplete="current-password">
+    <label class="chk"><input type="checkbox" id="gRemember"> 이 기기에서 기억</label>
+    <button class="btn pri" id="gGo" style="width:100%;height:36px;justify-content:center">들어가기</button>
     <div class="gate__msg" id="gMsg"></div>
-    <p style="font-size:12px;color:var(--faint);margin:14px 0 0;line-height:1.6">접속과 재생 기록이 남고, 화면에 이름이 표시돼요.<br>링크와 비밀번호는 본인만 써 주세요.</p>
+    <div class="gate__note">접속·재생 기록이 남고 화면에 이름이 표시됩니다.<br>본인만 사용해 주세요.</div>
   </div>
 </div>
 
 <!-- 본 화면 -->
 <div id="app" class="hide">
   <div class="top">
-    <div class="top__t"><b id="tTitle"></b><span class="role" id="tRole"></span>
-      <div><span id="tName"></span> · <a href="#" id="tOut" style="color:inherit">나가기</a></div></div>
+    <img class="sym" src="mgrm-symbol.svg" alt="맹그라미">
+    <div class="top__t"><b id="tTitle"></b><span>TAKE CHECK</span></div>
     <select id="range" aria-label="회차"></select>
-    <button class="btn" id="btnRefresh" title="새로 올린 클립 불러오기">새로고침</button>
-    <button class="btn hide" id="btnCsv">CSV 내려받기</button>
+    <span class="who"><i></i><span id="tName"></span><span class="r" id="tRole"></span><a href="#" id="tOut" title="나가기">나가기</a></span>
+    <button class="btn" id="btnRefresh" title="새로 올린 클립 불러오기"><svg viewBox="0 0 12 12"><path d="M10 6a4 4 0 1 1-1.2-2.85M10 1.5v2.5H7.5"/></svg></button>
+    <button class="btn hide" id="btnCsv" title="CSV 내려받기"><svg viewBox="0 0 12 12"><path d="M6 1.5v6M3.5 5.5L6 8l2.5-2.5M2 10.5h8"/></svg>CSV</button>
+  </div>
+  <div class="tabs" id="stats"></div>
+
+  <div class="main">
+    <aside class="side">
+      <div class="side__head">
+        <input id="q" placeholder="씬·클립 찾기" autocomplete="off">
+        <select id="sort" aria-label="정렬">
+          <option value="time">촬영순</option>
+          <option value="scene">씬순</option>
+          <option value="day">회차순</option>
+        </select>
+      </div>
+      <div class="list" id="list"></div>
+    </aside>
+
+    <section class="stage">
+      <div class="player" id="player">
+        <video id="v" controls playsinline preload="metadata" controlsList="nodownload nofullscreen noremoteplayback" disableRemotePlayback disablePictureInPicture></video>
+        <div class="player__none" id="vNone">클립을 고르세요</div>
+        <div class="wm" id="wm1"></div><div class="wm" id="wm2"></div>
+        <button class="btn fsb" id="fsBtn" type="button" title="전체 화면 (F)"></button>
+      </div>
+      <div class="info">
+        <span class="info__clip" id="iClip">—</span>
+        <span class="bd none" id="iBadge"></span>
+        <span class="fstep">
+          <button class="btn" id="fPrev" title="한 프레임 뒤로 (,)"><svg viewBox="0 0 12 12"><path d="M7.5 2.5L4 6l3.5 3.5"/></svg>1F</button>
+          <button class="btn" id="fNext" title="한 프레임 앞으로 (.)">1F<svg viewBox="0 0 12 12"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg></button>
+        </span>
+        <span class="info__tc" id="iTc"></span>
+        <span class="info__m" id="iMeta"></span>
+        <span class="mnav"><button class="btn" id="bPrev"><svg viewBox="0 0 12 12"><path d="M7.5 2.5L4 6l3.5 3.5"/></svg>이전 클립</button><button class="btn" id="bNext">다음 클립<svg viewBox="0 0 12 12"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg></button></span>
+      </div>
+
+      <div class="sct">
+        <div><label for="fS">SCENE</label><input id="fS" inputmode="numeric" autocomplete="off" maxlength="8"></div>
+        <div><label for="fC">CUT</label><input id="fC" inputmode="numeric" autocomplete="off" maxlength="8"></div>
+        <div><label for="fT">TAKE</label><input id="fT" inputmode="numeric" autocomplete="off" maxlength="8"></div>
+      </div>
+      <div class="hint" id="hint"></div>
+      <div class="acts" id="acts">
+        <button class="big ok" data-st="ok">OK<small>1</small></button>
+        <button class="big ng" data-st="ng">NG<small>2</small></button>
+        <button class="big keep" data-st="keep">KEEP<small>3</small></button>
+      </div>
+      <div class="vstat hide" id="vstat">스크립터 <span class="bd none" id="vBadge"></span></div>
+      <div class="memo">
+        <textarea id="fMemo" placeholder="메모" maxlength="1000"></textarea>
+        <div class="save" id="saveMsg"></div>
+      </div>
+
+      <div class="cms">
+        <h3>코멘트<span id="cmN"></span></h3>
+        <div id="cmList"></div>
+        <div class="compose">
+          <textarea id="cmTxt" placeholder="코멘트" maxlength="1000"></textarea>
+          <button class="btn pri" id="cmSend">남기기</button>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <div class="wrap">
-    <div class="stats" id="stats"></div>
-    <div class="main">
-      <aside class="side">
-        <div class="side__head">
-          <input id="q" placeholder="찾기: 12, S#12, A002C003" autocomplete="off">
-          <select id="sort" aria-label="정렬">
-            <option value="time">촬영 순서</option>
-            <option value="scene">씬별 (S# → 컷 → 테이크)</option>
-            <option value="day">회차·날짜별 (최근 회차 위로)</option>
-          </select>
-          <div class="chips" id="chips">
-            <button class="chip on" data-f="all">전체</button><button class="chip" data-f="ok">OK</button>
-            <button class="chip" data-f="ng">NG</button><button class="chip" data-f="keep">KEEP</button>
-            <button class="chip" data-f="none">미확인</button><button class="chip" data-f="blank">씬 미입력</button>
-            <button class="chip" data-f="cm">코멘트</button>
-          </div>
-        </div>
-        <div class="list" id="list"></div>
-      </aside>
-
-      <section class="stage">
-        <div class="player" id="player">
-          <video id="v" controls playsinline preload="metadata" controlsList="nodownload nofullscreen noremoteplayback" disableRemotePlayback disablePictureInPicture></video>
-          <div class="player__none" id="vNone">왼쪽 목록에서 클립을 고르세요</div>
-          <div class="wm" id="wm1"></div><div class="wm" id="wm2"></div>
-          <button class="fsb" id="fsBtn" type="button" title="전체 화면 (F)">⛶ 전체 화면</button>
-        </div>
-        <div class="info">
-          <span class="info__clip" id="iClip">—</span>
-          <span class="bd none" id="iBadge">—</span>
-          <span class="fstep"><button class="btn" id="fPrev" title="한 프레임 뒤로 (,)">◀ 1프레임</button><button class="btn" id="fNext" title="한 프레임 앞으로 (.)">1프레임 ▶</button></span>
-          <span class="info__tc" id="iTc"></span>
-          <span class="info__m" id="iMeta"></span>
-          <span class="mnav"><button class="btn" id="bPrev">◀ 이전 클립</button><button class="btn" id="bNext">다음 클립 ▶</button></span>
-        </div>
-
-        <div class="panel">
-          <div class="sct">
-            <div><label for="fS">씬 S#</label><input id="fS" inputmode="numeric" autocomplete="off" maxlength="8"></div>
-            <div><label for="fC">컷 C</label><input id="fC" inputmode="numeric" autocomplete="off" maxlength="8"></div>
-            <div><label for="fT">테이크 T</label><input id="fT" inputmode="numeric" autocomplete="off" maxlength="8"></div>
-          </div>
-          <div class="hint" id="hint"></div>
-          <div class="acts" id="acts">
-            <button class="big ok" data-st="ok">OK<small>1</small></button>
-            <button class="big ng" data-st="ng">NG<small>2</small></button>
-            <button class="big keep" data-st="keep">KEEP<small>3</small></button>
-          </div>
-          <div class="vstat hide" id="vstat">스크립터 표시 <span class="bd none" id="vBadge">미확인</span></div>
-          <div class="memo">
-            <label for="fMemo" class="dim" style="font-size:11.5px">스크립터 메모</label>
-            <textarea id="fMemo" placeholder="예: 대사 NG, 소품 위치 바뀜" maxlength="1000"></textarea>
-            <div class="save" id="saveMsg"></div>
-          </div>
-          <div class="tip" id="tip"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> OK·NG·KEEP (누르면 저장되고 다음 클립으로) ·
-            <kbd>↑</kbd><kbd>↓</kbd> 이전·다음 클립 · <kbd>Space</kbd> 재생·정지 · <kbd>←</kbd><kbd>→</kbd> 2초 이동 · <kbd>,</kbd><kbd>.</kbd> 한 프레임 · <kbd>F</kbd> 전체 화면</div>
-        </div>
-
-        <div class="panel cms">
-          <h3>코멘트 <span class="dim" id="cmN"></span></h3>
-          <div id="cmList"></div>
-          <div class="compose">
-            <textarea id="cmTxt" placeholder="이 클립에 코멘트 남기기" maxlength="1000"></textarea>
-            <button class="btn pri" id="cmSend">남기기</button>
-          </div>
-        </div>
-      </section>
+  <div class="keys" id="tip">
+    <div class="keys__pop hide" id="keysPop">
+      <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> OK · NG · KEEP<br>
+      <kbd>↑</kbd><kbd>↓</kbd> 이전 · 다음 클립<br>
+      <kbd>Space</kbd> 재생 · 정지<br>
+      <kbd>←</kbd><kbd>→</kbd> 2초<br>
+      <kbd>,</kbd><kbd>.</kbd> 1프레임<br>
+      <kbd>F</kbd> 전체 화면
     </div>
-    <div class="foot">맹그라미 · 테이크 체크 · 영상은 내려받을 수 없어요</div>
+    <button class="btn" id="keysBtn" title="단축키">?</button>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -361,12 +381,10 @@ function renderTop() {
   $('tTitle').textContent = S.title || '테이크 체크';
   document.title = (S.title ? S.title + ' · ' : '') + '테이크 체크';
   const scr = S.role === 'scripter';
-  $('tRole').textContent = scr ? '스크립터' : '보기 · 코멘트';
-  $('tRole').className = 'role ' + (scr ? 's' : 'v');
+  $('tRole').textContent = scr ? '스크립터' : '보기';
   $('tName').textContent = S.name;
   $('btnCsv').classList.toggle('hide', !scr);
   $('acts').classList.toggle('hide', !scr); $('vstat').classList.toggle('hide', scr);
-  $('tip').classList.toggle('hide', !scr);
   ['fS', 'fC', 'fT', 'fMemo'].forEach((id) => { $(id).disabled = !scr; });
   // 회차
   const withClips = S.days.filter((d) => d.count > 0);
@@ -419,20 +437,19 @@ function groupOf(x) {
 function renderList() {
   S.list = computeList();
   const L = $('list');
-  if (!S.clips.length) { L.innerHTML = '<div class="empty">아직 올라온 클립이 없어요.<br>DIT가 회차 폴더에 프리뷰를 넣으면 여기에 나와요.</div>'; return; }
-  if (!S.list.length) { L.innerHTML = '<div class="empty">조건에 맞는 클립이 없어요.</div>'; return; }
+  if (!S.clips.length) { L.innerHTML = '<div class="empty">올라온 클립 없음</div>'; return; }
+  if (!S.list.length) { L.innerHTML = '<div class="empty">해당 클립 없음</div>'; return; }
   const counts = {}; S.list.forEach((x) => { const g = groupOf(x); counts[g] = (counts[g] || 0) + 1; });
   let last = null, html = '';
   S.list.forEach((x) => {
     const g = groupOf(x);
-    if (g && g !== last) { html += `<div class="grp"><span>${esc(g)}</span><span>${counts[g]}개</span></div>`; last = g; }
+    if (g && g !== last) { html += `<div class="grp"><span>${esc(g)}</span><span>${counts[g]}</span></div>`; last = g; }
     const m = x.m, c = x.c, k = keyOf(c), n = cmCount(c);
-    const t = blank(m) ? '<span class="row__t blank">씬 미입력</span>' : `<span class="row__t">S#${esc(m.s)} · C${esc(m.c)} · T${esc(m.t)}</span>`;
+    const t = blank(m) ? '<span class="row__t blank">미입력</span>' : `<span class="row__t">${esc(m.s)}-${esc(m.c)}-${esc(m.t)}</span>`;
     const d = S.dayBy[c.d];
-    const sub = S.sort === 'scene' ? `${d ? (d.no ? d.no + '회차' : d.d) : ''} · ${c.id}${c.cam ? ' · ' + c.cam + '캠' : ''}`
-      : `${c.id}${c.cam ? ' · ' + c.cam + '캠' : ''}${c.tc ? ' · ' + c.tc : ''}`;
-    html += `<div class="row${k === S.sel ? ' sel' : ''}" data-k="${esc(k)}"><div class="row__m">${t}<div class="row__s">${esc(sub)}</div></div>` +
-      (n ? `<span class="row__c" title="코멘트">💬 ${n}</span>` : '') +
+    const sub = S.sort === 'scene' ? `${c.id} · ${d ? (d.no ? d.no + '회' : d.d) : ''}` : `${c.id}${c.tc ? ' · ' + c.tc.slice(0, 8) : ''}`;
+    html += `<div class="row${k === S.sel ? ' sel' : ''}" data-k="${esc(k)}">${t}<span class="row__s">${esc(sub)}</span>` +
+      (n ? `<span class="row__c" title="코멘트 ${n}"><svg viewBox="0 0 12 12"><path d="M2 2.5h8v5.5H5L3 10V8H2z"/></svg>${n}</span>` : '<span></span>') +
       `<span class="bd ${m.st || 'none'}">${LABEL[m.st] || '—'}</span></div>`;
   });
   L.innerHTML = html;
@@ -441,17 +458,16 @@ $('list').onclick = (e) => { const r = e.target.closest('.row'); if (r) select(r
 function renderStats() {
   const arr = S.clips.filter(inRange).map(markOf);
   const n = (f) => arr.filter(f).length;
-  const items = [['all', '전체', arr.length, ''], ['ok', 'OK', n((m) => m.st === 'ok'), 'c-ok'], ['ng', 'NG', n((m) => m.st === 'ng'), 'c-ng'],
-    ['keep', 'KEEP', n((m) => m.st === 'keep'), 'c-keep'], ['none', '미확인', n((m) => !m.st), ''], ['blank', '씬 미입력', n(blank), 'c-keep']];
-  $('stats').innerHTML = items.map(([f, l, v, cl]) => `<div class="stat${S.filt === f ? ' on' : ''}" data-f="${f}"><span class="${cl}">${l}</span><b>${v}</b></div>`).join('');
+  const cmN = S.clips.filter(inRange).filter((c) => cmCount(c) > 0).length;
+  const items = [['all', '전체', arr.length, ''], ['ok', 'OK', n((m) => m.st === 'ok'), 'ok'], ['ng', 'NG', n((m) => m.st === 'ng'), 'ng'],
+    ['keep', 'KEEP', n((m) => m.st === 'keep'), 'keep'], ['none', '미확인', n((m) => !m.st), ''], ['blank', '씬 미입력', n(blank), ''], ['cm', '코멘트', cmN, '']];
+  $('stats').innerHTML = items.map(([f, l, v, cl]) => `<span class="tab ${cl}${S.filt === f ? ' on' : ''}" data-f="${f}">${l}<b>${v}</b></span>`).join('');
 }
-$('stats').onclick = (e) => { const s = e.target.closest('.stat'); if (s) setFilt(s.dataset.f); };
+$('stats').onclick = (e) => { const s = e.target.closest('.tab'); if (s) setFilt(s.dataset.f); };
 function setFilt(f) {
   S.filt = f;
-  document.querySelectorAll('#chips .chip').forEach((x) => x.classList.toggle('on', x.dataset.f === f));
   renderStats(); renderList();
 }
-document.querySelectorAll('#chips .chip').forEach((b) => { b.onclick = () => setFilt(b.dataset.f); });
 $('q').oninput = (e) => { S.q = e.target.value; renderList(); };
 $('sort').onchange = (e) => {
   S.sort = e.target.value;
@@ -484,9 +500,9 @@ function suggest(c) {
     const p = same[j], m = markOf(p);
     if (blank(m)) continue;
     const together = p.tcs != null && c.tcs != null && Math.abs(c.tcs - p.tcs) <= 3 && p.cam && c.cam && p.cam !== c.cam;
-    if (together) return { s: m.s, c: m.c, t: m.t, why: `같은 시각에 찍힌 ${p.cam}캠 ${p.id}와 같은 테이크로 채웠어요.` };
+    if (together) return { s: m.s, c: m.c, t: m.t, why: `${p.id}와 같은 시각 · 같은 테이크` };
     const tn = parseInt(m.t, 10);
-    return { s: m.s, c: m.c, t: isNaN(tn) ? '' : String(tn + 1), why: `앞 클립(${p.id}) 다음 테이크로 채웠어요. 새 컷이면 컷 번호만 고치세요.` };
+    return { s: m.s, c: m.c, t: isNaN(tn) ? '' : String(tn + 1), why: `${p.id} 다음 테이크` };
   }
   return null;
 }
@@ -495,7 +511,7 @@ function renderStage(soft) {
   const c = clipBy(S.sel);
   const m = c ? markOf(c) : {};
   $('iClip').textContent = c ? c.id : '—';
-  $('iBadge').className = 'bd ' + (m.st || 'none'); $('iBadge').textContent = LABEL[m.st] || '미확인';
+  $('iBadge').className = 'bd ' + (m.st || 'none'); $('iBadge').textContent = LABEL[m.st] || '';
   $('vBadge').className = 'bd ' + (m.st || 'none'); $('vBadge').textContent = LABEL[m.st] || '미확인';
   if (c) {
     const d = S.dayBy[c.d];
@@ -510,10 +526,10 @@ function renderStage(soft) {
       const g = suggest(c);
       if (g) {
         [['fS', g.s], ['fC', g.c], ['fT', g.t]].forEach(([id, v]) => { if (!$(id).value && v) { $(id).value = v; $(id).classList.add('sug'); } });
-        S.sug = true; hint = g.why + ' 맞으면 OK·NG·KEEP만 누르세요.';
+        S.sug = true; hint = '자동 · ' + g.why;
       }
     }
-    if (!hint && c && blank(m)) hint = S.role === 'scripter' ? '씬·컷·테이크를 적어 주세요.' : '스크립터가 아직 씬을 적지 않았어요.';
+    if (!hint && c && blank(m)) hint = S.role === 'scripter' ? '씬 · 컷 · 테이크 입력' : '씬 미입력';
     $('hint').textContent = hint;
   }
   document.querySelectorAll('#acts .big').forEach((b) => b.classList.toggle('on', b.dataset.st === m.st));
@@ -583,10 +599,10 @@ document.querySelectorAll('#acts .big').forEach((b) => { b.onclick = () => mark(
 function renderComments() {
   const c = clipBy(S.sel);
   const list = c ? S.comments.filter((x) => x.d === c.d && x.clip === c.id) : [];
-  $('cmN').textContent = list.length ? list.length + '개' : '';
+  $('cmN').textContent = list.length || '';
   $('cmList').innerHTML = list.length ? list.map((x) => `<div class="cm"><div class="cm__h"><b>${esc(x.who)}</b><span>${esc(String(x.at).slice(5))}</span>` +
     (x.mine ? `<button data-id="${x.id}">지우기</button>` : '') + `</div><div class="cm__t">${esc(x.txt)}</div></div>`).join('')
-    : '<div class="dim" style="font-size:12.5px">아직 코멘트가 없어요.</div>';
+    : '';
 }
 $('cmList').onclick = async (e) => {
   const b = e.target.closest('button[data-id]'); if (!b) return;
@@ -686,7 +702,12 @@ function toggleFs() {
 }
 $('fsBtn').onclick = toggleFs;
 $('v').addEventListener('dblclick', (e) => { e.preventDefault(); toggleFs(); });
-const fsLabel = () => { $('fsBtn').textContent = (document.fullscreenElement || document.webkitFullscreenElement) ? '⤢ 작게' : '⛶ 전체 화면'; };
+const FS_IN = '<svg viewBox="0 0 12 12"><path d="M1.5 4.5v-3h3M10.5 4.5v-3h-3M1.5 7.5v3h3M10.5 7.5v3h-3"/></svg>';
+const FS_OUT = '<svg viewBox="0 0 12 12"><path d="M4.5 1.5v3h-3M7.5 1.5v3h3M4.5 10.5v-3h-3M7.5 10.5v-3h3"/></svg>';
+const fsLabel = () => { $('fsBtn').innerHTML = (document.fullscreenElement || document.webkitFullscreenElement) ? FS_OUT : FS_IN; };
+fsLabel();
+$('keysBtn').onclick = (e) => { e.stopPropagation(); $('keysPop').classList.toggle('hide'); };
+document.addEventListener('click', (e) => { if (!e.target.closest('.keys')) $('keysPop').classList.add('hide'); });
 document.addEventListener('fullscreenchange', fsLabel);
 document.addEventListener('webkitfullscreenchange', fsLabel);
 

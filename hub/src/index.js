@@ -15,7 +15,7 @@ const MAX = 60 * 60 * 14;             // 아무리 길어도 14시간
 const REMEMBER = 60 * 60 * 24 * 30;   // '이 기기에서 로그인 유지': 30일 동안 안 쓰면 다시 로그인
 const REMEMBER_MAX = 60 * 60 * 24 * 90; //   아무리 길어도 90일
 const PUBLIC_FILES = ['/submit.html', '/wct-style.css', '/wct-core.js', '/favicon.png', '/logo.png',
-                      '/login.html', '/login', '/take.html', '/scripter.html'];
+                      '/login.html', '/login', '/take.html', '/scripter.html', '/mgrm-symbol.svg'];
                       // take.html: 테이크 체크 (명단 이름·비밀번호로 엶), scripter.html: 예전 주소 → take.html 로 넘김
 const enc = new TextEncoder();
 
