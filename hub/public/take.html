@@ -149,6 +149,14 @@ input:disabled,textarea:disabled{opacity:.8}
 .compose .btn{height:34px}
 
 /* 단축키 (? 버튼) */
+.exp{position:relative}
+.exp__pop{position:absolute;right:0;top:34px;z-index:40;width:264px;background:var(--panel);border:1px solid var(--line2);border-radius:var(--r);padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.exp__h{font-size:11px;color:var(--muted);padding:4px 8px 6px}
+.exp__pop button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:7px 8px;color:var(--text);cursor:pointer}
+.exp__pop button:hover{background:var(--panel2)}
+.exp__pop button b{display:block;font-size:12.5px}
+.exp__pop button span{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+.exp__f{border-top:1px solid var(--line);margin-top:4px;padding:7px 8px 3px;font-size:11px;color:var(--muted);line-height:1.6}
 .keys{position:fixed;right:16px;bottom:16px;z-index:30}
 .keys__pop{position:absolute;right:0;bottom:36px;width:230px;background:var(--panel);border:1px solid var(--line2);border-radius:var(--r);padding:10px 12px;font-size:11.5px;color:var(--muted);line-height:1.9}
 .keys__pop kbd{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);border-radius:3px;padding:0 4px;color:var(--text);margin-right:2px}
@@ -199,7 +207,16 @@ input:disabled,textarea:disabled{opacity:.8}
     <select id="range" aria-label="회차"></select>
     <span class="who"><i></i><span id="tName"></span><span class="r" id="tRole"></span><a href="#" id="tOut" title="나가기">나가기</a></span>
     <button class="btn" id="btnRefresh" title="새로 올린 클립 불러오기"><svg viewBox="0 0 12 12"><path d="M10 6a4 4 0 1 1-1.2-2.85M10 1.5v2.5H7.5"/></svg></button>
-    <button class="btn hide" id="btnCsv" title="CSV 내려받기"><svg viewBox="0 0 12 12"><path d="M6 1.5v6M3.5 5.5L6 8l2.5-2.5M2 10.5h8"/></svg>CSV</button>
+    <div class="exp">
+      <button class="btn" id="btnCsv" title="편집실로 내보내기"><svg viewBox="0 0 12 12"><path d="M6 1.5v6M3.5 5.5L6 8l2.5-2.5M2 10.5h8"/></svg>내보내기</button>
+      <div class="exp__pop hide" id="expPop">
+        <div class="exp__h" id="expScope"></div>
+        <button data-fmt="resolve"><b>다빈치 리졸브</b><span>메타데이터 CSV · 표시한 클립만</span></button>
+        <button data-fmt="ale"><b>프리미어 프로</b><span>ALE · 모든 클립</span></button>
+        <button data-fmt="csv"><b>엑셀</b><span>CSV · 정리본 확인용</span></button>
+        <div class="exp__f" id="expHelp"></div>
+      </div>
+    </div>
   </div>
   <div class="tabs" id="stats"></div>
 
@@ -383,7 +400,6 @@ function renderTop() {
   const scr = S.role === 'scripter';
   $('tRole').textContent = scr ? '스크립터' : '보기';
   $('tName').textContent = S.name;
-  $('btnCsv').classList.toggle('hide', !scr);
   $('acts').classList.toggle('hide', !scr); $('vstat').classList.toggle('hide', scr);
   ['fS', 'fC', 'fT', 'fMemo'].forEach((id) => { $(id).disabled = !scr; });
   // 회차
@@ -737,17 +753,36 @@ $('btnRefresh').onclick = async () => {
   catch (e) { toast(e.message, true); }
   finally { $('btnRefresh').disabled = false; }
 };
-$('btnCsv').onclick = async () => {
-  try {
-    if (S.dirty) await flush();
-    const j = await call('scripter.csv', { d: S.range === 'all' ? '' : S.range });
-    if (!j.ok) throw new Error(errText(j));
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([j.csv], { type: 'text/csv;charset=utf-8' }));
-    a.download = j.name; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  } catch (e) { toast(e.message, true); }
+const EXP_HELP = {
+  resolve: '리졸브: 미디어 풀에서 클립 선택 → 파일 › 메타데이터 가져오기 › 선택한 클립. <b>파일 확장자 무시</b>는 켜고, <b>시작·끝 타임코드로 맞추기</b>는 끄세요.',
+  ale: '프리미어: 파일 › 가져오기로 .ale 열기 → 생긴 오프라인 클립을 모두 선택 → 미디어 연결로 영상 폴더 지정.',
+  csv: '엑셀에서 바로 열려요. 편집실에 정리본으로 보낼 때 쓰세요.',
 };
+$('btnCsv').onclick = (e) => {
+  e.stopPropagation();
+  const day = S.range === 'all' ? null : (S.days || []).find((d) => d.d === S.range);
+  $('expScope').textContent = '범위: ' + (day ? (day.label || (day.no ? day.no + '회차' : day.d)) : '전체 회차') + '  (위 회차 선택을 따라가요)';
+  $('expHelp').innerHTML = EXP_HELP.resolve;
+  $('expPop').classList.toggle('hide');
+};
+document.querySelectorAll('#expPop button').forEach((b) => {
+  b.onmouseenter = () => { $('expHelp').innerHTML = EXP_HELP[b.dataset.fmt]; };
+  b.onclick = async () => {
+    $('expPop').classList.add('hide');
+    try {
+      if (S.dirty) await flush();
+      const j = await call('scripter.csv', { d: S.range === 'all' ? '' : S.range, fmt: b.dataset.fmt });
+      if (!j.ok) throw new Error(errText(j));
+      if (b.dataset.fmt === 'resolve' && !j.marked) return toast('아직 표시한 클립이 없어서 내보낼 게 없어요.', true);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([j.csv], { type: j.mime || 'text/csv;charset=utf-8' }));
+      a.download = j.name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast(b.dataset.fmt === 'resolve' ? `클립 ${j.marked}개를 내보냈어요.` : `클립 ${j.rows}개를 내보냈어요.`);
+    } catch (e) { toast(e.message, true); }
+  };
+});
+document.addEventListener('click', (e) => { if (!e.target.closest('.exp')) $('expPop').classList.add('hide'); });
 $('tOut').onclick = async (e) => {
   e.preventDefault();
   if (S.dirty) await flush();

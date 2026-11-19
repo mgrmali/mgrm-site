@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.9.1';
+const VERSION = 'hub-store 1.10.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -1115,7 +1115,7 @@ const SCRIPTER = (() => {
     return `${pad2(h)}:${pad2(m)}:${pad2(s)}${drop ? ';' : ':'}${pad2(fr)}`;
   }
   function meta_(file) {
-    const out = { dur: 0, fps: 0, tc: '', tcs: null };
+    const out = { dur: 0, fps: 0, tc: '', tcs: null, nf: 0, tcf: null, tcb: 0, df: false, aud: 0 };
     let fd;
     try {
       fd = fs.openSync(file, 'r');
@@ -1151,8 +1151,12 @@ const SCRIPTER = (() => {
             const ts = moov.readUInt32BE(mdhd.s + (moov[mdhd.s] === 1 ? 20 : 12));
             const delta = moov.readUInt32BE(stts.s + 12);
             if (delta) out.fps = Math.round((ts / delta) * 1000) / 1000;
+            // 프레임 수 = stts 항목의 샘플 수 합 (편집 프로그램용 끝 TC 계산에 씀)
+            const ne = moov.readUInt32BE(stts.s + 4);
+            for (let i = 0; i < ne && stts.s + 16 + i * 8 <= stts.e; i++) out.nf += moov.readUInt32BE(stts.s + 8 + i * 8);
           }
         }
+        if (ht === 'soun') out.aud++;
         if (ht === 'tmcd' && !out.tc) {
           const stsd = find_(moov, stbl, 'stsd');
           if (!stsd) continue;
@@ -1169,6 +1173,7 @@ const SCRIPTER = (() => {
           const frames = fb.readUInt32BE(0);
           const base = nf || Math.round(tsc / (fdur || 1)) || 24;
           out.tc = tcText_(frames, base, !!(flags & 1));
+          out.tcf = frames; out.tcb = base; out.df = !!(flags & 1);
           out.tcs = Math.round((frames / base) * 100) / 100;
         }
       }
@@ -1209,7 +1214,8 @@ const SCRIPTER = (() => {
         if (!c || c.size !== st.size || c.mtime !== st.mtimeMs) { c = { size: st.size, mtime: st.mtimeMs, m: meta_(abs) }; META.set(abs, c); }
         const stem = N(path.basename(rel, path.extname(rel)));
         clips.push({ d: N(dn), id: stem, f: N(rel), cam: camOf_(stem), tc: c.m.tc, tcs: c.m.tcs, dur: c.m.dur,
-          fps: c.m.fps, size: st.size, at: Math.round(st.mtimeMs) });
+          fps: c.m.fps, nf: c.m.nf, tcf: c.m.tcf, tcb: c.m.tcb, df: c.m.df, aud: c.m.aud, file: path.basename(rel),
+          size: st.size, at: Math.round(st.mtimeMs) });
       });
       days.push({ d: N(dn), no: dayNo_(N(dn)), count: files.length, latest: Math.round(latest) });
     });
@@ -1380,16 +1386,25 @@ const SCRIPTER = (() => {
         return { ok: true };
       });
     }
-    if (a === 'scripter.csv') {
-      if (role !== 'scripter') return { ok: false, error: '스크립터만 내려받을 수 있어요.' };
-      return { ok: true, csv: csv_(pg, b.d), name: csvName_(pg, b.d) };
-    }
+    if (a === 'scripter.csv') return exportOut_(pg, b);
     return { ok: false, error: 'unknown action' };
   }
 
-  /* ── CSV (엑셀에서 바로 열리게 BOM 포함) */
-  function csvName_(pg, d) { return `${pg.code || 'TAKE'}_테이크체크_${d ? N(d) : '전체'}_${kst_().slice(0, 10)}.csv`; }
-  function csv_(pg, onlyDay) {
+  /* ── 내보내기: 엑셀 CSV · 리졸브 메타데이터 CSV · 프리미어 ALE */
+  const FMT = {
+    csv: { tag: '테이크체크', ext: 'csv', mime: 'text/csv;charset=utf-8' },
+    resolve: { tag: '리졸브', ext: 'csv', mime: 'text/csv;charset=utf-8' },
+    ale: { tag: '프리미어', ext: 'ale', mime: 'text/plain;charset=utf-8' },
+  };
+  function exportOut_(pg, b) {
+    const fmt = FMT[b.fmt] ? b.fmt : 'csv';
+    const r = rowsFor_(pg, b.d);
+    const text = fmt === 'resolve' ? resolve_(r) : fmt === 'ale' ? ale_(r) : csv_(r);
+    const name = `${pg.code || 'TAKE'}_${FMT[fmt].tag}_${b.d ? N(b.d) : '전체'}_${kst_().slice(0, 10)}.${FMT[fmt].ext}`;
+    return { ok: true, csv: text, name, mime: FMT[fmt].mime, rows: r.list.length, marked: r.list.filter((x) => hasMark_(x.m)).length };
+  }
+  // 회차 → 촬영 시각 → 클립 이름 순, 표시·코멘트를 붙여서
+  function rowsFor_(pg, onlyDay) {
     const sc = scan_(pg.folder, true), sh = shoots_(pg.projectId);
     const dayInfo = {}; sc.days.forEach((d) => { dayInfo[d.d] = Object.assign({ no: d.no }, dayLabel_(d, sh)); });
     const mk = {}; marksOf_(pg.key).forEach((m) => { mk[m.d + '\u0000' + m.id] = m; });
@@ -1400,15 +1415,53 @@ const SCRIPTER = (() => {
       if (x.d !== y.d) return x.d.localeCompare(y.d);
       if (x.tcs != null && y.tcs != null && x.tcs !== y.tcs) return x.tcs - y.tcs;
       return x.id.localeCompare(y.id);
-    });
-    const q = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    }).map((c) => ({ c, m: mk[c.d + '\u0000' + c.id] || {}, di: dayInfo[c.d], cm: cm[c.d + '\u0000' + c.id] || [] }));
+    return { list };
+  }
+  const hasMark_ = (m) => !!(m.s || m.c || m.t || m.st || m.memo);
+  const slate_ = (m) => [m.s, m.c, m.t].map((v) => String(v == null ? '' : v).trim()).filter(Boolean).join('-');
+  const note_ = (x) => [x.m.memo, ...x.cm].map((v) => String(v || '').trim()).filter(Boolean).join(' / ');
+  const qc_ = (v) => { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+
+  // 엑셀용 (BOM 포함 → 엑셀에서 한글이 안 깨짐)
+  function csv_(r) {
     const head = ['회차', '날짜', '클립', '카메라', '시작 TC', '길이(초)', '씬', '컷', '테이크', '상태', '스크립터 메모', '코멘트', '수정자', '수정시각'];
-    const lines = list.map((c) => {
-      const m = mk[c.d + '\u0000' + c.id] || {}, di = dayInfo[c.d];
-      return [di.no ? di.no + '회차' : c.d, di.date, c.id, c.cam, c.tc, c.dur, m.s, m.c, m.t, LABEL[m.st] || '', m.memo,
-        (cm[c.d + '\u0000' + c.id] || []).join(' / '), m.by, m.at].map(q).join(',');
+    const lines = r.list.map(({ c, m, di, cm }) => [di.no ? di.no + '회차' : c.d, di.date, c.id, c.cam, c.tc, c.dur, m.s, m.c, m.t,
+      LABEL[m.st] || '', m.memo, cm.join(' / '), m.by, m.at].map(qc_).join(','));
+    return '\ufeff' + [head.join(','), ...lines].join('\n');
+  }
+
+  // 리졸브: File > Import Metadata To > Media Pool. 파일 이름으로 맞춤.
+  // BOM을 넣으면 첫 칸 이름(File Name)을 못 알아보므로 넣지 않음. 표시가 있는 클립만 (빈 값으로 덮어쓰지 않게).
+  function resolve_(r) {
+    const head = ['File Name', 'Scene', 'Shot', 'Take', 'Good Take', 'Camera #', 'Shoot Day', 'Description', 'Comments', 'Keywords'];
+    const lines = r.list.filter((x) => hasMark_(x.m)).map((x) => {
+      const { c, m, di } = x, st = LABEL[m.st] || '';
+      return [c.file || c.id, m.s, m.c, m.t, m.st === 'ok' ? '1' : '', c.cam, di.no || '',
+        [slate_(m), st].filter(Boolean).join(' '), note_(x), st].map(qc_).join(',');
     });
-    return '﻿' + [head.join(','), ...lines].join('\n');
+    return [head.join(','), ...lines].join('\r\n') + '\r\n';
+  }
+
+  // 프리미어: 파일 > 가져오기로 .ale를 열면 오프라인 클립이 생기고, '미디어 연결'로 영상과 이어 붙임.
+  // 이름 = 클립 파일 이름(확장자 빼고) → 연결할 때 이름으로 바로 찾음. 모든 클립을 넣음 (빈 표시 클립도 빈 칸으로).
+  const FPS_LABEL_ = (f) => { const t = [23.976, 24, 25, 29.97, 30, 47.952, 48, 50, 59.94, 60]; const n = t.find((x) => Math.abs(x - f) < 0.01); return n ? String(n) : String(Math.round(f) || 24); };
+  function ale_(r) {
+    const clean = (v) => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ').trim();
+    const cnt = {}; r.list.forEach(({ c }) => { if (c.fps) { const k = FPS_LABEL_(c.fps); cnt[k] = (cnt[k] || 0) + 1; } });
+    const fps = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || '24';
+    const head = ['Name', 'Tracks', 'Start', 'End', 'Tape', 'Source File', 'Scene', 'Shot', 'Take', 'Camera', 'Circled', 'Description', 'Comments'];
+    const lines = r.list.map((x) => {
+      const { c, m } = x;
+      const base = c.tcb || Math.round(c.fps) || Math.round(Number(fps)) || 24, drop = !!c.df;
+      const f0 = c.tcf != null ? c.tcf : 0;
+      const len = c.nf || Math.round((c.dur || 0) * (c.fps || base));
+      const st = LABEL[m.st] || '';
+      return [c.id, c.aud ? 'VA1A2' : 'V', tcText_(f0, base, drop), tcText_(f0 + len, base, drop), c.id, c.file || c.id,
+        m.s, m.c, m.t, c.cam, m.st === 'ok' ? '1' : '', [slate_(m), st].filter(Boolean).join(' '), note_(x)].map(clean).join('\t');
+    });
+    return ['Heading', 'FIELD_DELIM\tTABS', 'VIDEO_FORMAT\t1080', 'AUDIO_FORMAT\t48khz', 'FPS\t' + fps, '',
+      'Column', head.join('\t'), '', 'Data', ...lines].join('\r\n') + '\r\n';
   }
 
   /* ── 회차 폴더 만들기: 프로젝트의 촬영 회차마다 '08회차_1118' */
@@ -1590,8 +1643,7 @@ const SCRIPTER = (() => {
     if (a === 'scripter.csv') {
       const r = pageRow_(b.key);
       if (!r) return { ok: false, error: '페이지를 찾지 못했어요.' };
-      const pg = page_(r);
-      return { ok: true, csv: csv_(pg, b.d), name: csvName_(pg, b.d) };
+      return exportOut_(page_(r), b);
     }
     return { ok: false, error: 'unknown action' };
   }

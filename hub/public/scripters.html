@@ -253,7 +253,9 @@ function render() {
         <a class="g sm" style="text-decoration:none;display:inline-block;padding:6px 11px;border:1px solid var(--line);border-radius:9px;font-size:12px" href="${esc(p.link)}" target="_blank">열어보기 ↗</a>
         <span style="flex:1"></span>
         <button class="g sm" onclick="makeDays('${esc(p.key)}')">회차 폴더 만들기</button>
-        <button class="g sm" onclick="csv('${esc(p.key)}')">CSV</button>
+        <select class="g sm" style="width:auto;padding:5px 8px;font-size:12px" onchange="csv('${esc(p.key)}', this)" title="편집실로 내보내기 (전체 회차)">
+          <option value="">내보내기 ▾</option><option value="resolve">리졸브 CSV</option><option value="ale">프리미어 ALE</option><option value="csv">엑셀 CSV</option>
+        </select>
         ${p.unread ? `<button class="g sm" onclick="markRead('${esc(p.key)}')">코멘트 읽음</button>` : ''}
         <button class="g sm" onclick="openDlg('${esc(p.key)}')">편집</button>
       </div></div></div>`;
@@ -432,11 +434,14 @@ async function makeDays(k) {
     toast(j.made.length ? `회차 폴더 ${j.made.length}개를 만들었어요: ${j.made.join(', ')}` : '새로 만들 회차 폴더가 없어요.');
     refresh(); } catch (e) { toast(e.message, true); }
 }
-async function csv(k) {
+async function csv(k, sel) {
+  const fmt = sel ? sel.value : 'csv'; if (sel) sel.value = '';
+  if (!fmt) return;
   try {
-    const j = await WCT.api('scripter.csv', { key: k });
+    const j = await WCT.api('scripter.csv', { key: k, fmt });
+    if (fmt === 'resolve' && !j.marked) return toast('아직 표시한 클립이 없어요.', true);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([j.csv], { type: 'text/csv;charset=utf-8' })); a.download = j.name;
+    a.href = URL.createObjectURL(new Blob([j.csv], { type: j.mime || 'text/csv;charset=utf-8' })); a.download = j.name;
     document.body.appendChild(a); a.click(); a.remove();
   } catch (e) { toast(e.message, true); }
 }
