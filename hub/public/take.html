@@ -105,7 +105,9 @@ input:disabled,textarea:disabled{opacity:.75}
 .player:fullscreen .wm,.player:-webkit-full-screen .wm{font-size:clamp(18px,2.2vw,30px)}
 .info{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:10px 0 8px}
 .info__clip{font-family:var(--mono);font-size:15px;font-weight:600}
-.info__tc{font-family:var(--mono);font-size:15px;color:var(--acc);margin-left:auto}
+.info__tc{font-family:var(--mono);font-size:15px;color:var(--acc)}
+.fstep{margin-left:auto;display:flex;gap:6px}
+.fstep .btn{padding:5px 10px;font-size:12.5px}
 .info__m{font-size:12px;color:var(--muted);width:100%}
 .mnav{display:none;width:100%;gap:8px}.mnav .btn{flex:1}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
@@ -212,6 +214,7 @@ input:disabled,textarea:disabled{opacity:.75}
         <div class="info">
           <span class="info__clip" id="iClip">—</span>
           <span class="bd none" id="iBadge">—</span>
+          <span class="fstep"><button class="btn" id="fPrev" title="한 프레임 뒤로 (,)">◀ 1프레임</button><button class="btn" id="fNext" title="한 프레임 앞으로 (.)">1프레임 ▶</button></span>
           <span class="info__tc" id="iTc"></span>
           <span class="info__m" id="iMeta"></span>
           <span class="mnav"><button class="btn" id="bPrev">◀ 이전 클립</button><button class="btn" id="bNext">다음 클립 ▶</button></span>
@@ -236,7 +239,7 @@ input:disabled,textarea:disabled{opacity:.75}
             <div class="save" id="saveMsg"></div>
           </div>
           <div class="tip" id="tip"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> OK·NG·KEEP (누르면 저장되고 다음 클립으로) ·
-            <kbd>↑</kbd><kbd>↓</kbd> 이전·다음 클립 · <kbd>Space</kbd> 재생·정지 · <kbd>←</kbd><kbd>→</kbd> 2초 이동 · <kbd>F</kbd> 전체 화면</div>
+            <kbd>↑</kbd><kbd>↓</kbd> 이전·다음 클립 · <kbd>Space</kbd> 재생·정지 · <kbd>←</kbd><kbd>→</kbd> 2초 이동 · <kbd>,</kbd><kbd>.</kbd> 한 프레임 · <kbd>F</kbd> 전체 화면</div>
         </div>
 
         <div class="panel cms">
@@ -636,6 +639,18 @@ function step(d) {
   const i = S.list.findIndex((x) => keyOf(x.c) === S.sel);
   const n = S.list[Math.max(0, Math.min(S.list.length - 1, i + d))]; if (n) select(keyOf(n.c));
 }
+// 한 프레임씩: 멈추고, 지금 프레임 번호 ± 1 의 가운데로 (클립의 실제 프레임레이트 사용)
+function frameStep(d) {
+  const c = clipBy(S.sel), v = $('v');
+  if (!c || !v.getAttribute('src')) return;
+  const fps = c.fps || 24;
+  v.pause();
+  const f = Math.max(0, Math.floor(v.currentTime * fps + 1e-6) + d);
+  const t = (f + 0.5) / fps;
+  v.currentTime = isFinite(v.duration) ? Math.min(t, Math.max(0, v.duration - 0.5 / fps)) : t;
+}
+$('fPrev').onclick = () => frameStep(-1);
+$('fNext').onclick = () => frameStep(1);
 $('bPrev').onclick = () => step(-1);
 $('bNext').onclick = () => step(1);
 
@@ -689,6 +704,8 @@ document.addEventListener('keydown', (e) => {
   }
   else if (e.key === ' ') { e.preventDefault(); if (v.paused) v.play().catch(() => {}); else v.pause(); }
   else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFs(); }
+  else if (e.key === ',' || e.key === '<') { e.preventDefault(); frameStep(-1); }
+  else if (e.key === '.' || e.key === '>') { e.preventDefault(); frameStep(1); }
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); v.currentTime = Math.max(0, v.currentTime + (e.key === 'ArrowLeft' ? -2 : 2)); }
 });
 
