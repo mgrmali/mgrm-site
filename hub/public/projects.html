@@ -131,6 +131,7 @@
   <div id="dCost" class="note" style="margin-top:14px"></div>
 
   <div id="dShoots"></div>
+  <div id="dTake"></div>
 
   <div id="dTasks"></div>
 
@@ -523,9 +524,29 @@ window.openProject = (id) => {
     이 프로젝트로 등록한 금액입니다. 공급가액 기준입니다.</span>`;
 
   renderShoots();
+  renderTake();
   renderTasks();
   $('dlg').showModal();
 };
+
+// 테이크 체크 한 줄 (관리자만). 누르면 테이크 체크 화면에서 이 작품을 펼쳐서 엶
+async function renderTake() {
+  const el = $('dTake'); el.innerHTML = '';
+  if (!WCT.isAdmin()) return;
+  const id = CUR.id;
+  let j; try { j = await WCT.api('scripter.summary', { projectId: id }); } catch { return; }
+  if (!CUR || CUR.id !== id) return;
+  const p = j.page;
+  el.innerHTML = p
+    ? `<div class="fbox" style="display:flex;align-items:center;gap:10px;margin-top:10px">
+        <span>🎬 <b>테이크 체크</b></span>
+        <span class="pill ${!p.active ? '' : p.expired ? 'bad' : 'done'}">${!p.active ? '닫힘' : p.expired ? '만료' : '열림'}</span>
+        <span class="dim" style="font-size:12.5px">${p.marked}/${p.clips} 표시 · 명단 ${p.members}명${p.unread ? ` · <b style="color:var(--ci)">새 코멘트 ${p.unread}</b>` : ''}</span>
+        <span style="flex:1"></span>
+        <a class="g sm" href="scripters.html?open=${encodeURIComponent(p.key)}" style="text-decoration:none;padding:6px 11px;border:1px solid var(--line);border-radius:9px;font-size:12px">열기</a></div>`
+    : `<div class="dim" style="font-size:12px;margin-top:10px">🎬 테이크 체크 페이지가 없어요 ·
+        <a href="scripters.html?new=${id}">만들기</a></div>`;
+}
 
 function renderTasks() {
   const all = tasksOf(CUR.id);

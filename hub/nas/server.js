@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.7.0';
+const VERSION = 'hub-store 1.8.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -1357,11 +1357,19 @@ const SCRIPTER = (() => {
     if (a === 'scripter.list') {
       const pages = rows_('스크립터').map(page_);
       const marks = rows_('스크립터클립'), cms = rows_('스크립터코멘트');
+      // 마지막 활동: 접속·재생·표시·코멘트 가운데 가장 최근 (목록을 '지금 찍는 작품' 순으로 정렬하는 데 씀)
+      const last = {};
+      const bump = (k, t) => { t = fmt_(t); if (t && (!last[k] || t > last[k])) last[k] = t; };
+      marks.forEach((x) => bump(String(x['키']), x['수정시각']));
+      cms.forEach((x) => bump(String(x['키']), x['작성시각']));
+      rows_('스크립터기록').forEach((x) => bump(String(x['키']), x['시각']));
       return { ok: true, ready: ready(), dir: DIR, pages: pages.map((p) => {
         const sc = scan_(p.folder);
         const my = marks.filter((m) => String(m['키']) === p.key);
         const sh = shoots_(p.projectId);
+        const proj = byId_('프로젝트', p.projectId);
         return Object.assign(p, { clips: sc.clips.length, members: membersOf_(p.key).map(member_),
+          lastAt: last[p.key] || '', stage: proj ? String(proj['단계'] || '') : '',
           marked: my.filter((m) => m['상태']).length, ok: my.filter((m) => m['상태'] === 'ok').length,
           ng: my.filter((m) => m['상태'] === 'ng').length,
           comments: cms.filter((c) => String(c['키']) === p.key).length,
@@ -1371,6 +1379,17 @@ const SCRIPTER = (() => {
             return Object.assign({ d: d.d, count: d.count, marked: dm.filter((m) => m['상태']).length }, dayLabel_(d, sh));
           }) });
       }) };
+    }
+    if (a === 'scripter.summary') {
+      // 허브 프로젝트 창에 한 줄로 보여 줄 요약 (그 프로젝트의 테이크 체크 페이지)
+      const r = rows_('스크립터').find((x) => Number(x['프로젝트ID']) === Number(b.projectId));
+      if (!r) return { ok: true, page: null };
+      const p = page_(r);
+      const my = rows_('스크립터클립').filter((m) => String(m['키']) === p.key);
+      return { ok: true, page: { key: p.key, title: p.title, active: p.active, expired: isExpired_(p.until),
+        clips: scan_(p.folder).clips.length, marked: my.filter((m) => m['상태']).length,
+        unread: rows_('스크립터코멘트').filter((c) => String(c['키']) === p.key && !isTrue_(c['읽음'])).length,
+        members: membersOf_(p.key).filter((x) => isOn_(x['활성'])).length } };
     }
     if (a === 'scripter.save') {
       const set = { '작품명': txt_(b.title, 80), '만료일': b.until || '', '활성': b.active !== false, '메모': txt_(b.memo, 500) };
@@ -1504,7 +1523,7 @@ const PD_ALLOWED = [
   'shoot.save', 'shoot.delete', 'shoot.bulk', 'shoot.import',
 ];
 const READ_ONLY = ['bootstrap', 'me', 'review.videos', 'envelope', 'envelopes', 'unlock', 'user.list',
-                   'recovery.status', 'calendar.check', 'log.list', 'folder.list', 'scripter.list', 'scripter.csv', 'scripter.log'];
+                   'recovery.status', 'calendar.check', 'log.list', 'folder.list', 'scripter.list', 'scripter.csv', 'scripter.log', 'scripter.summary'];
 
 async function rpc_(b) {
   const who = b._who || {};
@@ -2025,7 +2044,7 @@ function admin_(a, b, who) {
     }
     case 'scripter.list': case 'scripter.save': case 'scripter.folders': case 'scripter.delete':
     case 'scripter.markRead': case 'scripter.csv': case 'scripter.member.save': case 'scripter.member.delete':
-    case 'scripter.member.import': case 'scripter.log':
+    case 'scripter.member.import': case 'scripter.log': case 'scripter.summary':
       return SCRIPTER.admin(a, b);
     case 'review.markRead': {
       const map = { comments: '리뷰코멘트', records: '납품기록', intakes: '문진', inquiries: '문의' };

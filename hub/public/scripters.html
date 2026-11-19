@@ -7,7 +7,20 @@
 <title>테이크 체크 · 맹그라미</title>
 <link rel="stylesheet" href="wct-style.css">
 <style>
-  .pg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .pg{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden}
+  .pg.open{border-color:var(--ci)}
+  .pg .body{padding:2px 16px 14px}
+  .r1{display:grid;grid-template-columns:minmax(0,1.6fr) 70px minmax(110px,1fr) 80px 60px 90px;gap:12px;align-items:center;
+    padding:11px 16px;cursor:pointer;font-size:13px}
+  .r1:hover{background:var(--soft)}
+  .r1 .nm{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .r1 .nm i{font-style:normal;color:var(--dim);display:inline-block;width:14px;transition:transform .15s}
+  .pg.open .r1 .nm i{transform:rotate(90deg)}
+  .r1 .pr{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim);white-space:nowrap}
+  .r1 .pr .bar2{flex:1}
+  .rhead{display:grid;grid-template-columns:minmax(0,1.6fr) 70px minmax(110px,1fr) 80px 60px 90px;gap:12px;padding:0 16px 6px;
+    font-size:11.5px;color:var(--dim)}
+  @media(max-width:760px){.r1,.rhead{grid-template-columns:minmax(0,1fr) 64px 90px}.r1>:nth-child(n+4),.rhead>:nth-child(n+4){display:none}}
   .pg.off{opacity:.55}
   .pg .hd{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
   .pg .tt{font-weight:800;font-size:15px}
@@ -36,18 +49,19 @@
       <h2 style="margin:0;flex:1">테이크 체크</h2>
       <button class="b" id="btnNew">＋ 새 페이지</button>
     </div>
-    <div class="note">
+    <details class="note" style="cursor:pointer"><summary style="font-weight:600">사용 방법</summary>
       작품 하나에 <b>링크 하나</b>예요. 회차가 늘어도 같은 링크를 쓰면 돼요.<br>
       ① 새 페이지를 만들면 NAS <b>Web/take/</b> 안에 작품 폴더와 회차 폴더(08회차_1118)가 생겨요.
       ② 회차가 끝나면 프리뷰 MP4(H.264, 원본 클립 이름 그대로)를 그 회차 폴더에 넣어요.
       ③ <b>명단</b>에 들어올 사람을 넣어요. 이름이 곧 아이디이고, 비밀번호(숫자 4자리)는 사람마다 자동으로 만들어져요.
       ④ 사람마다 <b>안내 복사</b>를 눌러 링크·이름·비밀번호를 보내요. 명단에서 빼면 그 사람만 바로 못 들어와요.<br>
       회차 폴더는 프로젝트의 촬영 회차를 보고 만들어요. 회차를 새로 넣었으면 <b>회차 폴더 만들기</b>를 누르세요.
-    </div>
+    </details>
     <div class="msg bad hide" id="notReady"></div>
-    <label style="display:flex;align-items:center;gap:7px;color:var(--dim);font-size:12.5px;margin:0 0 12px">
-      <input type="checkbox" id="showOff" style="width:auto"> 닫힌 페이지도 보기
-    </label>
+    <div class="addrow" style="margin:0 0 12px">
+      <input id="q" placeholder="작품 이름이나 코드로 찾기" autocomplete="off">
+      <select id="flt"><option value="on">진행 중</option><option value="off">만료·닫힘·완료</option><option value="all">전체</option></select>
+    </div>
     <div id="pgList"><div class="dim">불러오는 중…</div></div>
   </div>
 </div>
@@ -129,8 +143,10 @@ const ROLE = { scripter: '스크립터', viewer: '보기·코멘트' };
   if (!await WCT.requireAuth(true)) return;
   mountHeader('테이크 체크');
   window.__onReload = refresh;
-  WCT.load(false).catch(() => {});   // 프로젝트 목록 (새 페이지 만들 때)
+  const loading = WCT.load(false).catch(() => {});   // 프로젝트 목록 (새 페이지 만들 때)
   await refresh();
+  const nw = new URLSearchParams(location.search).get('new');     // 허브 프로젝트 창의 [만들기]로 온 경우
+  if (nw) { await loading; openDlg(''); $('dProj').value = nw; $('dProj').onchange(); }
 })();
 
 async function refresh() {
@@ -142,20 +158,46 @@ async function refresh() {
     render();
   } catch (e) { $('pgList').innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; }
 }
-$('showOff').onchange = render;
+let OPEN = new URLSearchParams(location.search).get('open') || '';   // 허브 프로젝트 창의 [열기]로 오면 그 작품을 펼침
+$('q').oninput = render;
+$('flt').onchange = render;
+const isExp = (p) => !!p.until && new Date(p.until + 'T23:59:59') < new Date();
+const isOn = (p) => p.active && !isExp(p) && p.stage !== '완료';
+function ago(t) {
+  if (!t) return '—';
+  const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  const yd = new Date(Date.now() + 9 * 3600e3 - 864e5).toISOString().slice(0, 10);
+  if (t.slice(0, 10) === today) return '오늘 ' + t.slice(11, 16);
+  if (t.slice(0, 10) === yd) return '어제';
+  return `${Number(t.slice(5, 7))}/${Number(t.slice(8, 10))}`;
+}
+window.togglePg = (k) => { OPEN = OPEN === k ? '' : k; render();
+  if (OPEN) setTimeout(() => { const el = document.querySelector(`.pg[data-k="${OPEN}"]`); if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 30); };
 
 function render() {
-  const list = PAGES.slice().reverse().filter((p) => $('showOff').checked || p.active);
-  $('pgList').innerHTML = list.length ? list.map((p) => {
-    const exp = p.until && new Date(p.until + 'T23:59:59') < new Date();
-    const days = (p.days || []).filter((d) => d.count > 0 || true);
-    return `<div class="pg ${p.active ? '' : 'off'}">
-      <div class="hd"><span class="tt">${esc(p.title || '(제목 없음)')}</span>
-        ${p.code ? `<span class="pill">${esc(p.code)}</span>` : ''}<span class="key">${esc(p.key)}</span>
-        ${p.active ? (exp ? '<span class="pill bad">만료</span>' : '<span class="pill done">열림</span>') : '<span class="pill">닫힘</span>'}
-        ${p.unread ? `<span class="pill wait">새 코멘트 ${p.unread}</span>` : ''}</div>
+  const q = $('q').value.trim().toLowerCase(), f = $('flt').value;
+  let list = PAGES.filter((p) => f === 'all' || (f === 'on' ? isOn(p) : !isOn(p)) || p.key === OPEN);
+  if (q) list = list.filter((p) => (p.title + ' ' + p.code + ' ' + p.key).toLowerCase().includes(q));
+  list.sort((a, b) => String(b.lastAt || b.createdAt || '').localeCompare(String(a.lastAt || a.createdAt || '')));
+  const offN = PAGES.filter((p) => !isOn(p)).length;
+  const head = list.length ? `<div class="rhead"><span>작품</span><span>상태</span><span>진행 (표시/클립)</span><span>새 코멘트</span><span>명단</span><span>마지막 활동</span></div>` : '';
+  $('pgList').innerHTML = head + (list.length ? list.map((p) => {
+    const exp = isExp(p);
+    const days = p.days || [];
+    const st = !p.active ? '<span class="pill">닫힘</span>' : exp ? '<span class="pill bad">만료</span>'
+      : p.stage === '완료' ? '<span class="pill">완료</span>' : '<span class="pill done">열림</span>';
+    const pct = p.clips ? Math.round(p.marked / p.clips * 100) : 0;
+    const row = `<div class="r1" onclick="togglePg('${esc(p.key)}')">
+        <span class="nm"><i>▸</i> ${p.code ? `<span class="pill" style="margin-right:4px">${esc(p.code)}</span>` : ''}${esc(p.title || '(제목 없음)')}</span>
+        <span>${st}</span>
+        <span class="pr"><div class="bar2"><i style="width:${pct}%"></i></div>${p.marked}/${p.clips}</span>
+        <span>${p.unread ? `<span class="pill wait">${p.unread}</span>` : '<span class="dim">—</span>'}</span>
+        <span>${(p.members || []).filter((m) => m.active).length}명</span>
+        <span class="dim">${esc(ago(p.lastAt))}</span></div>`;
+    if (p.key !== OPEN) return `<div class="pg" data-k="${esc(p.key)}">${row}</div>`;
+    return `<div class="pg open" data-k="${esc(p.key)}">${row}<div class="body">
       <div class="meta">
-        NAS 폴더: <span class="path" title="눌러서 복사" onclick="copyPath('${esc(p.key)}')">${SHARE}/${esc(p.folder)}/</span><br>
+ 페이지 키 <span class="key">${esc(p.key)}</span> · NAS 폴더: <span class="path" title="눌러서 복사" onclick="copyPath('${esc(p.key)}')">${SHARE}/${esc(p.folder)}/</span><br>
         클립 ${p.clips}개 · 표시 ${p.marked}개 (OK ${p.ok} · NG ${p.ng}) · 코멘트 ${p.comments}개
         ${p.until ? ' · 만료 ' + esc(p.until) : ''}${p.memo ? '<br>메모: ' + esc(p.memo) : ''}
       </div>
@@ -197,8 +239,9 @@ function render() {
         <button class="g sm" onclick="csv('${esc(p.key)}')">CSV</button>
         ${p.unread ? `<button class="g sm" onclick="markRead('${esc(p.key)}')">코멘트 읽음</button>` : ''}
         <button class="g sm" onclick="openDlg('${esc(p.key)}')">편집</button>
-      </div></div>`;
-  }).join('') : '<div class="dim">스크립터 페이지가 없어요. [새 페이지]로 만들어 보세요.</div>';
+      </div></div></div>`;
+  }).join('') : `<div class="dim">${PAGES.length ? '조건에 맞는 작품이 없어요.' : '테이크 체크 페이지가 없어요. [새 페이지]로 만들어 보세요.'}</div>`)
+    + (f === 'on' && offN ? `<div class="dim" style="font-size:12px;margin-top:8px">만료·닫힘·완료 ${offN}개는 숨겨져 있어요. 위에서 '만료·닫힘·완료'나 '전체'를 고르면 보여요.</div>` : '');
 }
 // 링크는 새 주소(take.html)로 만듭니다. 예전 scripter.html 링크도 자동으로 넘어가요
 const TAKE_URL = location.origin + '/take.html?p=';
@@ -413,7 +456,7 @@ $('dSave').onclick = async () => {
     if (!EDIT) {
       if (j.folderError) return msg(j.folderError);
       msg(`만들었어요. NAS 폴더: ${SHARE}/${j.folder}/` + (j.made && j.made.length ? ` · 회차 폴더 ${j.made.length}개` : ' · 회차 폴더는 아직 없어요 (프로젝트에 촬영 회차를 넣어 주세요)') + ' — 닫고 카드의 명단에 사람을 넣어 주세요.', true);
-      EDIT = j.key; $('dDelete').classList.remove('hide'); $('dProj').disabled = true;
+      EDIT = j.key; OPEN = j.key; render(); $('dDelete').classList.remove('hide'); $('dProj').disabled = true;
     } else { $('dlg').close(); toast('저장했어요.'); }
   } catch (e) { msg(e.message); }
   finally { $('dSave').disabled = false; }
