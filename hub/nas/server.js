@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.12.0';
+const VERSION = 'hub-store 1.13.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -120,7 +120,11 @@ const SHEETS = {
   '스크립터클립':   ['키', '회차폴더', '클립', '씬', '컷', '테이크', '상태', '메모', '수정자', '수정시각'],
   '스크립터코멘트': ['ID', '키', '회차폴더', '클립', '작성자', '내용', '작성시각', '기기', '읽음'],
   // 1.6.0: 사람마다 이름 + 비밀번호 (이름이 곧 아이디). 페이지의 스크립터비번·보기비번은 더 이상 안 씀
-  '스크립터명단':   ['ID', '키', '이름', '역할', '비번', '활성', '등록일', '마지막접속', '소속'],
+  '스크립터명단':   ['ID', '키', '이름', '역할', '비번', '활성', '등록일', '마지막접속', '소속', '키컷'],
+  // 키컷 리뷰 (1.13.0) — 테이크 체크 페이지(키)마다
+  '키컷':           ['ID', '키', '회차폴더', '클립', '씬', '컷', '테이크', '상태', '상태자', '상태시각', '메모', '등록일'],
+  '키컷버전':       ['ID', '키', '키컷ID', '슬롯', '버전', '파일', '올린이', '올린시각'],
+  '키컷코멘트':     ['ID', '키', '키컷ID', '작성자', '내용', '작성시각'],
   // 1.7.0: 접속·재생 기록 (같은 사람·같은 클립 재생은 10분 안이면 한 번만, 90일 지나면 자동 삭제)
   '스크립터기록':   ['키', '이름', '종류', '회차폴더', '클립', '시각', 'IP', '기기'],
 };
@@ -432,7 +436,7 @@ function public_(b) {
       email: c['계산서이메일'], notice: c['계산서안내'] } };
   }
   if (a === 'check') return checkToken_(b.t);
-  if (a.startsWith('scripter.')) return SCRIPTER.pub(b);
+  if (a.startsWith('scripter.') || a.startsWith('keycut.')) return SCRIPTER.pub(b);
   if (a === 'submit' || (!a && b.token && b.envelope)) return tx_(() => submit_(b));
   // 컬러리버브 — 예전 폼은 action 없이 '_폼종류' 로 구분해 보냈습니다
   const kind = String(b['_폼종류'] || '');
@@ -1084,7 +1088,7 @@ const SCRIPTER = (() => {
   function dropPage_(r, withVideo) {
     const key = String(r['키']).trim(), folder = String(r['폴더'] || '');
     remove_(r);
-    ['스크립터명단', '스크립터기록', '스크립터클립', '스크립터코멘트'].forEach((n) =>
+    ['스크립터명단', '스크립터기록', '스크립터클립', '스크립터코멘트', '키컷', '키컷버전', '키컷코멘트'].forEach((n) =>
       rows_(n).filter((x) => String(x['키']) === key).forEach(remove_));
     let moved = '';
     if (withVideo && folder && fs.existsSync(path.join(DIR, folder))) moved = trash_(path.join(DIR, folder));
@@ -1225,7 +1229,8 @@ const SCRIPTER = (() => {
   /* ── 썸네일 (1.11.0): 회차 폴더/_thumbs/<클립>.jpg — QNAP 웹 서버가 영상과 같은 길로 내보냄
      ffmpeg 가 없으면(알파인 컨테이너) 켤 때 apk 로 한 번 설치. 실패해도 썸네일만 없고 나머지는 그대로 */
   const THUMB_DIR = '_thumbs';
-  const GRADE_DIR = '_grade';   // 색보정본: 회차 폴더/_grade/<원본과 같은 이름> (1.12.0)
+  const GRADE_DIR = '_grade';
+  const KC_DIR = '_keycut';     // 키컷 스틸: 작품 폴더/_keycut/<키컷ID>/<슬롯>_v<버전>.jpg (1.13.0)   // 색보정본: 회차 폴더/_grade/<원본과 같은 이름> (1.12.0)
   const { execFile } = require('child_process');
   const TH = { ff: '', state: 'check', q: [], busy: false, seen: new Set() };
   function sh_(cmd, args, ms) {
@@ -1286,7 +1291,7 @@ const SCRIPTER = (() => {
     const root = path.join(DIR, folder);
     const days = [], clips = [];
     let names = [];
-    try { names = fs.readdirSync(root, { withFileTypes: true }).filter((x) => x.isDirectory() && !skip(x.name)).map((x) => x.name); } catch {}
+    try { names = fs.readdirSync(root, { withFileTypes: true }).filter((x) => x.isDirectory() && !skip(x.name) && x.name !== KC_DIR).map((x) => x.name); } catch {}
     names.forEach((dn) => {
       const files = [];
       const walk = (abs, rel, depth) => {
@@ -1370,7 +1375,8 @@ const SCRIPTER = (() => {
   const membersOf_ = (key) => rows_('스크립터명단').filter((x) => String(x['키']) === String(key));
   function member_(r) {
     return { id: Number(r['ID']), name: String(r['이름'] || ''), org: String(r['소속'] || ''), role: r['역할'] === 'scripter' ? 'scripter' : 'viewer',
-      pw: String(r['비번'] || ''), active: isOn_(r['활성']), createdAt: fmt_(r['등록일']), lastAt: fmt_(r['마지막접속']) };
+      pw: String(r['비번'] || ''), active: isOn_(r['활성']), createdAt: fmt_(r['등록일']), lastAt: fmt_(r['마지막접속']),
+      kc: KC_ROLES.includes(String(r['키컷'])) ? String(r['키컷']) : '' };
   }
   function pin_(key) {
     const used = new Set(membersOf_(key).map((x) => String(x['비번'])));
@@ -1429,15 +1435,18 @@ const SCRIPTER = (() => {
 
   function pub(b) {
     const a = String(b.action || '');
+    if (a.startsWith('keycut.')) return kcPub_(a, b);
     if (a === 'scripter.meta') {
       const r = pageRow_(b.p);
       if (!r) return { ok: false, error: 'none' };
       const pg = page_(r);
       if (!pg.active) return { ok: false, error: 'off', title: pg.title };
       if (isExpired_(pg.until)) return { ok: false, error: 'expired', title: pg.title };
-      return { ok: true, title: pg.title, code: pg.code };
+      return { ok: true, title: pg.title, code: pg.code, admin: isAdmin_(b) };
     }
-    const x = auth_(b);
+    // 허브에 로그인한 관리자는 명단 없이 들어옴 (스크립터와 같은 권한)
+    const x = isAdmin_(b) && !b.name ? (() => { const r = pageRow_(b.p); return r ? { pg: page_(r), role: 'scripter', me: String(b._admin.name || b._admin.user), org: '맹그라미' }
+      : { err: { ok: false, error: 'none' } }; })() : auth_(b);
     if (x.err) return x.err;
     const { pg, role, me } = x;
     if (a === 'scripter.open' || a === 'scripter.sync') {
@@ -1446,7 +1455,8 @@ const SCRIPTER = (() => {
         if (!b.fresh) log_(pg, me, '접속', b);
       }
       const sc = scan_(pg.folder, a === 'scripter.open' && !!b.fresh);
-      const out = { ok: true, role, me, org: x.org, sig: sc.sig, marks: marksOf_(pg.key), comments: commentsOf_(pg.key, me) };
+      const out = { ok: true, role, me, org: x.org, sig: sc.sig, marks: marksOf_(pg.key), comments: commentsOf_(pg.key, me),
+        admin: isAdmin_(b), kc: kcSet_(pg.key), kcRole: isAdmin_(b) ? '관리' : String((x.row && x.row['키컷']) || '') };
       if (a === 'scripter.sync' && b.sig === sc.sig) return out;
       const sh = shoots_(pg.projectId);
       return Object.assign(out, { title: pg.title, code: pg.code,
@@ -1595,6 +1605,7 @@ const SCRIPTER = (() => {
 
   /* ── 관리 (허브 로그인) */
   function admin(a, b) {
+    if (a.startsWith('keycut.')) return kcAdmin_(a, b);
     if (a === 'scripter.list') {
       const pages = rows_('스크립터').map(page_);
       const marks = rows_('스크립터클립'), cms = rows_('스크립터코멘트');
@@ -1763,6 +1774,187 @@ const SCRIPTER = (() => {
     const cms = rows_('스크립터코멘트');
     return { pages: rows_('스크립터').filter((r) => isOn_(r['활성'])).length,
       unread: cms.filter((c) => !isTrue_(c['읽음'])).length };
+  }
+
+
+  /* ═══════════ 키컷 리뷰 (1.13.0) ═══════════
+     테이크 체크 페이지(키)와 같은 작품·같은 명단. 명단의 '키컷' 칸이 승인/보기 인 사람과 허브 관리자만 들어옴.
+     키컷마다 슬롯 4개 (log · 709 · lut · gr), 슬롯마다 버전이 쌓임 (v1, v2 …). 스틸은 NAS 웹 폴더에 저장 */
+  const KC_ROLES = ['승인', '보기'];
+  const KC_SLOTS = ['log', '709', 'lut', 'gr'];
+  const KC_ST = ['ok', 'fix'];
+  const KC_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+  // 워커가 허브 로그인 쿠키를 확인하고 _admin 을 붙여 보냄 → 여기서 다시 QNAP 그룹으로 관리자 확인
+  const isAdmin_ = (b) => !!(b && b._admin && b._admin.user && roleOf_(String(b._admin.user)) === 'admin');
+  const kcSet_ = (key) => rows_('키컷').filter((x) => String(x['키']) === key).map((x) => N(x['회차폴더']) + '|' + N(x['클립']));
+  function kcAuth_(b) {
+    if (isAdmin_(b)) {
+      const r = pageRow_(b.p);
+      if (!r) return { err: { ok: false, error: 'none' } };
+      return { pg: page_(r), role: 'admin', me: String(b._admin.name || b._admin.user), org: '맹그라미' };
+    }
+    if (!b.name && !b.pw) {
+      const r = pageRow_(b.p);
+      return { err: { ok: false, error: r ? 'login' : 'none', title: r ? page_(r).title : '' } };
+    }
+    const x = auth_(b);
+    if (x.err) return x;
+    const kc = String(x.row['키컷'] || '');
+    if (!KC_ROLES.includes(kc)) return { err: { ok: false, error: 'nokc', title: x.pg.title } };
+    return { pg: x.pg, role: kc === '승인' ? 'approve' : 'view', me: x.me, org: x.org, row: x.row };
+  }
+  const kcDir_ = (pg, id) => path.join(DIR, pg.folder, KC_DIR, String(id));
+  function kcCuts_(key) {
+    const vers = rows_('키컷버전').filter((x) => String(x['키']) === key);
+    return rows_('키컷').filter((x) => String(x['키']) === key).map((x) => {
+      const id = Number(x['ID']), v = {};
+      KC_SLOTS.forEach((sl) => { v[sl] = []; });
+      vers.filter((y) => Number(y['키컷ID']) === id).forEach((y) => {
+        const sl = String(y['슬롯']);
+        if (v[sl]) v[sl].push({ n: Number(y['버전']), f: String(y['파일']), th: String(y['파일']).replace(/\.[^.]+$/, '.th.jpg'),
+          by: String(y['올린이'] || ''), at: fmt_(y['올린시각']) });
+      });
+      KC_SLOTS.forEach((sl) => v[sl].sort((a, c) => a.n - c.n));
+      return { id, d: N(x['회차폴더']), clip: N(x['클립']), s: String(x['씬'] || ''), c: String(x['컷'] || ''), t: String(x['테이크'] || ''),
+        st: String(x['상태'] || ''), stBy: String(x['상태자'] || ''), stAt: fmt_(x['상태시각']), memo: String(x['메모'] || ''),
+        at: fmt_(x['등록일']), v };
+    });
+  }
+  const kcComments_ = (key) => rows_('키컷코멘트').filter((x) => String(x['키']) === key).map((x) => ({ id: Number(x['ID']),
+    kc: Number(x['키컷ID']), who: String(x['작성자'] || ''), txt: String(x['내용'] || ''), at: fmt_(x['작성시각']) }));
+  function kcSig_(key) {
+    const h = require('crypto').createHash('md5');
+    h.update(JSON.stringify([kcCuts_(key), kcComments_(key)]));
+    return h.digest('hex').slice(0, 12);
+  }
+  // 관리자에게만: 테이크 체크에서 OK 로 표시했고 아직 키컷이 아닌 클립
+  function kcCands_(pg) {
+    const have = new Set(kcSet_(pg.key));
+    const clips = {}; scan_(pg.folder).clips.forEach((c) => { clips[c.d + '|' + c.id] = c; });
+    return marksOf_(pg.key).filter((m) => m.st === 'ok' && !have.has(m.d + '|' + m.id) && clips[m.d + '|' + m.id]).map((m) => {
+      const c = clips[m.d + '|' + m.id];
+      return { d: m.d, clip: m.id, s: m.s, c: m.c, t: m.t, tc: c.tc,
+        th: c.th ? encodeURIComponent(c.d) + '/' + THUMB_DIR + '/' + encodeURIComponent(path.basename(c.f, path.extname(c.f))) + '.jpg' : '' };
+    });
+  }
+  function kcPub_(a, b) {
+    if (a === 'keycut.meta') {
+      const r = pageRow_(b.p);
+      if (!r) return { ok: false, error: 'none' };
+      return { ok: true, title: page_(r).title, admin: isAdmin_(b) };
+    }
+    const x = kcAuth_(b);
+    if (x.err) return x.err;
+    const { pg, role, me } = x;
+    const can = { approve: role === 'approve' || role === 'admin', admin: role === 'admin' };
+    if (a === 'keycut.open' || a === 'keycut.sync') {
+      if (a === 'keycut.open' && x.row) { try { patch_(x.row, { '마지막접속': nowStr_() }); } catch {} log_(pg, me, '키컷 접속', b); }
+      const sig = kcSig_(pg.key);
+      const out = { ok: true, role, me, org: x.org, sig };
+      if (a === 'keycut.sync' && b.sig === sig && !can.admin) return out;
+      const clips = {}; scan_(pg.folder).clips.forEach((c) => { clips[c.d + '|' + c.id] = c; });
+      const sh = shoots_(pg.projectId);
+      const days = {}; scan_(pg.folder).days.forEach((d) => { days[d.d] = Object.assign({ no: d.no }, dayLabel_(d, sh)); });
+      return Object.assign(out, { title: pg.title, code: pg.code,
+        base: BASE + encodeURIComponent(pg.folder) + '/' + KC_DIR + '/',
+        takeBase: BASE + encodeURIComponent(pg.folder) + '/',
+        cuts: kcCuts_(pg.key).map((k) => Object.assign(k, { tc: (clips[k.d + '|' + k.clip] || {}).tc || '', day: days[k.d] || null })),
+        comments: kcComments_(pg.key),
+        cands: can.admin ? kcCands_(pg) : undefined });
+    }
+    const cut = rows_('키컷').find((r) => String(r['키']) === pg.key && Number(r['ID']) === Number(b.id));
+    if (a === 'keycut.status') {
+      if (!can.approve) return { ok: false, error: '승인 권한이 있는 사람만 할 수 있어요.' };
+      if (!cut) return { ok: false, error: '키컷을 찾지 못했어요. 새로고침해 주세요.' };
+      const st = KC_ST.includes(String(b.st)) ? String(b.st) : '';
+      patch_(cut, { '상태': st, '상태자': st ? me : '', '상태시각': st ? nowStr_() : '' });
+      log_(pg, me, st === 'ok' ? '키컷 승인' : st === 'fix' ? '키컷 수정 요청' : '키컷 표시 지움', b, cut['회차폴더'], cut['클립']);
+      return { ok: true, sig: kcSig_(pg.key) };
+    }
+    if (a === 'keycut.comment') {
+      if (!cut) return { ok: false, error: '키컷을 찾지 못했어요. 새로고침해 주세요.' };
+      const t = txt_(b.txt, 1000);
+      if (!t) return { ok: false, error: '내용을 적어 주세요.' };
+      const id = nextId_('키컷코멘트');
+      append_('키컷코멘트', [id, pg.key, Number(cut['ID']), me, t, nowStr_()]);
+      return { ok: true, id, sig: kcSig_(pg.key) };
+    }
+    if (a === 'keycut.uncomment') {
+      const r = rows_('키컷코멘트').find((y) => String(y['키']) === pg.key && Number(y['ID']) === Number(b.cid));
+      if (!r) return { ok: true };
+      if (!can.admin && nkey_(r['작성자']) !== nkey_(me)) return { ok: false, error: '내가 쓴 코멘트만 지울 수 있어요.' };
+      remove_(r);
+      return { ok: true, sig: kcSig_(pg.key) };
+    }
+    return { ok: false, error: 'unknown action' };
+  }
+  function kcPage_(b) {
+    const r = pageRow_(b.key || b.p);
+    return r ? page_(r) : null;
+  }
+  function kcAdmin_(a, b) {
+    const pg = kcPage_(b);
+    if (!pg) return { ok: false, error: '테이크 체크 페이지를 찾지 못했어요.' };
+    if (a === 'keycut.add') {
+      // 테이크 체크 클립 하나를 키컷으로 (씬·컷·테이크는 스크립터 표시에서 가져옴)
+      const d = N(b.d), clip = N(b.clip);
+      if (!hasClip_(pg, d, clip)) return { ok: false, error: '클립을 찾지 못했어요.' };
+      const dup = rows_('키컷').find((r) => String(r['키']) === pg.key && N(r['회차폴더']) === d && N(r['클립']) === clip);
+      if (dup) return { ok: true, id: Number(dup['ID']), dup: true };
+      const m = marksOf_(pg.key).find((x) => x.d === d && x.id === clip) || {};
+      const id = nextId_('키컷');
+      append_('키컷', [id, pg.key, d, clip, m.s || '', m.c || '', m.t || '', '', '', '', '', nowStr_()]);
+      return { ok: true, id };
+    }
+    const cut = rows_('키컷').find((r) => String(r['키']) === pg.key && Number(r['ID']) === Number(b.id));
+    if (a === 'keycut.member') {
+      // 명단 한 사람의 키컷 권한: 승인 · 보기 · '' (없음)
+      const m = membersOf_(pg.key).find((x) => Number(x['ID']) === Number(b.mid));
+      if (!m) return { ok: false, error: '명단에서 찾지 못했어요.' };
+      patch_(m, { '키컷': KC_ROLES.includes(String(b.kc)) ? String(b.kc) : '' });
+      return { ok: true };
+    }
+    if (!cut) return { ok: false, error: '키컷을 찾지 못했어요.' };
+    const id = Number(cut['ID']);
+    if (a === 'keycut.memo') { patch_(cut, { '메모': txt_(b.memo, 500), '씬': num_(b.s ?? cut['씬']), '컷': num_(b.c ?? cut['컷']), '테이크': num_(b.t ?? cut['테이크']) }); return { ok: true }; }
+    if (a === 'keycut.upload') {
+      const slot = String(b.slot);
+      if (!KC_SLOTS.includes(slot)) return { ok: false, error: '슬롯이 잘못됐어요.' };
+      const ext = KC_EXT[String(b.type)];
+      if (!ext) return { ok: false, error: 'JPG · PNG · WEBP 만 올릴 수 있어요.' };
+      const buf = Buffer.from(String(b.data || ''), 'base64');
+      if (!buf.length || buf.length > 9 * 1024 * 1024) return { ok: false, error: '파일이 비었거나 너무 커요 (9MB까지).' };
+      const n = rows_('키컷버전').filter((y) => String(y['키']) === pg.key && Number(y['키컷ID']) === id && String(y['슬롯']) === slot)
+        .reduce((mx, y) => Math.max(mx, Number(y['버전']) || 0), 0) + 1;
+      const dir = kcDir_(pg, id);
+      if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }); own_(path.dirname(dir)); own_(dir); }
+      const fn = `${slot}_v${n}${ext}`, abs = path.join(dir, fn);
+      fs.writeFileSync(abs, buf); own_(abs);
+      // 목록용 작은 그림 (ffmpeg 가 있으면). 없으면 화면이 원본을 그대로 씀
+      ffReady_().then((ok) => { if (!ok) return; const th = abs.replace(/\.[^.]+$/, '.th.jpg');
+        sh_(TH.ff, ['-hide_banner', '-loglevel', 'error', '-i', abs, '-vf', 'scale=480:-2', '-q:v', '5', '-y', th], 60e3).then((r) => { if (r.ok) own_(th); }); });
+      append_('키컷버전', [nextId_('키컷버전'), pg.key, id, slot, n, `${id}/${fn}`, String((b._who && b._who.name) || ''), nowStr_()]);
+      return { ok: true, n, f: `${id}/${fn}` };
+    }
+    if (a === 'keycut.delver') {
+      const r = rows_('키컷버전').find((y) => String(y['키']) === pg.key && Number(y['키컷ID']) === id && String(y['슬롯']) === String(b.slot) && Number(y['버전']) === Number(b.n));
+      if (r) {
+        const abs = path.join(DIR, pg.folder, KC_DIR, String(r['파일']));
+        [abs, abs.replace(/\.[^.]+$/, '.th.jpg')].forEach((f) => { try { fs.unlinkSync(f); } catch {} });
+        remove_(r);
+      }
+      return { ok: true };
+    }
+    if (a === 'keycut.remove') {
+      rows_('키컷버전').filter((y) => String(y['키']) === pg.key && Number(y['키컷ID']) === id).forEach(remove_);
+      rows_('키컷코멘트').filter((y) => String(y['키']) === pg.key && Number(y['키컷ID']) === id).forEach(remove_);
+      remove_(cut);
+      const dir = kcDir_(pg, id);
+      let moved = '';
+      if (fs.existsSync(dir)) moved = trash_(dir);
+      return { ok: true, moved };
+    }
+    return { ok: false, error: 'unknown action' };
   }
 
   return { ready, pub, admin, bundle, meta_, DIR, BASE };
@@ -2300,6 +2492,7 @@ function admin_(a, b, who) {
     case 'scripter.list': case 'scripter.save': case 'scripter.folders': case 'scripter.delete':
     case 'scripter.markRead': case 'scripter.csv': case 'scripter.member.save': case 'scripter.member.delete':
     case 'scripter.member.import': case 'scripter.log': case 'scripter.summary': case 'scripter.orphans': case 'scripter.trash':
+    case 'keycut.add': case 'keycut.upload': case 'keycut.remove': case 'keycut.delver': case 'keycut.memo': case 'keycut.member':
       return SCRIPTER.admin(a, b);
     case 'review.markRead': {
       const map = { comments: '리뷰코멘트', records: '납품기록', intakes: '문진', inquiries: '문의' };

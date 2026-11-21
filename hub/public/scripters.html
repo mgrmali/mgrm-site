@@ -229,9 +229,12 @@ function render() {
       </tbody></table>` : '<div class="dim" style="font-size:12.5px;margin-top:8px">회차 폴더가 아직 없어요. 프로젝트에 촬영 회차를 넣고 [회차 폴더 만들기]를 누르세요.</div>'}
       <div class="mem">
         <h4>명단 <span class="dim" style="font-weight:400">${(p.members || []).filter((m) => m.active).length}명 · 이름 + 비밀번호로 들어와요</span></h4>
-        ${(p.members || []).length ? `<table><thead><tr><th>이름</th><th>소속</th><th>역할</th><th>비밀번호</th><th>마지막 접속</th><th></th></tr></thead><tbody>
+        ${(p.members || []).length ? `<table><thead><tr><th>이름</th><th>소속</th><th>역할</th><th title="키컷 리뷰: 승인 = 승인·수정 요청 가능, 보기 = 보기·코멘트">키컷</th><th>비밀번호</th><th>마지막 접속</th><th></th></tr></thead><tbody>
           ${p.members.map((m) => `<tr class="${m.active ? '' : 'off'}"><td><b>${esc(m.name)}</b>${m.active ? '' : ' <span class="pill">막힘</span>'}</td>
-            <td>${esc(m.org || '')}</td><td>${ROLE[m.role]}</td><td class="pin">${esc(m.pw)}</td><td class="dim">${esc(m.lastAt || '—')}</td>
+            <td>${esc(m.org || '')}</td><td>${ROLE[m.role]}</td>
+            <td><select class="g sm" style="width:auto;padding:3px 6px;font-size:12px" onchange="setKc('${esc(p.key)}',${m.id},this.value)">
+              <option value="" ${!m.kc ? 'selected' : ''}>—</option><option value="승인" ${m.kc === '승인' ? 'selected' : ''}>승인</option><option value="보기" ${m.kc === '보기' ? 'selected' : ''}>보기</option></select></td>
+            <td class="pin">${esc(m.pw)}</td><td class="dim">${esc(m.lastAt || '—')}</td>
             <td style="text-align:right;white-space:nowrap">
               <button class="g sm" onclick="openLog('${esc(p.key)}','${esc(m.name)}')">기록</button>
               <button class="g sm" onclick="copyMember('${esc(p.key)}',${m.id})">안내 복사</button>
@@ -255,6 +258,8 @@ function render() {
       <div class="acts">
         <button class="g sm" onclick="copyLink('${esc(p.key)}')">링크 복사</button>
         <a class="g sm" style="text-decoration:none;display:inline-block;padding:6px 11px;border:1px solid var(--line);border-radius:9px;font-size:12px" href="${esc(p.link)}" target="_blank">열어보기 ↗</a>
+        <button class="g sm" onclick="openKc('${esc(p.key)}')" title="키컷 리뷰 (허브 관리자는 비밀번호 없이 들어가요)">키컷 리뷰 ↗</button>
+        <button class="g sm" onclick="copyKcLink('${esc(p.key)}')">키컷 링크 복사</button>
         <span style="flex:1"></span>
         <button class="g sm" onclick="makeDays('${esc(p.key)}')">회차 폴더 만들기</button>
         <select class="g sm" style="width:auto;padding:5px 8px;font-size:12px" onchange="csv('${esc(p.key)}', this)" title="편집실로 내보내기 (전체 회차)">
@@ -268,6 +273,14 @@ function render() {
 }
 // 링크는 새 주소(take.html)로 만듭니다. 예전 scripter.html 링크도 자동으로 넘어가요
 const TAKE_URL = location.origin + '/take.html?p=';
+const KC_URL = location.origin + '/keycut.html?p=';
+async function setKc(k, mid, kc) {
+  try { await WCT.api('keycut.member', { key: k, mid, kc }); const m = mem(k, mid); if (m) m.kc = kc;
+    toast(kc ? `${m ? m.name + ' 님 ' : ''}키컷 리뷰 '${kc}' 권한을 줬어요.` : '키컷 리뷰 권한을 뺐어요.'); }
+  catch (e) { toast(e.message, true); }
+}
+async function openKc(k) { window.open(KC_URL + encodeURIComponent(k), '_blank', 'noopener'); }
+async function copyKcLink(k) { await copyText(KC_URL + k); toast('키컷 리뷰 링크를 복사했어요.'); }
 const pg = (k) => { const p = PAGES.find((x) => x.key === k); if (p) p.link = TAKE_URL + p.key; return p; };
 async function copyLink(k) { await copyText(pg(k).link); toast('링크를 복사했어요.'); }
 async function copyPath(k) { await copyText(`${SHARE}/${pg(k).folder}/`); toast('NAS 폴더 경로를 복사했어요.'); }
@@ -277,7 +290,9 @@ async function copyMember(k, id) {
   const how = m.role === 'scripter'
     ? `회차마다 촬영 클립이 올라와요. 클립을 보면서 씬·컷·테이크를 적고 OK·NG·KEEP 을 눌러 주세요.\n키보드 1·2·3 으로도 누를 수 있고, 누르면 다음 클립으로 넘어가요.`
     : `스크립터가 표시한 OK·NG 를 볼 수 있고, 클립마다 코멘트를 남길 수 있어요.`;
-  const body = `${p.title} 테이크 체크 페이지예요.\n그날 찍은 테이크를 보고 OK·NG 를 확인하는 곳이에요.\n\n${p.link}\n이름: ${m.name}\n비밀번호: ${m.pw}\n\n${how}\n화면에 이름이 표시되고 접속·재생 기록이 남아요. 링크와 비밀번호는 본인만 써 주세요.`;
+  const kc = m.kc ? `\n\n키컷 리뷰 (색보정 확인, 같은 이름·비밀번호)\n${KC_URL + p.key}\n` +
+    (m.kc === '승인' ? '키컷마다 원본·현장 LUT·그레이딩을 비교하고 [승인] 또는 [수정 요청]을 눌러 주세요.' : '키컷의 색보정 버전을 보고 코멘트를 남길 수 있어요.') : '';
+  const body = `${p.title} 테이크 체크 페이지예요.\n그날 찍은 테이크를 보고 OK·NG 를 확인하는 곳이에요.\n\n${p.link}\n이름: ${m.name}\n비밀번호: ${m.pw}\n\n${how}${kc}\n화면에 이름이 표시되고 접속·재생 기록이 남아요. 링크와 비밀번호는 본인만 써 주세요.`;
   await copyText(body); toast(`${m.name} 님 안내 문구를 복사했어요.`);
 }
 async function addMember(k) {

@@ -15,7 +15,7 @@ const MAX = 60 * 60 * 14;             // 아무리 길어도 14시간
 const REMEMBER = 60 * 60 * 24 * 30;   // '이 기기에서 로그인 유지': 30일 동안 안 쓰면 다시 로그인
 const REMEMBER_MAX = 60 * 60 * 24 * 90; //   아무리 길어도 90일
 const PUBLIC_FILES = ['/submit.html', '/wct-style.css', '/wct-core.js', '/favicon.png', '/logo.png',
-                      '/login.html', '/login', '/take.html', '/scripter.html', '/mgrm-symbol.svg',
+                      '/login.html', '/login', '/take.html', '/scripter.html', '/keycut.html', '/mgrm-symbol.svg',
                       '/manifest.json', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
                       // manifest·아이콘: 폰 홈 화면 앱 아이콘 (로그인 전에도 보여야 함)
                       // take.html: 테이크 체크 (명단 이름·비밀번호로 엶), scripter.html: 예전 주소 → take.html 로 넘김
@@ -182,9 +182,12 @@ async function pub(req, env, ctx) {
   let b = {};
   try { b = await req.json(); } catch {}
   const a = pubAction(b);
-  // 스크립터 페이지: 비밀번호 잠금과 접속 기록 때문에 NAS 가 IP·기기를 알아야 함
-  if (a.startsWith('scripter.')) {
-    try { return json(await (await store(env, '/public', Object.assign({}, b, { action: a,
+  // 테이크 체크 · 키컷: 비밀번호 잠금과 접속 기록 때문에 NAS 가 IP·기기를 알아야 함.
+  // 허브에 로그인한 관리자면 _admin 을 붙임 (NAS 가 QNAP 그룹으로 다시 확인). 브라우저가 보낸 _admin 은 덮어씀
+  if (a.startsWith('scripter.') || a.startsWith('keycut.')) {
+    const s = await session(env, getCookie(req, COOKIE)).catch(() => null);
+    const _admin = s && s.role === 'admin' ? { user: s.user, name: s.name } : null;
+    try { return json(await (await store(env, '/public', Object.assign({}, b, { action: a, _admin,
       _ip: req.headers.get('cf-connecting-ip') || '', _ua: (req.headers.get('user-agent') || '').slice(0, 300) }))).json()); }
     catch (e) { if (e instanceof NasError) return json(NAS_DOWN); throw e; }
   }

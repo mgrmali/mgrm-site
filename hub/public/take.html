@@ -36,6 +36,8 @@ input:disabled,textarea:disabled{opacity:.8}
   display:inline-flex;align-items:center;gap:5px;color:var(--text)}
 .btn:hover{border-color:var(--line2);background:#26262B}
 .btn.pri{background:var(--ci);border-color:var(--ci);color:#fff;font-weight:700}
+a.btn{text-decoration:none}
+#bKcAdd.on{border-color:var(--ci);color:var(--ci)}
 .btn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.5}
 .en{font-family:var(--en);letter-spacing:.08em}
 .mono{font-family:var(--mono)}
@@ -230,6 +232,7 @@ input:disabled,textarea:disabled{opacity:.8}
     <div class="top__t"><b id="tTitle"></b><span>TAKE CHECK</span></div>
     <select id="range" aria-label="회차"></select>
     <span class="who"><i></i><span id="tName"></span><span class="r" id="tRole"></span><a href="#" id="tOut" title="나가기">나가기</a></span>
+    <a class="btn hide" id="btnKc" target="_blank" rel="noopener" title="키컷 리뷰 열기">키컷 리뷰</a>
     <button class="btn" id="btnRefresh" title="새로 올린 클립 불러오기"><svg viewBox="0 0 12 12"><path d="M10 6a4 4 0 1 1-1.2-2.85M10 1.5v2.5H7.5"/></svg></button>
     <div class="exp">
       <button class="btn" id="btnCsv" title="편집실로 내보내기"><svg viewBox="0 0 12 12"><path d="M6 1.5v6M3.5 5.5L6 8l2.5-2.5M2 10.5h8"/></svg>내보내기</button>
@@ -279,6 +282,7 @@ input:disabled,textarea:disabled{opacity:.8}
       <div class="info">
         <span class="info__clip" id="iClip">—</span>
         <span class="bd none" id="iBadge"></span>
+        <button class="btn hide" id="bKcAdd" title="이 클립을 키컷 리뷰에 넣기">+ 키컷으로</button>
         <span class="fstep">
           <button class="btn" id="fPrev" title="한 프레임 뒤로 (,)"><svg viewBox="0 0 12 12"><path d="M7.5 2.5L4 6l3.5 3.5"/></svg>1F</button>
           <button class="btn" id="fNext" title="한 프레임 앞으로 (.)">1F<svg viewBox="0 0 12 12"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg></button>
@@ -377,6 +381,7 @@ const errText = (j) => j.error === 'locked' ? `비밀번호를 여러 번 틀려
     if (!m.ok) { $('gSub').textContent = errText(m); $('gGo').disabled = true; return; }
     $('gTitle').textContent = m.title || '테이크 체크';
     document.title = (m.title ? m.title + ' · ' : '') + '테이크 체크';
+    if (m.admin) { S.name = ''; S.pw = ''; if (await open(true)) return; S.name = LS.get('scr:name:' + P) || ''; }
   } catch (e) { $('gSub').textContent = e.message; }
   const saved = S.name && (SS.get('scr:pw:' + P) || LS.get('scr:pw:' + P));
   if (saved && S.name) { S.pw = saved; if (await open(true)) return; }
@@ -403,7 +408,7 @@ async function open(silent, fresh) {
   try { j = await call('scripter.open', { fresh: !!fresh }); }
   catch (e) { if (!silent) $('gMsg').textContent = e.message; return false; }
   if (!j.ok) { if (!silent) $('gMsg').textContent = errText(j); return false; }
-  S.name = j.me || S.name; S.org = j.org || ''; LS.set('scr:name:' + P, S.name);
+  S.name = j.me || S.name; S.org = j.org || ''; if (!j.admin) LS.set('scr:name:' + P, S.name);
   apply(j, true);
   startWm();
   $('gate').classList.add('hide'); $('app').classList.remove('hide');
@@ -415,6 +420,9 @@ async function open(silent, fresh) {
 const keyOf = (c) => c.d + '/' + c.id;
 function apply(j, full) {
   if (j.me) { S.name = j.me; S.org = j.org || ''; }
+  // 키컷: 허브 관리자는 [키컷으로], 명단에서 키컷 권한이 있으면 [키컷 리뷰] 단추
+  if (j.kc) { S.admin = !!j.admin; S.kc = new Set(j.kc); S.kcRole = j.kcRole || '';
+    $('btnKc').href = 'keycut.html?p=' + encodeURIComponent(P); $('btnKc').classList.toggle('hide', !S.kcRole); }
   if (j.clips) {
     S.role = j.role; S.title = j.title; S.base = j.base; S.days = j.days; S.clips = j.clips; S.sig = j.sig;
     const byD = {}; S.days.forEach((d, i) => { d.i = i; byD[d.d] = d; }); S.dayBy = byD;
@@ -571,6 +579,9 @@ function renderStage(soft) {
   const c = clipBy(S.sel);
   const m = c ? markOf(c) : {};
   $('iClip').textContent = c ? c.id : '—';
+  const inKc = c && S.kc && S.kc.has(c.d + '|' + c.id);
+  $('bKcAdd').classList.toggle('hide', !(S.admin && c)); $('bKcAdd').classList.toggle('on', !!inKc);
+  $('bKcAdd').textContent = inKc ? '키컷 ✓' : '+ 키컷으로';
   $('iBadge').className = 'bd ' + (m.st || 'none'); $('iBadge').textContent = LABEL[m.st] || '';
   $('vBadge').className = 'bd ' + (m.st || 'none'); $('vBadge').textContent = LABEL[m.st] || '미확인';
   if (c) {
@@ -725,6 +736,16 @@ function frameStep(d) {
   const t = (f + 0.5) / fps;
   v.currentTime = isFinite(v.duration) ? Math.min(t, Math.max(0, v.duration - 0.5 / fps)) : t;
 }
+$('bKcAdd').onclick = async () => {
+  const c = clipBy(S.sel); if (!c || !S.admin) return;
+  if (S.kc.has(c.d + '|' + c.id)) { window.open('keycut.html?p=' + encodeURIComponent(P), '_blank', 'noopener'); return; }
+  try {
+    const r = await fetch('/api/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+      body: JSON.stringify({ action: 'keycut.add', key: P, d: c.d, clip: c.id }) });
+    const j = await r.json(); if (!j.ok) throw new Error(j.error || '키컷에 넣지 못했어요.');
+    S.kc.add(c.d + '|' + c.id); renderStage(); toast('키컷 리뷰에 넣었어요. 다시 누르면 키컷 리뷰가 열려요.');
+  } catch (e) { toast(e.message, true); }
+};
 $('fPrev').onclick = () => frameStep(-1);
 $('fNext').onclick = () => frameStep(1);
 $('bPrev').onclick = () => step(-1);
