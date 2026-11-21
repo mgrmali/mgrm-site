@@ -121,6 +121,18 @@ input:focus,select:focus,textarea:focus{border-color:var(--ci)}
 .hd::before{content:"";position:absolute;left:12px;top:0;bottom:0;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
 .hd span{position:absolute;left:5px;top:50%;width:16px;height:30px;margin-top:-15px;border-radius:8px;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.45)}
 .hint{display:none}
+/* 파일을 끌고 오면 보기 방식과 상관없이 4칸이 뜸 — 놓은 칸으로 들어감 (파일 이름은 상관없음) */
+#view{position:relative}
+.dropz{position:absolute;z-index:20;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:8px;padding:8px;
+  background:rgba(40,40,42,.86);border-radius:4px}
+.dz{border:2px dashed rgba(255,255,255,.4);border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+  color:rgba(255,255,255,.85);transition:background .1s,border-color .1s}
+.dz b{font-family:var(--en);font-size:clamp(15px,2vw,22px);letter-spacing:.08em}
+.dz span{font-size:12px;color:rgba(255,255,255,.62)}
+.dz.on{background:rgba(255,255,255,.14);border-color:#fff;border-style:solid}
+.dz.gr.on{background:rgba(232,66,120,.28);border-color:var(--ci)}
+.uppop{position:absolute;bottom:34px;right:0;background:var(--panel,#1c1c1f);border:1px solid var(--line2,#333);border-radius:6px;padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:5px;z-index:30;width:220px}
+.uppop button{height:30px;font-size:12px}
 .vers{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px}
 .vers:empty{display:none}
 .vers .g{display:inline-flex;align-items:center;gap:3px}
@@ -156,6 +168,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--ci)}
 .cmin textarea{min-height:38px;height:38px;resize:vertical}
 .admin{margin-top:18px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted)}
 .admin .btn{height:26px;font-size:11.5px;background:transparent}
+.admin .path{font-size:11px;color:var(--muted);cursor:pointer;border-bottom:1px dotted var(--line2)}
+.admin .path:hover{color:var(--text)}
+.admin .loose{font-size:11.5px;color:var(--fix);cursor:help}
 .keys{position:relative}
 .keys__pop{position:absolute;right:0;top:34px;width:220px;background:var(--panel);border:1px solid var(--line2);border-radius:4px;padding:10px 12px;font-size:11.5px;color:var(--muted);line-height:2;z-index:30}
 .keys__pop kbd{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);border-radius:3px;padding:0 4px;color:var(--text);margin-right:2px}
@@ -236,6 +251,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
           </span>
         </div>
         <div id="pane"></div>
+        <div class="dropz hide" id="dropz"></div>
         <div class="hint" id="hint"></div>
         <div class="vers" id="vers"></div>
       </div>
@@ -260,9 +276,13 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
       </div>
 
       <div class="admin hide" id="adminBar">
-        <button class="btn" id="bUp" title="파일 이름 끝 _LOG _709 _LUT _GRADE 로 칸을 찾아요. 칸에 직접 끌어다 놓아도 돼요.">스틸 올리기</button>
+        <span class="mono path" id="kcPath" title="눌러서 경로 복사"></span>
+        <span class="loose hide" id="kcLoose"></span>
+        <span style="flex:1"></span>
+        <span style="position:relative;display:inline-flex"><button class="btn" id="bUp" title="스틸을 그림 위로 끌어다 놓아도 돼요 — 놓은 칸으로 들어가요">스틸 올리기</button>
+          <span class="uppop hide" id="upPop"></span></span>
         <button class="btn" id="btnCands2">OK컷 가져오기</button>
-        <button class="btn" id="bRemove" style="margin-left:auto;color:#ffb3af">키컷 빼기</button>
+        <button class="btn" id="bRemove" style="color:#ffb3af">키컷 빼기</button>
         <input type="file" id="fileIn" accept="image/jpeg,image/png,image/webp,image/tiff,.tif,.tiff" multiple class="hide">
       </div>
     </section>
@@ -354,7 +374,8 @@ async function open(silent) {
   return true;
 }
 $('tOut').onclick = (e) => { e.preventDefault(); LS.del('kc:pw:' + P); try { sessionStorage.removeItem('kc:pw:' + P); } catch {} location.reload(); };
-$('btnRefresh').onclick = async () => { try { const j = await call('keycut.open'); if (j.ok) { apply(j); toast('새로 불러왔어요.'); } } catch (e) { toast(e.message, true); } };
+$('btnRefresh').onclick = async () => { try { const j = await call('keycut.open', { fresh: true }); if (j.ok) { apply(j); toast('새로 불러왔어요.'); } } catch (e) { toast(e.message, true); } };
+$('kcPath').onclick = async () => { try { await navigator.clipboard.writeText(S.share); toast('NAS 경로를 복사했어요.'); } catch { toast(S.share); } };
 async function sync() {
   if (document.hidden) return;
   try { const j = await call('keycut.sync', { sig: S.sig }); if (j.ok && j.cuts) apply(j); } catch {}
@@ -376,6 +397,15 @@ function apply(j) {
   $('tTitle').textContent = S.title; document.title = S.title + ' · 키컷 리뷰';
   $('tName').textContent = S.me; $('tRole').textContent = ROLE_N[S.role] || '';
   $('adminFoot').classList.toggle('hide', !isAdmin()); $('adminBar').classList.toggle('hide', !isAdmin());
+  if (isAdmin() && j.share) {
+    // NAS 폴더: 칸마다 폴더, 파일 이름은 클립 이름
+    S.share = 'Web/take/' + j.share + '/';
+    $('kcPath').textContent = S.share + ' ' + Object.values(j.dirs || {}).join(' · ');
+    const lo = j.loose || [];
+    $('kcLoose').classList.toggle('hide', !lo.length);
+    $('kcLoose').textContent = `클립을 못 찾은 파일 ${lo.length}개`;
+    $('kcLoose').title = lo.join('\n') + '\n\n파일 이름을 클립 이름(예: A002C003_190101Z2.jpg)으로 바꿔 주세요.';
+  }
   if (!S.cuts.find((k) => k.id === S.sel)) S.sel = (S.cuts[0] || {}).id || 0;
   // 처음 열 때: 승인 권한이면 '현장 LUT ↔ 그레이딩' 비교로 바로
   if (S.first) { S.first = false; const k = cur(); if (k && canApprove() && !isAdmin() && latest(k, 'lut') && latest(k, 'gr')) { S.mode = 'ab'; S.cmp = ['lut', 'gr']; } }
@@ -485,7 +515,7 @@ $('vers').onclick = async (e) => {
   const b = e.target.closest('button'); if (!b) return;
   const k = cur(), sl = b.dataset.sl, n = Number(b.dataset.n);
   if (e.target.dataset.del) {
-    if (!confirm(`${SLOT_N[sl]} v${n} 을 지울까요? 파일도 지워져요.`)) return;
+    if (!confirm(`${SLOT_N[sl]} v${n} 파일을 NAS 휴지통으로 옮길까요?`)) return;
     try { await rpc('keycut.delver', { id: k.id, slot: sl, n }); await reload(); toast('지웠어요.'); } catch (er) { toast(er.message, true); }
     return;
   }
@@ -586,7 +616,7 @@ async function saveMemo() {
   const k = cur(); if (!k) return; S.memoDirty = false;
   try { await rpc('keycut.memo', { id: k.id, memo: $('memoIn').value }); k.memo = $('memoIn').value; toast('메모를 저장했어요.'); } catch (e) { toast(e.message, true); }
 }
-async function reload() { const j = await call('keycut.open'); if (j.ok) apply(j); }
+async function reload() { const j = await call('keycut.open', { fresh: true }); if (j.ok) apply(j); }
 
 /* ───────── 관리: OK컷 가져오기 · 스틸 올리기 · 빼기 */
 $('btnCands').onclick = () => {
@@ -605,12 +635,19 @@ $('cands').onclick = async (e) => {
   catch (er) { toast(er.message, true); }
 };
 $('bRemove').onclick = async () => {
-  const k = cur(); if (!k || !confirm(`${slate(k)} 키컷을 뺄까요? 올린 스틸과 코멘트도 함께 지워져요 (스틸은 NAS 휴지통으로).`)) return;
+  const k = cur(); if (!k || !confirm(`${slate(k)} 키컷을 뺄까요? 이 클립의 스틸 파일은 NAS 휴지통으로 옮기고 코멘트도 지워져요.`)) return;
   try { await rpc('keycut.remove', { id: k.id }); S.sel = 0; await reload(); toast('뺐어요.'); } catch (e) { toast(e.message, true); }
 };
 let pickSlot = '';
 function pickFile(sl) { pickSlot = sl || ''; $('fileIn').value = ''; $('fileIn').click(); }
-$('bUp').onclick = () => pickFile('');
+$('bUp').onclick = (e) => {
+  e.stopPropagation();
+  const P = $('upPop'), k = cur(); if (!k) return;
+  P.innerHTML = SLOTS.map((x) => { const n = (k.v[x.k] || []).length; return `<button class="btn" data-sl="${x.k}">${SLOT_N[x.k]}${n ? ` <span class="mono" style="opacity:.6">v${n + 1}</span>` : ''}</button>`; }).join('');
+  P.classList.toggle('hide');
+};
+$('upPop').onclick = (e) => { const b = e.target.closest('[data-sl]'); if (!b) return; $('upPop').classList.add('hide'); pickFile(b.dataset.sl); };
+document.addEventListener('click', (e) => { if (!e.target.closest('#upPop')) $('upPop').classList.add('hide'); });
 $('fileIn').onchange = () => upload([...$('fileIn').files], pickSlot);
 // 파일 이름으로 칸 찾기: …_LOG / _709 / _LUT / _GRADE (대소문자 무관)
 function slotByName(n) {
@@ -638,10 +675,10 @@ async function upload(files, forced) {
   const k = cur(); if (!k || !files.length) return;
   let done = 0;
   for (const f of files) {
-    const sl = files.length === 1 && forced ? forced : (slotByName(f.name) || (files.length === 1 ? forced : ''));
-    if (!sl) { toast(`${f.name}: 어느 칸인지 모르겠어요. 이름 끝에 _LOG _709 _LUT _GRADE 를 붙이거나 칸에 끌어다 놓아 주세요.`, true); continue; }
+    const sl = forced || slotByName(f.name);
+    if (!sl) { toast(`${f.name}: 어느 칸인지 몰라서 못 올렸어요. 그림 위로 끌어다 원하는 칸에 놓아 주세요.`, true); continue; }
     try {
-      toast(`${SLOT_N[sl]} 올리는 중…`);
+      toast(`${SLOT_N[sl]} 올리는 중… ${files.length > 1 ? `(${done + 1}/${files.length})` : ''}`);
       const p = await prep(f);
       await rpc('keycut.upload', { id: k.id, slot: sl, type: p.type, data: await b64(p.blob) });
       done++;
@@ -649,18 +686,41 @@ async function upload(files, forced) {
   }
   if (done) { delete S.ver[k.id]; await reload(); toast(`${done}장 올렸어요.`); }
 }
-// 끌어다 놓기: 칸 위면 그 칸, 다른 곳이면 이름으로
-['dragover', 'dragenter'].forEach((ev) => $('view').addEventListener(ev, (e) => {
-  if (!isAdmin() || !e.dataTransfer || ![...e.dataTransfer.types].includes('Files')) return;
-  e.preventDefault(); document.querySelectorAll('.fr.drop').forEach((x) => x.classList.remove('drop'));
-  const f = e.target.closest('.fr[data-slot]'); if (f) f.classList.add('drop');
-}));
-$('view').addEventListener('dragleave', (e) => { if (!e.relatedTarget || !$('view').contains(e.relatedTarget)) document.querySelectorAll('.fr.drop').forEach((x) => x.classList.remove('drop')); });
-$('view').addEventListener('drop', (e) => {
-  if (!isAdmin()) return;
-  e.preventDefault(); document.querySelectorAll('.fr.drop').forEach((x) => x.classList.remove('drop'));
-  const f = e.target.closest('.fr[data-slot]');
-  upload([...e.dataTransfer.files].filter((x) => /^image\//.test(x.type) || /\.(tiff?|jpe?g|png|webp)$/i.test(x.name)), f ? f.dataset.slot : '');
+// 끌어다 놓기: 파일을 끌고 오면 그림 자리에 4칸이 뜨고, 놓은 칸으로 올라감
+const isFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+let dzDepth = 0;
+function dzShow() {
+  const k = cur(), Z = $('dropz'), P = $('pane');
+  if (!k || !isAdmin()) return;
+  if (Z.classList.contains('hide')) {
+    Z.innerHTML = SLOTS.map((x) => { const n = (k.v[x.k] || []).length;
+      return `<div class="dz ${x.k}" data-slot="${x.k}"><b>${SLOT_N[x.k]}</b><span>${esc(SLOT_KO[x.k])} · ${n ? 'v' + (n + 1) + ' 로 추가' : '처음'}</span></div>`; }).join('');
+  }
+  // 그림 자리(#pane)에 맞춰 덮기
+  const v = $('view').getBoundingClientRect(), p = P.getBoundingClientRect();
+  Object.assign(Z.style, { left: (p.left - v.left) + 'px', top: (p.top - v.top) + 'px', width: p.width + 'px', height: Math.max(p.height, 220) + 'px' });
+  Z.classList.remove('hide');
+}
+function dzHide() { dzDepth = 0; $('dropz').classList.add('hide'); }
+document.addEventListener('dragenter', (e) => { if (!isFiles(e)) return; e.preventDefault(); dzDepth++; dzShow(); });
+document.addEventListener('dragleave', (e) => { if (!isFiles(e)) return; if (--dzDepth <= 0) dzHide(); });
+document.addEventListener('dragover', (e) => {
+  if (!isFiles(e)) return;
+  e.preventDefault();   // 페이지 밖에 놓아도 브라우저가 그림을 열지 않게
+  const z = e.target.closest && e.target.closest('.dz');
+  e.dataTransfer.dropEffect = z ? 'copy' : 'none';
+  document.querySelectorAll('.dz').forEach((x) => x.classList.toggle('on', x === z));
+});
+document.addEventListener('drop', (e) => {
+  if (!isFiles(e)) return;
+  e.preventDefault();
+  const z = e.target.closest && e.target.closest('.dz');
+  dzHide();
+  if (!z || !isAdmin()) return;
+  const files = [...e.dataTransfer.files].filter((x) => /^image\//.test(x.type) || /\.(tiff?|jpe?g|png|webp)$/i.test(x.name))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  if (!files.length) { toast('그림 파일(JPG · PNG · WEBP)만 올릴 수 있어요.', true); return; }
+  upload(files, z.dataset.slot);
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(); });
 </script>

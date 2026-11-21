@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.13.0';
+const VERSION = 'hub-store 1.14.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -1664,7 +1664,7 @@ const SCRIPTER = (() => {
     if (a === 'scripter.folders') {
       const r = pageRow_(b.key);
       if (!r) return { ok: false, error: '페이지를 찾지 못했어요.' };
-      try { return { ok: true, made: makeDays_(page_(r)) }; }
+      try { const pg = page_(r); const made = makeDays_(pg); kcEnsure_(pg); return { ok: true, made }; }
       catch (e) { return { ok: false, error: `NAS 폴더를 만들지 못했어요 (${String(e.message || e)})` }; }
     }
     if (a === 'scripter.delete') {
@@ -1777,13 +1777,17 @@ const SCRIPTER = (() => {
   }
 
 
-  /* ═══════════ 키컷 리뷰 (1.13.0) ═══════════
+  /* ═══════════ 키컷 리뷰 (1.13.0 → 1.14.0 폴더 방식) ═══════════
      테이크 체크 페이지(키)와 같은 작품·같은 명단. 명단의 '키컷' 칸이 승인/보기 인 사람과 허브 관리자만 들어옴.
-     키컷마다 슬롯 4개 (log · 709 · lut · gr), 슬롯마다 버전이 쌓임 (v1, v2 …). 스틸은 NAS 웹 폴더에 저장 */
+     스틸은 작품 폴더/_keycut/ 아래 칸마다 폴더 하나 — 파일 이름은 클립 이름 (같은 클립을 다시 넣으면 _v2, _v3 …)
+       _keycut/1_LOG/  2_REC709/  3_LUT/  4_GRADE/
+     파일이 들어오면 그 클립의 키컷이 저절로 생김 (씬·컷·테이크는 스크립터 표시에서) */
   const KC_ROLES = ['승인', '보기'];
   const KC_SLOTS = ['log', '709', 'lut', 'gr'];
+  const KC_DIRS = { log: '1_LOG', '709': '2_REC709', lut: '3_LUT', gr: '4_GRADE' };
   const KC_ST = ['ok', 'fix'];
   const KC_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+  const KC_IMG = ['.jpg', '.jpeg', '.png', '.webp'];
   // 워커가 허브 로그인 쿠키를 확인하고 _admin 을 붙여 보냄 → 여기서 다시 QNAP 그룹으로 관리자 확인
   const isAdmin_ = (b) => !!(b && b._admin && b._admin.user && roleOf_(String(b._admin.user)) === 'admin');
   const kcSet_ = (key) => rows_('키컷').filter((x) => String(x['키']) === key).map((x) => N(x['회차폴더']) + '|' + N(x['클립']));
@@ -1803,28 +1807,84 @@ const SCRIPTER = (() => {
     if (!KC_ROLES.includes(kc)) return { err: { ok: false, error: 'nokc', title: x.pg.title } };
     return { pg: x.pg, role: kc === '승인' ? 'approve' : 'view', me: x.me, org: x.org, row: x.row };
   }
-  const kcDir_ = (pg, id) => path.join(DIR, pg.folder, KC_DIR, String(id));
-  function kcCuts_(key) {
-    const vers = rows_('키컷버전').filter((x) => String(x['키']) === key);
-    return rows_('키컷').filter((x) => String(x['키']) === key).map((x) => {
-      const id = Number(x['ID']), v = {};
-      KC_SLOTS.forEach((sl) => { v[sl] = []; });
-      vers.filter((y) => Number(y['키컷ID']) === id).forEach((y) => {
-        const sl = String(y['슬롯']);
-        if (v[sl]) v[sl].push({ n: Number(y['버전']), f: String(y['파일']), th: String(y['파일']).replace(/\.[^.]+$/, '.th.jpg'),
-          by: String(y['올린이'] || ''), at: fmt_(y['올린시각']) });
+  const kcRoot_ = (pg) => path.join(DIR, pg.folder, KC_DIR);
+  function kcEnsure_(pg) {
+    if (!pg.folder || !fs.existsSync(path.join(DIR, pg.folder))) return;
+    const root = kcRoot_(pg);
+    if (!fs.existsSync(root)) { fs.mkdirSync(root, { recursive: true }); own_(root); }
+    Object.values(KC_DIRS).forEach((d) => { const a = path.join(root, d); if (!fs.existsSync(a)) { fs.mkdirSync(a); own_(a); } });
+  }
+  // 파일 이름 → 클립: ① 클립 이름으로 시작 (가장 긴 것) ② 롤·클립 번호(A002C003)가 같은 것
+  function kcMatch_(stem, clips) {
+    const F = stem.toUpperCase();
+    let best = null;
+    clips.forEach((c) => { const id = c.id.toUpperCase(); if ((F === id || F.startsWith(id + '_') || F.startsWith(id + '.') || F.startsWith(id + ' ')) && (!best || id.length > best.id.length)) best = c; });
+    if (best) return best;
+    const m = F.match(/^([A-Z]\d{3}[A-Z]\d{3})/);
+    return m ? clips.find((c) => c.id.toUpperCase().startsWith(m[1])) || null : null;
+  }
+  const KCSCAN = new Map();
+  function kcScan_(pg, fresh) {
+    const hit = KCSCAN.get(pg.folder);
+    if (!fresh && hit && Date.now() - hit.at < 15000) return hit.r;
+    const clips = scan_(pg.folder).clips;
+    const by = {}, loose = [];
+    let latest = 0, n = 0;
+    KC_SLOTS.forEach((sl) => {
+      const dir = path.join(kcRoot_(pg), KC_DIRS[sl]);
+      let list = [];
+      try { list = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      list.forEach((x) => {
+        if (!x.isFile() || x.name.startsWith('.') || x.name.startsWith('@') || !KC_IMG.includes(path.extname(x.name).toLowerCase())) return;
+        const abs = path.join(dir, x.name);
+        let st; try { st = fs.statSync(abs); } catch { return; }
+        const stem = N(path.basename(x.name, path.extname(x.name)));
+        const c = kcMatch_(stem, clips);
+        if (!c) { loose.push(KC_DIRS[sl] + '/' + N(x.name)); return; }
+        const vm = stem.match(/_v(\d+)$/i);
+        const th = wantThumb_(dir, path.basename(x.name, path.extname(x.name)), abs, st.mtimeMs, 0);
+        const k = c.d + '|' + c.id;
+        (by[k] = by[k] || { d: c.d, id: c.id, v: {} });
+        (by[k].v[sl] = by[k].v[sl] || []).push({ vn: vm ? Number(vm[1]) : 1, mt: st.mtimeMs, name: N(x.name),
+          f: KC_DIRS[sl] + '/' + N(x.name), th: th ? KC_DIRS[sl] + '/' + THUMB_DIR + '/' + N(path.basename(x.name, path.extname(x.name))) + '.jpg' : '',
+          at: kst_(st.mtimeMs).slice(0, 16).replace('T', ' ') });
+        latest = Math.max(latest, st.mtimeMs); n++;
       });
-      KC_SLOTS.forEach((sl) => v[sl].sort((a, c) => a.n - c.n));
-      return { id, d: N(x['회차폴더']), clip: N(x['클립']), s: String(x['씬'] || ''), c: String(x['컷'] || ''), t: String(x['테이크'] || ''),
+    });
+    // 버전 번호: _v 숫자 순, 같으면 넣은 시각 순 → 1, 2, 3 … 로 다시 매김
+    Object.values(by).forEach((o) => Object.keys(o.v).forEach((sl) => {
+      o.v[sl].sort((a, b) => a.vn - b.vn || a.mt - b.mt).forEach((v, i) => { v.n = i + 1; });
+    }));
+    const r = { by, loose, sig: n + ':' + Math.round(latest) + ':' + loose.length };
+    KCSCAN.set(pg.folder, { at: Date.now(), r });
+    return r;
+  }
+  // 파일은 있는데 키컷 줄이 없으면 만들어 줌 (씬·컷·테이크는 스크립터 표시에서)
+  function kcSyncRows_(pg, sc) {
+    const have = new Set(kcSet_(pg.key));
+    const miss = Object.values(sc.by).filter((o) => !have.has(o.d + '|' + o.id));
+    if (!miss.length) return;
+    const marks = {}; marksOf_(pg.key).forEach((m) => { marks[m.d + '|' + m.id] = m; });
+    tx_(() => miss.forEach((o) => { const m = marks[o.d + '|' + o.id] || {};
+      append_('키컷', [nextId_('키컷'), pg.key, o.d, o.id, m.s || '', m.c || '', m.t || '', '', '', '', '', nowStr_()]); }));
+  }
+  function kcCuts_(pg, fresh) {
+    const sc = kcScan_(pg, fresh);
+    kcSyncRows_(pg, sc);
+    return rows_('키컷').filter((x) => String(x['키']) === pg.key).map((x) => {
+      const id = Number(x['ID']), d = N(x['회차폴더']), clip = N(x['클립']);
+      const o = sc.by[d + '|' + clip] || { v: {} };
+      const v = {}; KC_SLOTS.forEach((sl) => { v[sl] = (o.v[sl] || []).map((y) => ({ n: y.n, f: y.f, th: y.th || y.f, at: y.at })); });
+      return { id, d, clip, s: String(x['씬'] || ''), c: String(x['컷'] || ''), t: String(x['테이크'] || ''),
         st: String(x['상태'] || ''), stBy: String(x['상태자'] || ''), stAt: fmt_(x['상태시각']), memo: String(x['메모'] || ''),
         at: fmt_(x['등록일']), v };
     });
   }
   const kcComments_ = (key) => rows_('키컷코멘트').filter((x) => String(x['키']) === key).map((x) => ({ id: Number(x['ID']),
     kc: Number(x['키컷ID']), who: String(x['작성자'] || ''), txt: String(x['내용'] || ''), at: fmt_(x['작성시각']) }));
-  function kcSig_(key) {
+  function kcSig_(pg) {
     const h = require('crypto').createHash('md5');
-    h.update(JSON.stringify([kcCuts_(key), kcComments_(key)]));
+    h.update(JSON.stringify([kcScan_(pg).sig, rows_('키컷').filter((x) => String(x['키']) === pg.key).map(clean_), kcComments_(pg.key)]));
     return h.digest('hex').slice(0, 12);
   }
   // 관리자에게만: 테이크 체크에서 OK 로 표시했고 아직 키컷이 아닌 클립
@@ -1848,19 +1908,23 @@ const SCRIPTER = (() => {
     const { pg, role, me } = x;
     const can = { approve: role === 'approve' || role === 'admin', admin: role === 'admin' };
     if (a === 'keycut.open' || a === 'keycut.sync') {
-      if (a === 'keycut.open' && x.row) { try { patch_(x.row, { '마지막접속': nowStr_() }); } catch {} log_(pg, me, '키컷 접속', b); }
-      const sig = kcSig_(pg.key);
+      if (a === 'keycut.open') { kcEnsure_(pg); if (x.row) { try { patch_(x.row, { '마지막접속': nowStr_() }); } catch {} log_(pg, me, '키컷 접속', b); } }
+      if (a === 'keycut.open' && b.fresh) kcScan_(pg, true);
+      const cuts = kcCuts_(pg);
+      const sig = kcSig_(pg);
       const out = { ok: true, role, me, org: x.org, sig };
-      if (a === 'keycut.sync' && b.sig === sig && !can.admin) return out;
+      if (a === 'keycut.sync' && b.sig === sig) return out;
       const clips = {}; scan_(pg.folder).clips.forEach((c) => { clips[c.d + '|' + c.id] = c; });
       const sh = shoots_(pg.projectId);
       const days = {}; scan_(pg.folder).days.forEach((d) => { days[d.d] = Object.assign({ no: d.no }, dayLabel_(d, sh)); });
       return Object.assign(out, { title: pg.title, code: pg.code,
         base: BASE + encodeURIComponent(pg.folder) + '/' + KC_DIR + '/',
         takeBase: BASE + encodeURIComponent(pg.folder) + '/',
-        cuts: kcCuts_(pg.key).map((k) => Object.assign(k, { tc: (clips[k.d + '|' + k.clip] || {}).tc || '', day: days[k.d] || null })),
+        dirs: KC_DIRS, share: pg.folder + '/' + KC_DIR,
+        cuts: cuts.map((k) => Object.assign(k, { tc: (clips[k.d + '|' + k.clip] || {}).tc || '', day: days[k.d] || null })),
         comments: kcComments_(pg.key),
-        cands: can.admin ? kcCands_(pg) : undefined });
+        cands: can.admin ? kcCands_(pg) : undefined,
+        loose: can.admin ? kcScan_(pg).loose : undefined });
     }
     const cut = rows_('키컷').find((r) => String(r['키']) === pg.key && Number(r['ID']) === Number(b.id));
     if (a === 'keycut.status') {
@@ -1869,7 +1933,7 @@ const SCRIPTER = (() => {
       const st = KC_ST.includes(String(b.st)) ? String(b.st) : '';
       patch_(cut, { '상태': st, '상태자': st ? me : '', '상태시각': st ? nowStr_() : '' });
       log_(pg, me, st === 'ok' ? '키컷 승인' : st === 'fix' ? '키컷 수정 요청' : '키컷 표시 지움', b, cut['회차폴더'], cut['클립']);
-      return { ok: true, sig: kcSig_(pg.key) };
+      return { ok: true };
     }
     if (a === 'keycut.comment') {
       if (!cut) return { ok: false, error: '키컷을 찾지 못했어요. 새로고침해 주세요.' };
@@ -1877,14 +1941,14 @@ const SCRIPTER = (() => {
       if (!t) return { ok: false, error: '내용을 적어 주세요.' };
       const id = nextId_('키컷코멘트');
       append_('키컷코멘트', [id, pg.key, Number(cut['ID']), me, t, nowStr_()]);
-      return { ok: true, id, sig: kcSig_(pg.key) };
+      return { ok: true, id };
     }
     if (a === 'keycut.uncomment') {
       const r = rows_('키컷코멘트').find((y) => String(y['키']) === pg.key && Number(y['ID']) === Number(b.cid));
       if (!r) return { ok: true };
       if (!can.admin && nkey_(r['작성자']) !== nkey_(me)) return { ok: false, error: '내가 쓴 코멘트만 지울 수 있어요.' };
       remove_(r);
-      return { ok: true, sig: kcSig_(pg.key) };
+      return { ok: true };
     }
     return { ok: false, error: 'unknown action' };
   }
@@ -1892,9 +1956,16 @@ const SCRIPTER = (() => {
     const r = pageRow_(b.key || b.p);
     return r ? page_(r) : null;
   }
+  // 파일 하나를 휴지통으로 (NAS @Recycle, 없으면 Web/take/@지운폴더)
+  function kcTrash_(abs) {
+    const th = path.join(path.dirname(abs), THUMB_DIR, path.basename(abs, path.extname(abs)) + '.jpg');
+    try { fs.unlinkSync(th); } catch {}
+    return trash_(abs);
+  }
   function kcAdmin_(a, b) {
     const pg = kcPage_(b);
     if (!pg) return { ok: false, error: '테이크 체크 페이지를 찾지 못했어요.' };
+    kcEnsure_(pg);
     if (a === 'keycut.add') {
       // 테이크 체크 클립 하나를 키컷으로 (씬·컷·테이크는 스크립터 표시에서 가져옴)
       const d = N(b.d), clip = N(b.clip);
@@ -1906,7 +1977,6 @@ const SCRIPTER = (() => {
       append_('키컷', [id, pg.key, d, clip, m.s || '', m.c || '', m.t || '', '', '', '', '', nowStr_()]);
       return { ok: true, id };
     }
-    const cut = rows_('키컷').find((r) => String(r['키']) === pg.key && Number(r['ID']) === Number(b.id));
     if (a === 'keycut.member') {
       // 명단 한 사람의 키컷 권한: 승인 · 보기 · '' (없음)
       const m = membersOf_(pg.key).find((x) => Number(x['ID']) === Number(b.mid));
@@ -1914,45 +1984,43 @@ const SCRIPTER = (() => {
       patch_(m, { '키컷': KC_ROLES.includes(String(b.kc)) ? String(b.kc) : '' });
       return { ok: true };
     }
+    const cut = rows_('키컷').find((r) => String(r['키']) === pg.key && Number(r['ID']) === Number(b.id));
     if (!cut) return { ok: false, error: '키컷을 찾지 못했어요.' };
-    const id = Number(cut['ID']);
+    const id = Number(cut['ID']), d = N(cut['회차폴더']), clip = N(cut['클립']);
+    const files = (kcScan_(pg, true).by[d + '|' + clip] || { v: {} }).v;
     if (a === 'keycut.memo') { patch_(cut, { '메모': txt_(b.memo, 500), '씬': num_(b.s ?? cut['씬']), '컷': num_(b.c ?? cut['컷']), '테이크': num_(b.t ?? cut['테이크']) }); return { ok: true }; }
     if (a === 'keycut.upload') {
+      // 페이지에서 올려도 같은 폴더에 클립 이름으로 저장 (두 번째부터 _v2, _v3 …)
       const slot = String(b.slot);
-      if (!KC_SLOTS.includes(slot)) return { ok: false, error: '슬롯이 잘못됐어요.' };
+      if (!KC_SLOTS.includes(slot)) return { ok: false, error: '칸이 잘못됐어요.' };
       const ext = KC_EXT[String(b.type)];
       if (!ext) return { ok: false, error: 'JPG · PNG · WEBP 만 올릴 수 있어요.' };
       const buf = Buffer.from(String(b.data || ''), 'base64');
       if (!buf.length || buf.length > 9 * 1024 * 1024) return { ok: false, error: '파일이 비었거나 너무 커요 (9MB까지).' };
-      const n = rows_('키컷버전').filter((y) => String(y['키']) === pg.key && Number(y['키컷ID']) === id && String(y['슬롯']) === slot)
-        .reduce((mx, y) => Math.max(mx, Number(y['버전']) || 0), 0) + 1;
-      const dir = kcDir_(pg, id);
-      if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }); own_(path.dirname(dir)); own_(dir); }
-      const fn = `${slot}_v${n}${ext}`, abs = path.join(dir, fn);
+      const have = files[slot] || [];
+      const dir = path.join(kcRoot_(pg), KC_DIRS[slot]);
+      let n = have.length + 1, fn = n === 1 ? clip + ext : `${clip}_v${n}${ext}`;
+      while (fs.existsSync(path.join(dir, fn))) fn = `${clip}_v${++n}${ext}`;
+      const abs = path.join(dir, fn);
       fs.writeFileSync(abs, buf); own_(abs);
-      // 목록용 작은 그림 (ffmpeg 가 있으면). 없으면 화면이 원본을 그대로 씀
-      ffReady_().then((ok) => { if (!ok) return; const th = abs.replace(/\.[^.]+$/, '.th.jpg');
-        sh_(TH.ff, ['-hide_banner', '-loglevel', 'error', '-i', abs, '-vf', 'scale=480:-2', '-q:v', '5', '-y', th], 60e3).then((r) => { if (r.ok) own_(th); }); });
-      append_('키컷버전', [nextId_('키컷버전'), pg.key, id, slot, n, `${id}/${fn}`, String((b._who && b._who.name) || ''), nowStr_()]);
-      return { ok: true, n, f: `${id}/${fn}` };
+      KCSCAN.delete(pg.folder);
+      return { ok: true, f: KC_DIRS[slot] + '/' + fn };
     }
     if (a === 'keycut.delver') {
-      const r = rows_('키컷버전').find((y) => String(y['키']) === pg.key && Number(y['키컷ID']) === id && String(y['슬롯']) === String(b.slot) && Number(y['버전']) === Number(b.n));
-      if (r) {
-        const abs = path.join(DIR, pg.folder, KC_DIR, String(r['파일']));
-        [abs, abs.replace(/\.[^.]+$/, '.th.jpg')].forEach((f) => { try { fs.unlinkSync(f); } catch {} });
-        remove_(r);
-      }
-      return { ok: true };
+      const v = (files[String(b.slot)] || []).find((y) => y.n === Number(b.n));
+      if (!v) return { ok: true };
+      const moved = kcTrash_(path.join(kcRoot_(pg), v.f));
+      KCSCAN.delete(pg.folder);
+      return { ok: true, moved };
     }
     if (a === 'keycut.remove') {
-      rows_('키컷버전').filter((y) => String(y['키']) === pg.key && Number(y['키컷ID']) === id).forEach(remove_);
+      // 키컷 빼기 = 그 클립 스틸을 모두 휴지통으로 + 키컷 줄·코멘트 지우기 (파일이 남으면 다시 생기므로)
+      const moved = [];
+      KC_SLOTS.forEach((sl) => (files[sl] || []).forEach((v) => { try { moved.push(kcTrash_(path.join(kcRoot_(pg), v.f))); } catch {} }));
       rows_('키컷코멘트').filter((y) => String(y['키']) === pg.key && Number(y['키컷ID']) === id).forEach(remove_);
       remove_(cut);
-      const dir = kcDir_(pg, id);
-      let moved = '';
-      if (fs.existsSync(dir)) moved = trash_(dir);
-      return { ok: true, moved };
+      KCSCAN.delete(pg.folder);
+      return { ok: true, moved: moved.length };
     }
     return { ok: false, error: 'unknown action' };
   }
