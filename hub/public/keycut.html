@@ -81,8 +81,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--ci)}
 .row__m{min-width:0;display:flex;flex-direction:column;gap:1px}
 .row__t{font-family:var(--mono);font-size:12.5px;font-weight:600}
 .row__s{font-family:var(--mono);font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bd{font-size:10.5px;font-weight:700;white-space:nowrap}
-.bd.ok{color:var(--ok)}.bd.fix{color:var(--fix)}.bd.none{color:var(--faint)}
+.bd{width:7px;height:7px;border-radius:50%;background:var(--line2)}
+.bd.ok{background:var(--ok)}.bd.fix{background:var(--fix)}
 .side__foot{border-top:1px solid var(--line);padding:8px}
 .empty{padding:28px 16px;color:var(--muted);text-align:center;font-size:12px;line-height:1.7}
 
@@ -91,26 +91,25 @@ input:focus,select:focus,textarea:focus{border-color:var(--ci)}
 .view{background:var(--g18);border-radius:6px;padding:12px;color:#fff;user-select:none;-webkit-user-select:none}
 .view:fullscreen,.view:-webkit-full-screen{border-radius:0;padding:18px;display:flex;flex-direction:column;justify-content:center;overflow:auto}
 .vbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-.vbar .slate{font-family:var(--mono);font-weight:600;font-size:14px}
-.vbar .meta{font-size:11.5px;color:#f2f2f4}
-.seg{display:inline-flex;border:1px solid rgba(255,255,255,.45);border-radius:6px;overflow:hidden;background:rgba(20,20,22,.55)}
-.seg button{background:none;border:0;color:#f0f0f2;font-size:12px;padding:5px 11px}
-.seg button+button{border-left:1px solid rgba(255,255,255,.3)}
-.seg button.on{background:var(--ci);color:#fff;font-weight:700}
-.vbtn{background:rgba(20,20,22,.55);border:1px solid rgba(255,255,255,.45);border-radius:6px;color:#fff;height:28px;width:30px;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.vbar .slate{font-family:var(--mono);font-weight:600;font-size:15px}
+.vbar .meta{font-family:var(--mono);font-size:11px;color:rgba(255,255,255,.82)}
+.seg{display:inline-flex;border-radius:4px;overflow:hidden;background:rgba(0,0,0,.28)}
+.seg button{background:none;border:0;color:rgba(255,255,255,.78);font-size:11.5px;padding:5px 10px;letter-spacing:.01em}
+.seg button:hover{color:#fff}
+.seg button.on{background:#f4f4f5;color:#151517;font-weight:700}
+.vbtn{background:rgba(0,0,0,.28);border:0;border-radius:4px;color:#fff;height:27px;width:28px;display:inline-flex;align-items:center;justify-content:center;padding:0}
 .vbtn svg{width:13px;height:13px;stroke:#fff;fill:none;stroke-width:1.5}
 .grid4{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .fr{position:relative;border-radius:4px;overflow:hidden;aspect-ratio:16/9;cursor:pointer;background:rgba(0,0,0,.18)}
 .fr img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;-webkit-user-drag:none}
 .fr.sel{outline:3px solid var(--ci);outline-offset:-3px}
 .fr.drop{outline:3px dashed #fff;outline-offset:-6px}
-.fr .none{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:rgba(255,255,255,.85);font-size:12px}
-.fr .none small{font-size:11px;color:rgba(255,255,255,.7)}
-.lb{position:absolute;top:8px;left:8px;font-size:12px;font-weight:700;background:rgba(0,0,0,.78);color:#fff;padding:4px 8px;border-radius:4px;pointer-events:none;z-index:2}
+.fr .none{position:absolute;inset:10px;display:flex;align-items:center;justify-content:center;border:1px dashed rgba(255,255,255,.32);border-radius:3px;color:rgba(255,255,255,.55);font-size:20px;font-weight:300}
+.lb{position:absolute;top:8px;left:8px;font-family:var(--en);font-size:10.5px;font-weight:700;letter-spacing:.08em;background:rgba(0,0,0,.72);color:#fff;padding:3px 7px;border-radius:3px;pointer-events:none;z-index:2}
 .lb.ci{background:var(--ci)}
-.lb .v{font-family:var(--mono);font-weight:400;margin-left:5px;opacity:.85}
-.tr{position:absolute;top:8px;right:8px;font-size:12.5px;font-weight:700;background:rgba(12,12,14,.88);color:#fff;padding:5px 10px;border-radius:5px;
-  border:1px solid rgba(255,255,255,.35);pointer-events:none;display:inline-flex;align-items:center;gap:6px;z-index:2}
+.lb .v{font-family:var(--mono);font-weight:400;letter-spacing:0;margin-left:6px;opacity:.8}
+.tr{position:absolute;top:8px;right:8px;font-size:12px;font-weight:700;background:rgba(12,12,14,.86);color:#fff;padding:5px 9px;border-radius:4px;
+  pointer-events:none;display:inline-flex;align-items:center;gap:6px;z-index:2}
 .tr svg{width:13px;height:13px;stroke:#fff;fill:none;stroke-width:1.5}
 .no{position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;background:var(--ci);color:#fff;font-size:13px;font-weight:700;
   display:flex;align-items:center;justify-content:center;border:2px solid #fff;z-index:2}
@@ -121,37 +120,45 @@ input:focus,select:focus,textarea:focus{border-color:var(--ci)}
 .hd{position:absolute;top:0;bottom:0;width:26px;margin-left:-13px;cursor:ew-resize;z-index:3;touch-action:none}
 .hd::before{content:"";position:absolute;left:12px;top:0;bottom:0;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
 .hd span{position:absolute;left:5px;top:50%;width:16px;height:30px;margin-top:-15px;border-radius:8px;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.45)}
-.hint{font-size:11.5px;color:#f2f2f4;margin-top:9px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.vers{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
-.vers .g{display:inline-flex;align-items:center;gap:4px;font-size:11.5px}
-.vers .g>span{color:#f2f2f4}
-.vers button{background:rgba(20,20,22,.55);border:1px solid rgba(255,255,255,.4);border-radius:5px;color:#fff;font-family:var(--mono);font-size:11px;padding:2px 7px}
-.vers button.on{background:#fff;color:#111;border-color:#fff;font-weight:600}
+.hint{display:none}
+.vers{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px}
+.vers:empty{display:none}
+.vers .g{display:inline-flex;align-items:center;gap:3px}
+.vers .g>span{font-family:var(--en);font-size:10px;font-weight:700;letter-spacing:.08em;color:rgba(255,255,255,.8);margin-right:4px}
+.vers button{background:rgba(0,0,0,.28);border:0;border-radius:3px;color:rgba(255,255,255,.8);font-family:var(--mono);font-size:11px;padding:2px 7px}
+.vers button.on{background:#f4f4f5;color:#111;font-weight:600}
 .vers button i{font-style:normal;margin-left:4px;opacity:.6}
 .vers button i:hover{opacity:1;color:var(--ng)}
 
 /* 아래: 승인 · 메모 · 코멘트 */
-.lower{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:18px;margin-top:16px}
-.box h3{font-size:11.5px;color:var(--muted);font-weight:700;margin:0 0 8px;letter-spacing:.02em}
-.acts{display:flex;gap:8px}
-.acts button{flex:1;height:38px;border-radius:6px;font-weight:700;font-size:13px;background:transparent}
-.acts .a-ok{border:1px solid var(--ok);color:var(--ok)}
-.acts .a-ok.on{background:rgba(63,179,127,.16)}
-.acts .a-fix{border:1px solid var(--fix);color:var(--fix)}
-.acts .a-fix.on{background:rgba(217,161,59,.16)}
-.acts button:disabled{opacity:.45;cursor:default}
-.stl{font-size:12px;color:var(--muted);margin-top:7px;min-height:18px}
-.memo{margin-top:14px}
-.memo textarea{min-height:56px;resize:vertical}
-.memo p{margin:0;white-space:pre-wrap;line-height:1.6}
-.cm{border-top:1px solid var(--line);padding:8px 0}
-.cm b{font-size:12.5px}.cm .t{font-size:11px;color:var(--faint);margin-left:6px}
+.lower{margin-top:12px;max-width:920px}
+.tool{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.stl{flex:1;min-width:160px;font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:7px}
+.stl i{width:7px;height:7px;border-radius:50%;background:var(--line2);flex:none}
+.stl.ok i{background:var(--ok)}.stl.fix i{background:var(--fix)}
+.stl b{color:var(--text);font-weight:700}
+.acts{display:flex;gap:6px}
+.acts button{height:30px;padding:0 13px;border-radius:4px;font-weight:700;font-size:12.5px;background:var(--panel2);border:1px solid var(--line2);color:var(--text);display:inline-flex;align-items:center;gap:6px}
+.acts button svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8}
+.acts .a-ok.on{background:var(--ok);border-color:var(--ok);color:#0d1a14}
+.acts .a-fix.on{background:var(--fix);border-color:var(--fix);color:#1d1406}
+.acts button:disabled{display:none}
+.memo{padding:10px 0 2px;border-bottom:1px solid var(--line)}
+.memo p{margin:0 0 8px;white-space:pre-wrap;line-height:1.6;color:var(--text);padding-left:10px;border-left:2px solid var(--line2)}
+.memo textarea{min-height:44px;resize:vertical;margin-bottom:10px;font-size:12.5px}
+.box h3{display:none}
+.cm{border-bottom:1px solid var(--line);padding:9px 0}
+.cm b{font-size:12.5px;font-weight:700}.cm .t{font-size:11px;color:var(--faint);margin-left:6px}
 .cm .x{float:right;background:none;border:0;color:var(--faint);font-size:11px}
 .cm .x:hover{color:var(--ng)}
 .cm p{margin:3px 0 0;white-space:pre-wrap;line-height:1.6}
 .cmin{display:flex;gap:6px;margin-top:8px}
 .cmin textarea{min-height:38px;height:38px;resize:vertical}
-.admin{margin-top:16px;padding-top:12px;border-top:1px dashed var(--line2);display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted)}
+.admin{margin-top:18px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted)}
+.admin .btn{height:26px;font-size:11.5px;background:transparent}
+.keys{position:relative}
+.keys__pop{position:absolute;right:0;top:34px;width:220px;background:var(--panel);border:1px solid var(--line2);border-radius:4px;padding:10px 12px;font-size:11.5px;color:var(--muted);line-height:2;z-index:30}
+.keys__pop kbd{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);border-radius:3px;padding:0 4px;color:var(--text);margin-right:2px}
 
 /* 가져오기 창 */
 dialog{background:var(--panel);color:var(--text);border:1px solid var(--line2);border-radius:8px;padding:0;width:min(760px,94vw);max-height:84vh}
@@ -207,13 +214,15 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <img class="sym" src="mgrm-symbol.svg" alt="맹그라미">
     <div class="top__t"><b id="tTitle"></b><span>KEY CUT</span></div>
     <span class="who"><i></i><span id="tName"></span><span class="r" id="tRole"></span><a href="#" id="tOut" title="나가기">나가기</a></span>
+    <div class="keys"><button class="btn" id="keysBtn" title="단축키" style="width:28px;justify-content:center;padding:0;font-family:var(--en);font-weight:700">?</button>
+      <div class="keys__pop hide" id="keysPop"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> 한 장 / 4분할<br><kbd>↑</kbd><kbd>↓</kbd> 이전 · 다음 키컷<br><kbd>F</kbd> 전체 화면<br>둘 비교: 두 칸 고르기 → 화면 누르면 다시</div></div>
     <button class="btn" id="btnRefresh" title="새로 불러오기"><svg viewBox="0 0 12 12"><path d="M10 6a4 4 0 1 1-1.2-2.85M10 1.5v2.5H7.5"/></svg></button>
   </div>
   <div class="tabs" id="stats"></div>
   <div class="main">
     <aside class="side">
       <div class="list" id="list"></div>
-      <div class="side__foot hide" id="adminFoot"><button class="btn pri" id="btnCands" style="width:100%;justify-content:center">+ 테이크 체크 OK컷에서 가져오기</button></div>
+      <div class="side__foot hide" id="adminFoot"><button class="btn" id="btnCands" style="width:100%;justify-content:center;background:transparent">+ OK컷 가져오기</button></div>
     </aside>
     <section class="stage">
       <div class="view" id="view">
@@ -232,27 +241,27 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
       </div>
 
       <div class="lower" id="lower">
-        <div class="box">
-          <h3>판단</h3>
-          <div class="acts"><button class="a-ok" id="bOk">승인</button><button class="a-fix" id="bFix">수정 요청</button></div>
-          <div class="stl" id="stLine"></div>
-          <div class="memo" id="memoBox">
-            <h3>메모</h3>
-            <p id="memoText" class="dim"></p>
-            <textarea id="memoIn" class="hide" placeholder="이 키컷의 방향, 레퍼런스 설명 등"></textarea>
+        <div class="tool">
+          <span class="stl" id="stLine"></span>
+          <div class="acts">
+            <button class="a-ok" id="bOk"><svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.3 2.3L9.5 3.5"/></svg>승인</button>
+            <button class="a-fix" id="bFix"><svg viewBox="0 0 12 12"><path d="M2.5 9.5l1-3 5-5 2 2-5 5z"/></svg>수정 요청</button>
           </div>
+        </div>
+        <div class="memo" id="memoBox">
+          <p id="memoText"></p>
+          <textarea id="memoIn" class="hide" placeholder="방향 메모 (모두에게 보여요)"></textarea>
         </div>
         <div class="box">
           <h3>코멘트 <span id="cmN" class="mono"></span></h3>
           <div id="cms"></div>
-          <div class="cmin"><textarea id="cmIn" placeholder="의견을 남겨 주세요"></textarea><button class="btn pri" id="cmGo" style="height:38px">남기기</button></div>
+          <div class="cmin"><textarea id="cmIn" placeholder="코멘트"></textarea><button class="btn pri" id="cmGo" style="height:38px">남기기</button></div>
         </div>
       </div>
 
       <div class="admin hide" id="adminBar">
-        <b style="color:var(--text)">관리</b>
-        <button class="btn" id="bUp">스틸 올리기</button>
-        <span>이름 끝에 <span class="mono">_LOG _709 _LUT _GRADE</span> 를 붙이면 칸을 알아서 찾아요. 칸에 직접 끌어다 놓아도 돼요.</span>
+        <button class="btn" id="bUp" title="파일 이름 끝 _LOG _709 _LUT _GRADE 로 칸을 찾아요. 칸에 직접 끌어다 놓아도 돼요.">스틸 올리기</button>
+        <button class="btn" id="btnCands2">OK컷 가져오기</button>
         <button class="btn" id="bRemove" style="margin-left:auto;color:#ffb3af">키컷 빼기</button>
         <input type="file" id="fileIn" accept="image/jpeg,image/png,image/webp,image/tiff,.tif,.tiff" multiple class="hide">
       </div>
@@ -273,7 +282,8 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':
 const P = new URLSearchParams(location.search).get('p') || '';
 const LS = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} }, del(k) { try { localStorage.removeItem(k); } catch {} } };
 const SS = { get(k) { try { return sessionStorage.getItem(k); } catch { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch {} } };
-const SLOTS = [{ k: 'log', n: '원본 Log' }, { k: '709', n: 'Rec.709' }, { k: 'lut', n: '현장 LUT' }, { k: 'gr', n: '그레이딩' }];
+const SLOTS = [{ k: 'log', n: 'LOG', ko: '원본 Log' }, { k: '709', n: 'REC 709', ko: 'Rec.709 변환' }, { k: 'lut', n: 'LUT', ko: '현장 LUT' }, { k: 'gr', n: 'GRADE', ko: '그레이딩' }];
+const SLOT_KO = Object.fromEntries(SLOTS.map((x) => [x.k, x.ko]));
 const SLOT_N = Object.fromEntries(SLOTS.map((x) => [x.k, x.n]));
 const ROLE_N = { admin: '관리', approve: '승인', view: '보기' };
 const ST_N = { ok: '승인', fix: '수정 요청' };
@@ -388,8 +398,8 @@ function renderList() {
   let arr = S.cuts;
   if (S.filt === 'ok' || S.filt === 'fix') arr = arr.filter((k) => k.st === S.filt);
   else if (S.filt === 'none') arr = arr.filter((k) => !k.st);
-  if (!S.cuts.length) { L.innerHTML = `<div class="empty">아직 키컷이 없어요.${isAdmin() ? '<br>아래 단추로 테이크 체크 OK컷에서 가져오세요.' : ''}</div>`; return; }
-  if (!arr.length) { L.innerHTML = '<div class="empty">해당 키컷 없음</div>'; return; }
+  if (!S.cuts.length) { L.innerHTML = '<div class="empty">키컷 없음</div>'; return; }
+  if (!arr.length) { L.innerHTML = '<div class="empty">—</div>'; return; }
   let html = '', last = null;
   const cnt = {}; arr.forEach((k) => { const g = k.s ? 'S#' + k.s : '씬 미입력'; cnt[g] = (cnt[g] || 0) + 1; });
   arr.forEach((k) => {
@@ -398,12 +408,17 @@ function renderList() {
     const v = thumbOf(k), nv = SLOTS.filter((x) => latest(k, x.k)).length, ncm = S.comments.filter((c) => c.kc === k.id).length;
     const th = v ? `<img loading="lazy" alt="" src="${esc(url(v.th))}" onerror="this.onerror=null;this.src='${esc(url(v.f))}'">` : '';
     html += `<div class="row${k.id === S.sel ? ' sel' : ''}" data-id="${k.id}"><span class="row__th">${th}</span>` +
-      `<span class="row__m"><span class="row__t">${esc(slate(k))}</span><span class="row__s">${esc(k.clip)} · ${nv}/4${ncm ? ' · 코멘트 ' + ncm : ''}</span></span>` +
-      `<span class="bd ${k.st || 'none'}">${ST_N[k.st] || '—'}</span></div>`;
+      `<span class="row__m"><span class="row__t">${esc(slate(k))}</span><span class="row__s">${esc(k.clip)}${ncm ? ` · <svg viewBox="0 0 12 12" style="width:10px;height:10px;stroke:currentColor;fill:none;stroke-width:1.3;vertical-align:-1px"><path d="M2 2.5h8v5.5H5L3 10V8H2z"/></svg> ${ncm}` : ''}</span></span>` +
+      `<span class="bd ${k.st || ''}" title="${esc(ST_N[k.st] || '확인 전')}"></span></div>`;
   });
   L.innerHTML = html;
 }
-$('list').onclick = (e) => { const r = e.target.closest('.row'); if (!r) return; select(Number(r.dataset.id)); };
+// 휴대폰(목록이 아래)에서는 키컷을 누르면 그림으로 올라감
+$('list').onclick = (e) => {
+  const r = e.target.closest('.row'); if (!r) return;
+  select(Number(r.dataset.id));
+  if (matchMedia('(max-width:900px)').matches) $('view').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
 function select(id) {
   if (S.memoDirty) saveMemo();
   S.sel = id; S.one = null; S.picks = [];
@@ -422,8 +437,8 @@ const IC_GRID = '<svg viewBox="0 0 12 12"><path d="M1.5 1.5h4v4h-4zM6.5 1.5h4v4h
 function frame(k, sl, corner, cls) {
   const v = verOf(k, sl);
   const nv = (k.v[sl] || []).length;
-  const img = v ? `<img alt="" src="${esc(url(v.f))}">` : `<span class="none">없음${isAdmin() ? '<small>끌어다 놓거나 눌러서 올리기</small>' : ''}</span>`;
-  return `<div class="fr${cls ? ' ' + cls : ''}" data-slot="${sl}">${img}<span class="lb${sl === 'gr' ? ' ci' : ''}">${SLOT_N[sl]}${v && nv > 1 ? `<span class="v">v${v.n}</span>` : ''}</span>${corner || ''}${v ? WM() : ''}</div>`;
+  const img = v ? `<img alt="" src="${esc(url(v.f))}">` : `<span class="none" title="${isAdmin() ? '끌어다 놓거나 눌러서 올리기' : '아직 없음'}">${isAdmin() ? '+' : ''}</span>`;
+  return `<div class="fr${cls ? ' ' + cls : ''}" data-slot="${sl}" title="${esc(SLOT_KO[sl])}">${img}<span class="lb${sl === 'gr' ? ' ci' : ''}">${SLOT_N[sl]}${v && nv > 1 ? `<span class="v">v${v.n}</span>` : ''}</span>${corner || ''}${v ? WM() : ''}</div>`;
 }
 function renderStage() {
   const k = cur();
@@ -432,7 +447,7 @@ function renderStage() {
   $('how').classList.toggle('hide', S.mode !== 'ab');
   $('lower').classList.toggle('hide', !k);
   const pane = $('pane'), hint = $('hint');
-  if (!k) { $('vSlate').textContent = '—'; $('vMeta').textContent = ''; pane.innerHTML = '<div class="fr" style="cursor:default"><span class="none">키컷을 고르세요</span></div>'; hint.textContent = ''; $('vers').innerHTML = ''; return; }
+  if (!k) { $('vSlate').textContent = '—'; $('vMeta').textContent = ''; pane.innerHTML = '<div class="fr" style="cursor:default"></div>'; hint.textContent = ''; $('vers').innerHTML = ''; return; }
   $('vSlate').textContent = slate(k);
   $('vMeta').textContent = [k.clip, k.tc, k.day ? (k.day.no ? k.day.no + '회차' : '') + (k.day.date ? ' · ' + k.day.date : '') : ''].filter(Boolean).join(' · ');
   if (S.mode === 'view' && !S.one) {
@@ -512,6 +527,8 @@ function toggleFs() {
   else if (el.requestFullscreen) el.requestFullscreen().catch(() => {}); else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
 }
 $('fsBtn').onclick = toggleFs;
+$('keysBtn').onclick = (e) => { e.stopPropagation(); $('keysPop').classList.toggle('hide'); };
+document.addEventListener('click', (e) => { if (!e.target.closest('.keys')) $('keysPop').classList.add('hide'); });
 document.addEventListener('keydown', (e) => {
   if ($('app').classList.contains('hide')) return;
   const tag = (e.target.tagName || '').toLowerCase();
@@ -532,16 +549,18 @@ function renderLower(k) {
   $('bOk').classList.toggle('on', k.st === 'ok'); $('bFix').classList.toggle('on', k.st === 'fix');
   $('bOk').disabled = $('bFix').disabled = !canApprove();
   $('bOk').title = $('bFix').title = canApprove() ? '' : '승인 권한이 있는 사람만 누를 수 있어요';
-  $('stLine').textContent = k.st ? `${k.stBy} · ${ST_N[k.st]} · ${k.stAt}` : (canApprove() ? '아직 판단 전이에요.' : '감독·촬영감독이 판단해요.');
-  $('memoText').textContent = k.memo || (isAdmin() ? '' : '메모 없음');
-  $('memoText').classList.toggle('hide', isAdmin());
+  $('stLine').className = 'stl ' + (k.st || '');
+  $('stLine').innerHTML = k.st ? `<i></i><b>${esc(ST_N[k.st])}</b><span>${esc(k.stBy)} · ${esc(k.stAt.slice(5))}</span>` : '<i></i><span>확인 전</span>';
+  $('memoText').textContent = k.memo || '';
+  $('memoText').classList.toggle('hide', isAdmin() || !k.memo);
   $('memoIn').classList.toggle('hide', !isAdmin());
   if (isAdmin() && document.activeElement !== $('memoIn')) { $('memoIn').value = k.memo || ''; S.memoDirty = false; }
   $('memoBox').classList.toggle('hide', !isAdmin() && !k.memo);
   const cms = S.comments.filter((c) => c.kc === k.id);
   $('cmN').textContent = cms.length || '';
-  $('cms').innerHTML = cms.map((c) => `<div class="cm"><b>${esc(c.who)}</b><span class="t">${esc(c.at)}</span>` +
-    ((isAdmin() || c.who === S.me) ? `<button class="x" data-cid="${c.id}">지우기</button>` : '') + `<p>${esc(c.txt)}</p></div>`).join('') || '<div class="dim" style="font-size:12px">아직 코멘트가 없어요.</div>';
+  $('memoBox').classList.toggle('hide', !isAdmin() && !k.memo);
+  $('cms').innerHTML = cms.map((c) => `<div class="cm"><b>${esc(c.who)}</b><span class="t">${esc(c.at.slice(5))}</span>` +
+    ((isAdmin() || c.who === S.me) ? `<button class="x" data-cid="${c.id}">지우기</button>` : '') + `<p>${esc(c.txt)}</p></div>`).join('');
 }
 async function setSt(st) {
   const k = cur(); if (!k || !canApprove()) return;
@@ -577,6 +596,7 @@ $('btnCands').onclick = () => {
   $('candDlg').showModal();
 };
 $('candClose').onclick = () => $('candDlg').close();
+$('btnCands2').onclick = () => $('btnCands').click();
 $('candDlg').addEventListener('click', (e) => { if (e.target === $('candDlg')) $('candDlg').close(); });
 $('cands').onclick = async (e) => {
   const el = e.target.closest('.cand'); if (!el) return;

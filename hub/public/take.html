@@ -519,7 +519,13 @@ function renderList() {
   });
   L.innerHTML = html;
 }
-$('list').onclick = (e) => { const r = e.target.closest('.row'); if (r) select(r.dataset.k); };
+// 휴대폰(목록이 아래)에서는 클립을 누르면 재생 화면으로 올라감
+const narrow = () => matchMedia('(max-width:900px)').matches;
+$('list').onclick = async (e) => {
+  const r = e.target.closest('.row'); if (!r) return;
+  await select(r.dataset.k, narrow());
+  if (narrow()) $('player').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
 function renderStats() {
   const arr = S.clips.filter(inRange).map(markOf);
   const n = (f) => arr.filter(f).length;
