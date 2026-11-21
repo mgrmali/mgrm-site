@@ -106,7 +106,28 @@ input:disabled,textarea:disabled{opacity:.8}
 .wm{position:absolute;pointer-events:none;user-select:none;-webkit-user-select:none;font-weight:800;letter-spacing:.04em;
   color:#fff;opacity:var(--wmo,.12);white-space:nowrap;font-size:clamp(13px,2.2vw,22px);text-shadow:0 0 2px rgba(0,0,0,.6);
   transition:left 1.2s ease,top 1.2s ease;z-index:2}
-.fsb{position:absolute;right:8px;top:8px;z-index:3;width:28px;height:28px;padding:0;justify-content:center;
+.vg{position:absolute;inset:0;z-index:1;pointer-events:none;object-fit:contain;clip-path:inset(0 0 0 100%)}
+.vg.off{display:none}
+.wipe{position:absolute;top:0;bottom:0;z-index:2;width:22px;margin-left:-11px;cursor:ew-resize;touch-action:none}
+.wipe::before{content:"";position:absolute;left:10px;top:0;bottom:0;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+.wipe__h{position:absolute;left:3px;top:50%;width:16px;height:30px;margin-top:-15px;border-radius:8px;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.5)}
+.ctag{position:absolute;top:8px;left:8px;z-index:2;font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:3px 7px;border-radius:4px;background:rgba(0,0,0,.55);color:#fff;pointer-events:none}
+.ctag.r{left:auto;right:44px;background:var(--ci)}
+.ctl{position:absolute;left:0;right:0;bottom:0;z-index:4;display:flex;align-items:center;gap:8px;padding:18px 10px 8px;
+  background:linear-gradient(transparent,rgba(0,0,0,.72));transition:opacity .25s}
+.player.idle .ctl,.player.idle .fsb{opacity:0}
+.player.idle{cursor:none}
+.ctl__b{width:28px;height:28px;flex:none;display:inline-flex;align-items:center;justify-content:center;background:none;border:0;color:#fff;cursor:pointer;padding:0}
+.ctl__b svg{width:15px;height:15px;fill:#fff}
+.ctl__r{flex:1;min-width:60px;accent-color:var(--ci);height:4px;cursor:pointer}
+.ctl__t{font-family:var(--mono);font-size:11px;color:#ddd;white-space:nowrap}
+.cmp{display:inline-flex;border:1px solid rgba(255,255,255,.35);border-radius:6px;overflow:hidden;flex:none}
+.cmp button{background:rgba(0,0,0,.35);border:0;color:#ddd;font-size:11px;font-weight:600;padding:5px 8px;cursor:pointer}
+.cmp button+button{border-left:1px solid rgba(255,255,255,.25)}
+.cmp button.on{background:var(--ci);color:#fff}
+.gtag{font-family:var(--sans);font-size:9.5px;font-weight:700;letter-spacing:.05em;color:#fff;background:var(--ci);border-radius:3px;padding:1px 4px;margin-left:6px;vertical-align:1px}
+@media (max-width:560px){.ctl__t{display:none}.cmp button{padding:5px 6px}}
+.fsb{position:absolute;right:8px;top:8px;z-index:5;width:28px;height:28px;padding:0;justify-content:center;
   background:rgba(0,0,0,.5);border-color:rgba(255,255,255,.15);opacity:.7}
 .fsb:hover{opacity:1}
 .player:fullscreen,.player:-webkit-full-screen{aspect-ratio:auto;width:100vw;height:100vh;border-radius:0}
@@ -238,9 +259,21 @@ input:disabled,textarea:disabled{opacity:.8}
 
     <section class="stage">
       <div class="player" id="player">
-        <video id="v" controls playsinline preload="metadata" controlsList="nodownload nofullscreen noremoteplayback" disableRemotePlayback disablePictureInPicture></video>
+        <video id="v" playsinline preload="metadata" controlsList="nodownload nofullscreen noremoteplayback" disableRemotePlayback disablePictureInPicture></video>
+        <video id="vg" class="vg" muted playsinline preload="metadata" disableRemotePlayback disablePictureInPicture aria-hidden="true"></video>
+        <div class="wipe hide" id="wipe"><span class="wipe__h"></span></div>
+        <span class="ctag hide" id="tagL">원본</span><span class="ctag r hide" id="tagR">색보정</span>
         <div class="player__none" id="vNone">클립을 고르세요</div>
         <div class="wm" id="wm1"></div><div class="wm" id="wm2"></div>
+        <div class="ctl" id="ctl">
+          <button class="ctl__b" id="cPlay" title="재생 · 정지 (Space)"></button>
+          <input type="range" class="ctl__r" id="cSeek" min="0" max="1000" step="1" value="0" aria-label="재생 위치">
+          <span class="ctl__t" id="cTime">0:00 / 0:00</span>
+          <button class="ctl__b" id="cMute" title="소리"></button>
+          <span class="cmp hide" id="cmp">
+            <button data-m="o" title="원본 (G 로 전환)">원본</button><button data-m="g" title="색보정 (G 로 전환)">색보정</button><button data-m="w" title="와이프 비교 (W)">와이프</button>
+          </span>
+        </div>
         <button class="btn fsb" id="fsBtn" type="button" title="전체 화면 (F)"></button>
       </div>
       <div class="info">
@@ -290,7 +323,8 @@ input:disabled,textarea:disabled{opacity:.8}
       <kbd>Space</kbd> 재생 · 정지<br>
       <kbd>←</kbd><kbd>→</kbd> 2초<br>
       <kbd>,</kbd><kbd>.</kbd> 1프레임<br>
-      <kbd>F</kbd> 전체 화면
+      <kbd>F</kbd> 전체 화면<br>
+      <kbd>G</kbd> 원본 ↔ 색보정 · <kbd>W</kbd> 와이프
     </div>
     <button class="btn" id="keysBtn" title="단축키">?</button>
   </div>
@@ -437,6 +471,7 @@ function computeList() {
   if (S.filt === 'blank') arr = arr.filter((x) => blank(x.m));
   else if (S.filt === 'none') arr = arr.filter((x) => !x.m.st);
   else if (S.filt === 'cm') arr = arr.filter((x) => cmCount(x.c) > 0);
+  else if (S.filt === 'gr') arr = arr.filter((x) => x.c.gr);
   else if (S.filt !== 'all') arr = arr.filter((x) => x.m.st === S.filt);
   if (q) arr = arr.filter((x) => {
     const hay = `${x.c.id} ${x.c.cam}캠 s#${x.m.s || ''} c${x.m.c || ''} t${x.m.t || ''} ${x.m.memo || ''}`.toLowerCase();
@@ -470,7 +505,7 @@ function renderList() {
     // 썸네일: NAS 가 회차 폴더/_thumbs/<클립>.jpg 로 만들어 둠 (아직이면 빈 칸)
     const stem = c.f.split('/').pop().replace(/\.[^.]+$/, '');
     const th = c.th ? `<img loading="lazy" decoding="async" alt="" src="${esc(S.base + encodeURIComponent(c.d) + '/_thumbs/' + encodeURIComponent(stem) + '.jpg?v=' + (c.at || ''))}" onerror="this.remove()">` : '';
-    html += `<div class="row${k === S.sel ? ' sel' : ''}" data-k="${esc(k)}"><span class="row__th">${th}</span><span class="row__m">${t}<span class="row__s">${esc(sub)}</span></span>` +
+    html += `<div class="row${k === S.sel ? ' sel' : ''}" data-k="${esc(k)}"><span class="row__th">${th}</span><span class="row__m"><span>${t}${c.gr ? '<span class="gtag">COLOR</span>' : ''}</span><span class="row__s">${esc(sub)}</span></span>` +
       (n ? `<span class="row__c" title="코멘트 ${n}"><svg viewBox="0 0 12 12"><path d="M2 2.5h8v5.5H5L3 10V8H2z"/></svg>${n}</span>` : '<span></span>') +
       `<span class="bd ${m.st || 'none'}">${LABEL[m.st] || '—'}</span></div>`;
   });
@@ -483,6 +518,8 @@ function renderStats() {
   const cmN = S.clips.filter(inRange).filter((c) => cmCount(c) > 0).length;
   const items = [['all', '전체', arr.length, ''], ['ok', 'OK', n((m) => m.st === 'ok'), 'ok'], ['ng', 'NG', n((m) => m.st === 'ng'), 'ng'],
     ['keep', 'KEEP', n((m) => m.st === 'keep'), 'keep'], ['none', '미확인', n((m) => !m.st), ''], ['blank', '씬 미입력', n(blank), ''], ['cm', '코멘트', cmN, '']];
+  const grN = S.clips.filter(inRange).filter((c) => c.gr).length;
+  if (grN || S.filt === 'gr') items.push(['gr', '색보정', grN, '']);
   $('stats').innerHTML = items.map(([f, l, v, cl]) => `<span class="tab ${cl}${S.filt === f ? ' on' : ''}" data-f="${f}">${l}<b>${v}</b></span>`).join('');
 }
 $('stats').onclick = (e) => { const s = e.target.closest('.tab'); if (s) setFilt(s.dataset.f); };
@@ -512,6 +549,7 @@ async function select(k, quiet) {
     v.src = S.base + encodeURIComponent(c.d) + '/' + c.f.split('/').map(encodeURIComponent).join('/');
     $('vNone').classList.add('hide');
   } else { v.removeAttribute('src'); v.load(); $('vNone').classList.remove('hide'); }
+  loadGrade(c);
   renderStage();
 }
 function suggest(c) {
@@ -692,6 +730,101 @@ $('fNext').onclick = () => frameStep(1);
 $('bPrev').onclick = () => step(-1);
 $('bNext').onclick = () => step(1);
 
+/* ───────── 색보정 비교 (1.12.0)
+   회차 폴더/_grade/ 에 원본과 같은 이름으로 올린 색보정본을 원본과 함께 재생합니다.
+   소리·재생 위치는 원본이 기준, 색보정본은 소리 없이 따라감 (타임코드가 다르면 그만큼 밀어서 맞춤).
+   원본 / 색보정 / 와이프 = 색보정 영상을 얼마나 보이게 자를지만 바꿈 → 전환이 끊기지 않음 */
+const G = { on: false, off: 0 };
+S.cmp = (() => { try { return localStorage.getItem('take.cmp') || 'g'; } catch { return 'g'; } })();
+S.wx = 50;
+function loadGrade(c) {
+  const vg = $('vg');
+  G.on = !!(c && c.gr);
+  if (!G.on) { vg.removeAttribute('src'); vg.load(); vg.classList.add('off'); paintCmp(); return; }
+  G.off = c.gr.tcs != null && c.tcs != null ? c.gr.tcs - c.tcs : 0;
+  const url = S.base + encodeURIComponent(c.d) + '/' + c.gr.f.split('/').map(encodeURIComponent).join('/') + '?v=' + c.gr.at;
+  if (vg.getAttribute('src') !== url) vg.src = url;
+  vg.classList.remove('off');
+  paintCmp();
+}
+const gT = () => Math.max(0, $('v').currentTime - G.off);
+function gSync(force) {
+  if (!G.on) return;
+  const vg = $('vg'), t = gT();
+  if (force || Math.abs(vg.currentTime - t) > 0.12) { try { vg.currentTime = t; } catch {} }
+}
+function setCmp(m) {
+  S.cmp = m; try { localStorage.setItem('take.cmp', m); } catch {}
+  paintCmp();
+}
+function paintCmp() {
+  const m = G.on ? S.cmp : 'o';
+  $('vg').style.clipPath = m === 'g' ? 'none' : m === 'w' ? `inset(0 0 0 ${S.wx}%)` : 'inset(0 0 0 100%)';
+  $('wipe').classList.toggle('hide', m !== 'w'); $('wipe').style.left = S.wx + '%';
+  // 와이프 때는 표시를 선 바로 양옆에 (모서리의 번인 타임코드를 가리지 않게)
+  $('tagL').style.left = m === 'w' ? `calc(${S.wx}% - 54px)` : '';
+  $('tagR').style.left = m === 'w' ? `calc(${S.wx}% + 12px)` : ''; $('tagR').style.right = m === 'w' ? 'auto' : '';
+  $('tagL').classList.toggle('hide', m !== 'w');
+  $('tagR').classList.toggle('hide', !(m === 'w' || m === 'g'));
+  $('cmp').classList.toggle('hide', !G.on);
+  document.querySelectorAll('#cmp button').forEach((b) => b.classList.toggle('on', b.dataset.m === m));
+}
+$('cmp').onclick = (e) => { const b = e.target.closest('button'); if (b) { e.stopPropagation(); setCmp(b.dataset.m); } };
+// 와이프 선 끌기 (마우스·손가락 모두)
+$('wipe').addEventListener('pointerdown', (e) => {
+  e.preventDefault(); e.stopPropagation();
+  const r = $('player').getBoundingClientRect();
+  const mv = (ev) => { S.wx = Math.max(2, Math.min(98, ((ev.clientX - r.left) / r.width) * 100)); paintCmp(); };
+  const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); };
+  addEventListener('pointermove', mv); addEventListener('pointerup', up);
+});
+['play', 'pause', 'seeked', 'ratechange'].forEach((ev) => $('v').addEventListener(ev, () => {
+  if (!G.on) return;
+  const vg = $('vg');
+  vg.playbackRate = $('v').playbackRate;
+  gSync(true);
+  if (ev === 'play') vg.play().catch(() => {});
+  if (ev === 'pause') vg.pause();
+}));
+$('v').addEventListener('timeupdate', () => { if (G.on && !$('v').paused) gSync(false); });
+$('vg').addEventListener('loadedmetadata', () => { gSync(true); if (!$('v').paused) $('vg').play().catch(() => {}); });
+$('vg').addEventListener('error', () => { if ($('vg').getAttribute('src')) toast('색보정본을 불러오지 못했어요. H.264 로 렌더했는지 확인해 주세요.', true); });
+
+/* ───────── 재생 막대 (브라우저 기본 막대 대신 — 색보정 영상이 위에 겹쳐도 가려지지 않게) */
+const IC_PLAY = '<svg viewBox="0 0 12 12"><path d="M3 1.8v8.4L10 6z"/></svg>';
+const IC_PAUSE = '<svg viewBox="0 0 12 12"><path d="M2.6 1.8h2.4v8.4H2.6zM7 1.8h2.4v8.4H7z"/></svg>';
+const IC_VOL = '<svg viewBox="0 0 12 12"><path d="M1.5 4.3h2L6.5 2v8L3.5 7.7h-2z"/><path d="M8.2 3.6a3.4 3.4 0 010 4.8M9.6 2.3a5.2 5.2 0 010 7.4" fill="none" stroke="#fff" stroke-width="1.1"/></svg>';
+const IC_MUTE = '<svg viewBox="0 0 12 12"><path d="M1.5 4.3h2L6.5 2v8L3.5 7.7h-2z"/><path d="M8 4.2l3 3.6M11 4.2L8 7.8" fill="none" stroke="#fff" stroke-width="1.1"/></svg>';
+const mmss = (t) => { t = Math.max(0, Math.floor(t || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+let seeking = false;
+function paintCtl() {
+  const v = $('v');
+  $('cPlay').innerHTML = v.paused ? IC_PLAY : IC_PAUSE;
+  $('cMute').innerHTML = v.muted ? IC_MUTE : IC_VOL;
+  const d = isFinite(v.duration) ? v.duration : 0;
+  if (!seeking) $('cSeek').value = d ? Math.round((v.currentTime / d) * 1000) : 0;
+  $('cTime').textContent = `${mmss(v.currentTime)} / ${mmss(d)}`;
+}
+const togglePlay = () => { const v = $('v'); if (!v.getAttribute('src')) return; if (v.paused) v.play().catch(() => {}); else v.pause(); };
+$('cPlay').onclick = (e) => { e.stopPropagation(); togglePlay(); };
+$('cMute').onclick = (e) => { e.stopPropagation(); $('v').muted = !$('v').muted; paintCtl(); };
+$('cSeek').addEventListener('input', () => {
+  const v = $('v'); seeking = true;
+  if (isFinite(v.duration)) v.currentTime = ($('cSeek').value / 1000) * v.duration;
+  $('cTime').textContent = `${mmss(v.currentTime)} / ${mmss(v.duration)}`;
+});
+$('cSeek').addEventListener('change', () => { seeking = false; });
+['play', 'pause', 'timeupdate', 'durationchange', 'volumechange', 'emptied'].forEach((ev) => $('v').addEventListener(ev, paintCtl));
+$('ctl').addEventListener('click', (e) => e.stopPropagation());
+// 화면을 누르면 재생 · 정지. 움직임이 없으면 2.5초 뒤 막대 숨김 (재생 중일 때만)
+$('player').addEventListener('click', (e) => { if (e.target.closest('.fsb, .wipe, .ctl')) return; togglePlay(); });
+let idleT = 0;
+const wake = () => { $('player').classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => { if (!$('v').paused) $('player').classList.add('idle'); }, 2500); };
+['pointermove', 'pointerdown', 'touchstart'].forEach((ev) => $('player').addEventListener(ev, wake, { passive: true }));
+$('v').addEventListener('pause', () => { clearTimeout(idleT); $('player').classList.remove('idle'); });
+$('v').addEventListener('play', wake);
+paintCtl(); paintCmp();
+
 /* ───────── 워터마크: 이름 · 날짜, 20초마다 자리 바꾸기 */
 function wmText() {
   const d = new Date(Date.now() + 9 * 3600e3), p = (n) => String(n).padStart(2, '0');
@@ -720,7 +853,7 @@ function toggleFs() {
   if (cur) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
   if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
   else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-  else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+  else if (v.webkitEnterFullscreen) (G.on && S.cmp === 'g' ? $('vg') : v).webkitEnterFullscreen();   // 아이폰: 영상 하나만 커짐
 }
 $('fsBtn').onclick = toggleFs;
 $('v').addEventListener('dblclick', (e) => { e.preventDefault(); toggleFs(); });
@@ -747,6 +880,8 @@ document.addEventListener('keydown', (e) => {
   }
   else if (e.key === ' ') { e.preventDefault(); if (v.paused) v.play().catch(() => {}); else v.pause(); }
   else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFs(); }
+  else if ((e.key === 'g' || e.key === 'G') && G.on) { e.preventDefault(); setCmp(S.cmp === 'g' ? 'o' : 'g'); }
+  else if ((e.key === 'w' || e.key === 'W') && G.on) { e.preventDefault(); setCmp(S.cmp === 'w' ? 'g' : 'w'); }
   else if (e.key === ',' || e.key === '<') { e.preventDefault(); frameStep(-1); }
   else if (e.key === '.' || e.key === '>') { e.preventDefault(); frameStep(1); }
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); v.currentTime = Math.max(0, v.currentTime + (e.key === 'ArrowLeft' ? -2 : 2)); }

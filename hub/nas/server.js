@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.11.0';
+const VERSION = 'hub-store 1.12.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -1225,6 +1225,7 @@ const SCRIPTER = (() => {
   /* ── 썸네일 (1.11.0): 회차 폴더/_thumbs/<클립>.jpg — QNAP 웹 서버가 영상과 같은 길로 내보냄
      ffmpeg 가 없으면(알파인 컨테이너) 켤 때 apk 로 한 번 설치. 실패해도 썸네일만 없고 나머지는 그대로 */
   const THUMB_DIR = '_thumbs';
+  const GRADE_DIR = '_grade';   // 색보정본: 회차 폴더/_grade/<원본과 같은 이름> (1.12.0)
   const { execFile } = require('child_process');
   const TH = { ff: '', state: 'check', q: [], busy: false, seen: new Set() };
   function sh_(cmd, args, ms) {
@@ -1292,12 +1293,25 @@ const SCRIPTER = (() => {
         let list = [];
         try { list = fs.readdirSync(abs, { withFileTypes: true }); } catch { return; }
         list.forEach((x) => {
-          if (skip(x.name) || x.name === THUMB_DIR) return;
+          if (skip(x.name) || x.name === THUMB_DIR || x.name === GRADE_DIR) return;
           if (x.isDirectory() && depth < 2) return walk(path.join(abs, x.name), rel + x.name + '/', depth + 1);
           if (x.isFile() && VIDEO_EXT.includes(path.extname(x.name).toLowerCase())) files.push(rel + x.name);
         });
       };
       walk(path.join(root, dn), '', 0);
+      // 색보정본 — 확장자는 달라도 되고, 이름(확장자 뺀 것)으로 원본과 짝지음
+      const grades = {};
+      try {
+        fs.readdirSync(path.join(root, dn, GRADE_DIR), { withFileTypes: true }).forEach((x) => {
+          if (!x.isFile() || skip(x.name) || !VIDEO_EXT.includes(path.extname(x.name).toLowerCase())) return;
+          const abs = path.join(root, dn, GRADE_DIR, x.name);
+          let st; try { st = fs.statSync(abs); } catch { return; }
+          let g = META.get(abs);
+          if (!g || g.size !== st.size || g.mtime !== st.mtimeMs) { g = { size: st.size, mtime: st.mtimeMs, m: meta_(abs) }; META.set(abs, g); }
+          grades[N(path.basename(x.name, path.extname(x.name))).toLowerCase()] =
+            { f: GRADE_DIR + '/' + N(x.name), tcs: g.m.tcs, dur: g.m.dur, at: Math.round(st.mtimeMs) };
+        });
+      } catch {}
       let latest = 0;
       files.forEach((rel) => {
         const abs = path.join(root, dn, rel);
@@ -1309,12 +1323,13 @@ const SCRIPTER = (() => {
         const th = wantThumb_(path.join(root, dn), path.basename(rel, path.extname(rel)), abs, st.mtimeMs, c.m.dur);
         clips.push({ th, d: N(dn), id: stem, f: N(rel), cam: camOf_(stem), tc: c.m.tc, tcs: c.m.tcs, dur: c.m.dur,
           fps: c.m.fps, nf: c.m.nf, tcf: c.m.tcf, tcb: c.m.tcb, df: c.m.df, aud: c.m.aud, file: path.basename(rel),
-          size: st.size, at: Math.round(st.mtimeMs) });
+          size: st.size, at: Math.round(st.mtimeMs), gr: grades[stem.toLowerCase()] || null });
       });
+      Object.values(grades).forEach((g) => { latest = Math.max(latest, g.at); });
       days.push({ d: N(dn), no: dayNo_(N(dn)), count: files.length, latest: Math.round(latest) });
     });
     // 썸네일 수도 넣어서, 썸네일이 새로 생기면 열려 있는 페이지가 10초 안에 받아 감
-    const r = { days, clips, sig: clips.length + ':' + days.map((x) => x.latest).reduce((a, b) => Math.max(a, b), 0) + ':' + clips.filter((c) => c.th).length };
+    const r = { days, clips, sig: clips.length + ':' + days.map((x) => x.latest).reduce((a, b) => Math.max(a, b), 0) + ':' + clips.filter((c) => c.th).length + ':' + clips.filter((c) => c.gr).length };
     SCAN.set(folder, { at: Date.now(), r });
     return r;
   }
@@ -1437,7 +1452,7 @@ const SCRIPTER = (() => {
       return Object.assign(out, { title: pg.title, code: pg.code,
         base: BASE + encodeURIComponent(pg.folder) + '/',
         days: sc.days.map((d) => Object.assign({ d: d.d, no: d.no, count: d.count }, dayLabel_(d, sh))),
-        clips: sc.clips.map((c) => ({ d: c.d, id: c.id, f: c.f, cam: c.cam, tc: c.tc, tcs: c.tcs, dur: c.dur, fps: c.fps, at: c.at, th: c.th })) });
+        clips: sc.clips.map((c) => ({ d: c.d, id: c.id, f: c.f, cam: c.cam, tc: c.tc, tcs: c.tcs, dur: c.dur, fps: c.fps, at: c.at, th: c.th, gr: c.gr })) });
     }
     if (a === 'scripter.play') {
       if (!hasClip_(pg, b.d, b.clip)) return { ok: true };
