@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.10.3';
+const VERSION = 'hub-store 1.11.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -1222,6 +1222,58 @@ const SCRIPTER = (() => {
     return out;
   }
 
+  /* ── 썸네일 (1.11.0): 회차 폴더/_thumbs/<클립>.jpg — QNAP 웹 서버가 영상과 같은 길로 내보냄
+     ffmpeg 가 없으면(알파인 컨테이너) 켤 때 apk 로 한 번 설치. 실패해도 썸네일만 없고 나머지는 그대로 */
+  const THUMB_DIR = '_thumbs';
+  const { execFile } = require('child_process');
+  const TH = { ff: '', state: 'check', q: [], busy: false, seen: new Set() };
+  function sh_(cmd, args, ms) {
+    return new Promise((res) => execFile(cmd, args, { timeout: ms || 60e3, maxBuffer: 1 << 20 }, (e, out, err) => res({ ok: !e, out: String(out || ''), err: String(err || (e && e.message) || '') })));
+  }
+  async function ffReady_() {
+    if (TH.state === 'ok' || TH.state === 'none') return TH.state === 'ok';
+    if (TH.state === 'installing') return false;
+    TH.state = 'installing';
+    for (const c of ['ffmpeg', '/usr/bin/ffmpeg']) { if ((await sh_(c, ['-version'], 10e3)).ok) { TH.ff = c; TH.state = 'ok'; setTimeout(pump_, 0); return true; } }
+    if (fs.existsSync('/sbin/apk')) {
+      console.log('[take] 썸네일용 ffmpeg 설치 중 (처음 한 번, 1~2분)');
+      const r = await sh_('/sbin/apk', ['add', '--no-cache', 'ffmpeg'], 10 * 60e3);
+      if (r.ok && (await sh_('ffmpeg', ['-version'], 10e3)).ok) { TH.ff = 'ffmpeg'; TH.state = 'ok'; console.log('[take] ffmpeg 설치 완료'); pump_(); return true; }
+      console.log('[take] ffmpeg 설치 실패 — 썸네일 없이 계속:', r.err.slice(0, 200));
+    }
+    TH.state = 'none'; return false;
+  }
+  setTimeout(ffReady_, 5e3);
+  const thumbOf_ = (dayAbs, stem) => path.join(dayAbs, THUMB_DIR, stem + '.jpg');
+  function wantThumb_(dayAbs, stem, videoAbs, mtime, dur) {
+    const out = thumbOf_(dayAbs, stem);
+    try { if (fs.statSync(out).mtimeMs >= mtime) return true; } catch {}
+    if (!TH.seen.has(out)) { TH.seen.add(out); TH.q.push({ out, src: videoAbs, dur, dayAbs }); pump_(); }
+    return false;
+  }
+  async function pump_() {
+    if (TH.busy || !TH.q.length) return;
+    if (!(await ffReady_())) return;
+    TH.busy = true;
+    while (TH.q.length) {
+      const j = TH.q.shift();
+      try {
+        const dir = path.dirname(j.out);
+        if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }); own_(dir); }
+        // 슬레이트를 피해 클립 40% 지점, 짧으면 처음. 목록에 쓰는 크기(가로 320)
+        const t = j.dur > 2 ? (j.dur * 0.4).toFixed(2) : '0';
+        const tmp = j.out + '.part.jpg';
+        const r = await sh_(TH.ff, ['-hide_banner', '-loglevel', 'error', '-ss', t, '-i', j.src, '-frames:v', '1',
+          '-vf', 'scale=320:-2', '-q:v', '6', '-y', tmp], 60e3);
+        if (r.ok && fs.existsSync(tmp)) { fs.renameSync(tmp, j.out); own_(j.out); }
+        else { try { fs.unlinkSync(tmp); } catch {} console.log('[take] 썸네일 실패', path.basename(j.src), r.err.slice(0, 160)); }
+      } catch (e) { console.log('[take] 썸네일 오류', e.message); }
+      TH.seen.delete(j.out);
+      SCAN.clear();   // 다음 훑기 때 새 썸네일을 알려 줌
+    }
+    TH.busy = false;
+  }
+
   /* ── 폴더 훑기 (같은 페이지는 15초 동안 결과를 재사용) */
   const META = new Map();   // 파일 경로 → { size, mtime, m }
   const SCAN = new Map();   // 폴더 → { at, r }
@@ -1240,7 +1292,7 @@ const SCRIPTER = (() => {
         let list = [];
         try { list = fs.readdirSync(abs, { withFileTypes: true }); } catch { return; }
         list.forEach((x) => {
-          if (skip(x.name)) return;
+          if (skip(x.name) || x.name === THUMB_DIR) return;
           if (x.isDirectory() && depth < 2) return walk(path.join(abs, x.name), rel + x.name + '/', depth + 1);
           if (x.isFile() && VIDEO_EXT.includes(path.extname(x.name).toLowerCase())) files.push(rel + x.name);
         });
@@ -1254,13 +1306,15 @@ const SCRIPTER = (() => {
         let c = META.get(abs);
         if (!c || c.size !== st.size || c.mtime !== st.mtimeMs) { c = { size: st.size, mtime: st.mtimeMs, m: meta_(abs) }; META.set(abs, c); }
         const stem = N(path.basename(rel, path.extname(rel)));
-        clips.push({ d: N(dn), id: stem, f: N(rel), cam: camOf_(stem), tc: c.m.tc, tcs: c.m.tcs, dur: c.m.dur,
+        const th = wantThumb_(path.join(root, dn), path.basename(rel, path.extname(rel)), abs, st.mtimeMs, c.m.dur);
+        clips.push({ th, d: N(dn), id: stem, f: N(rel), cam: camOf_(stem), tc: c.m.tc, tcs: c.m.tcs, dur: c.m.dur,
           fps: c.m.fps, nf: c.m.nf, tcf: c.m.tcf, tcb: c.m.tcb, df: c.m.df, aud: c.m.aud, file: path.basename(rel),
           size: st.size, at: Math.round(st.mtimeMs) });
       });
       days.push({ d: N(dn), no: dayNo_(N(dn)), count: files.length, latest: Math.round(latest) });
     });
-    const r = { days, clips, sig: clips.length + ':' + days.map((x) => x.latest).reduce((a, b) => Math.max(a, b), 0) };
+    // 썸네일 수도 넣어서, 썸네일이 새로 생기면 열려 있는 페이지가 10초 안에 받아 감
+    const r = { days, clips, sig: clips.length + ':' + days.map((x) => x.latest).reduce((a, b) => Math.max(a, b), 0) + ':' + clips.filter((c) => c.th).length };
     SCAN.set(folder, { at: Date.now(), r });
     return r;
   }
@@ -1383,7 +1437,7 @@ const SCRIPTER = (() => {
       return Object.assign(out, { title: pg.title, code: pg.code,
         base: BASE + encodeURIComponent(pg.folder) + '/',
         days: sc.days.map((d) => Object.assign({ d: d.d, no: d.no, count: d.count }, dayLabel_(d, sh))),
-        clips: sc.clips.map((c) => ({ d: c.d, id: c.id, f: c.f, cam: c.cam, tc: c.tc, tcs: c.tcs, dur: c.dur, fps: c.fps, at: c.at })) });
+        clips: sc.clips.map((c) => ({ d: c.d, id: c.id, f: c.f, cam: c.cam, tc: c.tc, tcs: c.tcs, dur: c.dur, fps: c.fps, at: c.at, th: c.th })) });
     }
     if (a === 'scripter.play') {
       if (!hasClip_(pg, b.d, b.clip)) return { ok: true };
