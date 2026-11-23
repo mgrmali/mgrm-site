@@ -16,7 +16,8 @@ const REMEMBER = 60 * 60 * 24 * 30;   // '이 기기에서 로그인 유지': 30
 const REMEMBER_MAX = 60 * 60 * 24 * 90; //   아무리 길어도 90일
 const PUBLIC_FILES = ['/submit.html', '/wct-style.css', '/wct-core.js', '/favicon.png', '/logo.png',
                       '/login.html', '/login', '/take.html', '/scripter.html', '/keycut.html', '/mgrm-symbol.svg',
-                      '/manifest.json', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
+                      '/manifest.json', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png',
+                      '/favicon.ico', '/favicon-32.png', '/favicon-16.png'];
                       // manifest·아이콘: 폰 홈 화면 앱 아이콘 (로그인 전에도 보여야 함)
                       // take.html: 테이크 체크 (명단 이름·비밀번호로 엶), scripter.html: 예전 주소 → take.html 로 넘김
 const enc = new TextEncoder();
