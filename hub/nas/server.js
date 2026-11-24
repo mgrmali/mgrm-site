@@ -21,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.14.0';
+const VERSION = 'hub-store 1.15.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -127,6 +127,10 @@ const SHEETS = {
   '키컷코멘트':     ['ID', '키', '키컷ID', '작성자', '내용', '작성시각'],
   // 1.7.0: 접속·재생 기록 (같은 사람·같은 클립 재생은 10분 안이면 한 번만, 90일 지나면 자동 삭제)
   '스크립터기록':   ['키', '이름', '종류', '회차폴더', '클립', '시각', 'IP', '기기'],
+  // 회사 서류 보내기 (1.15.0) — 사업자등록증·통장사본을 링크로 보냄
+  '회사서류':       ['ID', '이름', '파일', '종류', '크기', '순서', '올린시각'],
+  '서류링크':       ['ID', '토큰', '받는곳', '서류', '도장', '만료', '만든이', '만든시각', '열람', '내려받기', '마지막열람', '닫음'],
+  '서류기록':       ['링크ID', '시각', '동작', '서류', 'IP', '기기'],
 };
 const VIDEO_BASE = process.env.VIDEO_BASE || 'https://mgrm.myqnapcloud.com:8081/review/';
 /* 리뷰 영상 올리기: 허브에서 올린 파일을 이 폴더에 저장합니다.
@@ -411,6 +415,9 @@ const COMPANY_DEFAULT = {
   '종목': '미디어콘텐츠창작업',
   '계산서이메일': 'wlsdnr601@mgrm.kr',
   '계산서안내': '용역 완료 후 7일 이내에 발행 부탁드립니다.',
+  // 회사 서류 링크에 보이는 입금 계좌 (값은 허브 '회사 서류' 화면에서 넣음 — 저장소에 계좌를 남기지 않음)
+  '은행': '', '계좌번호': '', '예금주': '',
+  '대표전화': '054-853-6231',
 };
 const RATE_DEFAULT = {
   '요율_국민연금': '4.75', '요율_건강보험': '3.595', '요율_장기요양': '13.14',
@@ -436,6 +443,7 @@ function public_(b) {
       email: c['계산서이메일'], notice: c['계산서안내'] } };
   }
   if (a === 'check') return checkToken_(b.t);
+  if (a === 'paper.open' || a === 'paper.file') return PAPER.pub(a, b);
   if (a.startsWith('scripter.') || a.startsWith('keycut.')) return SCRIPTER.pub(b);
   if (a === 'submit' || (!a && b.token && b.envelope)) return tx_(() => submit_(b));
   // 컬러리버브 — 예전 폼은 action 없이 '_폼종류' 로 구분해 보냈습니다
@@ -2035,7 +2043,139 @@ const PD_ALLOWED = [
   'folder.list', 'folder.make', 'folder.link',
   'shoot.save', 'shoot.delete', 'shoot.bulk', 'shoot.import',
 ];
-const READ_ONLY = ['bootstrap', 'me', 'review.videos', 'envelope', 'envelopes', 'unlock', 'user.list',
+/* ══════════════════════════════════════════ 회사 서류 보내기 (1.15.0)
+   사업자등록증·통장사본을 한 번 올려 두고, 보낼 때마다 받는 곳 이름을 적은 링크를 만듭니다.
+   받는 사람은 로그인 없이 hub.mgrm.kr/d/<토큰> 을 엶 → 회사 정보·계좌 복사, 서류 내려받기.
+   '○○ 제출용' 표시는 받는 사람 브라우저가 PDF 에 찍음 (도장 켬일 때).
+   기간이 지나거나 닫으면 링크가 안 열림. 열람·내려받기는 기록. */
+const PAPER = (() => {
+  const DIR = path.join(DATA, 'papers');
+  const TYPES = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png' };
+  const B62 = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const token_ = () => Array.from(crypto.randomBytes(10), (x) => B62[x % B62.length]).join('');
+  const today_ = () => kst_().slice(0, 10);
+  const docs_ = () => rows_('회사서류').map((r) => ({ id: Number(r.ID), name: String(r['이름'] || ''), type: String(r['종류'] || ''),
+    size: Number(r['크기']) || 0, order: Number(r['순서']) || 0, at: fmt_(r['올린시각']), file: String(r['파일'] || '') }))
+    .sort((x, y) => x.order - y.order || x.id - y.id);
+  const ids_ = (r) => String(r['서류'] || '').split(',').map(Number).filter(Boolean);
+  function state_(r) {
+    if (r['닫음']) return 'closed';
+    const exp = String(r['만료'] || '');
+    if (exp && today_() > exp) return 'expired';
+    return 'open';
+  }
+  function company_() {
+    const c = companyInfo_();
+    return { name: c['회사명'], bizNo: c['사업자번호'], ceo: c['대표자'], address: c['사업장주소'],
+      bizType: c['업태'], bizItem: c['종목'], email: c['계산서이메일'], tel: c['대표전화'],
+      bank: c['은행'], account: c['계좌번호'], holder: c['예금주'] };
+  }
+  function linkOut_(r) {
+    const names = {}; docs_().forEach((d) => { names[d.id] = d.name; });
+    return { id: Number(r.ID), token: String(r['토큰']), to: String(r['받는곳'] || ''), docs: ids_(r),
+      docNames: ids_(r).map((i) => names[i] || '(지운 서류)'), stamp: String(r['도장']) === '1', exp: String(r['만료'] || ''),
+      by: String(r['만든이'] || ''), at: fmt_(r['만든시각']), views: Number(r['열람']) || 0, downs: Number(r['내려받기']) || 0,
+      last: fmt_(r['마지막열람']), state: state_(r) };
+  }
+  const byToken_ = (t) => /^[A-Za-z0-9]{6,20}$/.test(String(t || '')) ? rows_('서류링크').find((r) => String(r['토큰']) === String(t)) : null;
+  function log_(r, act, docName, b) {
+    append_('서류기록', [Number(r.ID), nowStr_(), act, docName || '', String(b._ip || ''), String(b._ua || '').slice(0, 200)]);
+  }
+  function pub(a, b) {
+    const r = byToken_(b.t);
+    if (!r) return { ok: false, error: 'none' };
+    const st = state_(r);
+    if (st !== 'open') return { ok: false, error: st, company: { name: company_().name, tel: company_().tel, email: company_().email } };
+    const all = docs_();
+    const mine = ids_(r).map((i) => all.find((d) => d.id === i)).filter(Boolean);
+    if (a === 'paper.open') {
+      // 같은 곳(IP)에서 10분 안에 다시 열면 한 번으로 셈
+      const ip = String(b._ip || '');
+      const recent = rows_('서류기록').some((x) => Number(x['링크ID']) === Number(r.ID) && x['동작'] === '열람' && String(x['IP']) === ip
+        && (Date.now() - new Date(String(x['시각']).replace(' ', 'T') + ':00+09:00').getTime()) < 10 * 60e3);
+      if (!recent) tx_(() => { patch_(r, { '열람': (Number(r['열람']) || 0) + 1, '마지막열람': nowStr_() }); log_(r, '열람', '', b); });
+      return { ok: true, to: String(r['받는곳'] || ''), exp: String(r['만료'] || ''), stamp: String(r['도장']) === '1',
+        today: today_(), company: company_(), docs: mine.map((d) => ({ id: d.id, name: d.name, type: d.type, size: d.size })) };
+    }
+    if (a === 'paper.file') {
+      const d = mine.find((x) => x.id === Number(b.id));
+      if (!d) return { ok: false, error: '서류를 찾지 못했어요.' };
+      let buf; try { buf = fs.readFileSync(path.join(DIR, d.file)); } catch { return { ok: false, error: '서류 파일이 없어요. 맹그라미에 알려 주세요.' }; }
+      tx_(() => { patch_(r, { '내려받기': (Number(r['내려받기']) || 0) + 1, '마지막열람': nowStr_() }); log_(r, '내려받기', d.name, b); });
+      return { ok: true, name: d.name, type: d.type, data: buf.toString('base64') };
+    }
+    return { ok: false, error: 'unknown action' };
+  }
+  function admin(a, b, who) {
+    fs.mkdirSync(DIR, { recursive: true });
+    if (a === 'paper.list') {
+      const logs = rows_('서류기록');
+      return { ok: true, company: company_(), docs: docs_().map((d) => { const o = Object.assign({}, d); delete o.file; return o; }),
+        links: rows_('서류링크').map((r) => Object.assign(linkOut_(r), { log: logs.filter((x) => Number(x['링크ID']) === Number(r.ID))
+          .slice(-30).reverse().map((x) => ({ at: fmt_(x['시각']), act: String(x['동작']), doc: String(x['서류'] || ''), ua: String(x['기기'] || '') })) }))
+          .sort((x, y) => y.id - x.id) };
+    }
+    if (a === 'paper.upload') {
+      const ext = TYPES[String(b.type)];
+      if (!ext) return { ok: false, error: 'PDF · JPG · PNG 만 올릴 수 있어요.' };
+      const buf = Buffer.from(String(b.data || ''), 'base64');
+      if (!buf.length || buf.length > 9 * 1024 * 1024) return { ok: false, error: '파일이 비었거나 너무 커요 (9MB까지).' };
+      const name = String(b.name || '').replace(/\.[^.]+$/, '').trim().slice(0, 60) || '서류';
+      const file = 'p' + crypto.randomBytes(10).toString('hex') + ext;
+      fs.writeFileSync(path.join(DIR, file), buf);
+      const id = nextId_('회사서류');
+      const order = docs_().reduce((m, d) => Math.max(m, d.order), 0) + 1;
+      append_('회사서류', [id, name, file, String(b.type), buf.length, order, nowStr_()]);
+      return { ok: true, id };
+    }
+    if (a === 'paper.rename') {
+      const r = byId_('회사서류', b.id); if (!r) return { ok: false, error: '서류를 찾지 못했어요.' };
+      const name = String(b.name || '').trim().slice(0, 60); if (!name) return { ok: false, error: '이름을 적어 주세요.' };
+      patch_(r, { '이름': name }); return { ok: true };
+    }
+    if (a === 'paper.order') {
+      (b.ids || []).forEach((id, i) => { const r = byId_('회사서류', id); if (r) patch_(r, { '순서': i + 1 }); });
+      return { ok: true };
+    }
+    if (a === 'paper.delete') {
+      const r = byId_('회사서류', b.id); if (!r) return { ok: true };
+      const f = String(r['파일'] || '');
+      if (/^p[0-9a-f]+\.(pdf|jpg|png)$/.test(f)) {
+        try { fs.mkdirSync(path.join(DIR, '_삭제됨'), { recursive: true }); fs.renameSync(path.join(DIR, f), path.join(DIR, '_삭제됨', stamp_() + '_' + f)); } catch {}
+      }
+      remove_(r); return { ok: true };
+    }
+    if (a === 'paper.link') {
+      const to = String(b.to || '').trim().slice(0, 40);
+      if (!to) return { ok: false, error: '받는 곳을 적어 주세요.' };
+      const have = new Set(docs_().map((d) => d.id));
+      const ids = (b.ids || []).map(Number).filter((i) => have.has(i));
+      if (!ids.length) return { ok: false, error: '보낼 서류를 골라 주세요.' };
+      const days = [7, 30, 0].includes(Number(b.days)) ? Number(b.days) : 7;
+      // 만료일: 오늘 + days 일 (그날까지 열림)
+      const exp = days ? kst_(Date.now() + days * 86400e3).slice(0, 10) : '';
+      let t = token_(); while (byToken_(t)) t = token_();
+      const id = nextId_('서류링크');
+      append_('서류링크', [id, t, to, ids.join(','), b.stamp === false ? '0' : '1', exp, String(who.name || who.user || ''), nowStr_(), 0, 0, '', '']);
+      return { ok: true, id, token: t, exp };
+    }
+    const r = byId_('서류링크', b.id);
+    if (!r) return { ok: false, error: '링크를 찾지 못했어요.' };
+    if (a === 'paper.close') { patch_(r, { '닫음': b.open ? '' : nowStr_() }); return { ok: true }; }
+    if (a === 'paper.extend') {
+      const days = Number(b.days) || 7;
+      patch_(r, { '만료': kst_(Date.now() + days * 86400e3).slice(0, 10), '닫음': '' }); return { ok: true };
+    }
+    if (a === 'paper.unlink') {
+      rows_('서류기록').filter((x) => Number(x['링크ID']) === Number(r.ID)).forEach(remove_);
+      remove_(r); return { ok: true };
+    }
+    return { ok: false, error: 'unknown action: ' + a };
+  }
+  return { pub, admin };
+})();
+
+const READ_ONLY = ['bootstrap', 'me', 'paper.list', 'review.videos', 'envelope', 'envelopes', 'unlock', 'user.list',
                    'recovery.status', 'calendar.check', 'log.list', 'folder.list', 'scripter.list', 'scripter.csv', 'scripter.log', 'scripter.summary', 'scripter.orphans'];
 
 async function rpc_(b) {
@@ -2121,6 +2261,7 @@ function normCode_(v) {
 function byId_(name, id) { return rows_(name).find((r) => Number(r.ID) === Number(id)); }
 
 function admin_(a, b, who) {
+  if (a.startsWith('paper.')) return PAPER.admin(a, b, who);
   switch (a) {
 
     case 'me': {
@@ -2586,6 +2727,7 @@ function admin_(a, b, who) {
     case 'company.set':
       if (b.company !== undefined) cfgSet_('회사명', b.company);
       ['사업자번호', '대표자', '사업장주소', '업태', '종목', '계산서이메일', '계산서안내',
+       '은행', '계좌번호', '예금주', '대표전화',
        '요율_국민연금', '요율_건강보험', '요율_장기요양', '요율_고용보험'].forEach((k) => {
         if (b[k] !== undefined) cfgSet_(k, b[k]);
       });

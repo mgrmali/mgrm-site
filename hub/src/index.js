@@ -17,7 +17,8 @@ const REMEMBER_MAX = 60 * 60 * 24 * 90; //   아무리 길어도 90일
 const PUBLIC_FILES = ['/submit.html', '/wct-style.css', '/wct-core.js', '/favicon.png', '/logo.png',
                       '/login.html', '/login', '/take.html', '/scripter.html', '/keycut.html', '/mgrm-symbol.svg',
                       '/manifest.json', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png',
-                      '/favicon.ico', '/favicon-32.png', '/favicon-16.png'];
+                      '/favicon.ico', '/favicon-32.png', '/favicon-16.png', '/docs.html',
+                      '/vendor/pdf-lib.min.js'];   // docs.html: 회사 서류 링크 (받는 사람은 로그인 없음)
                       // manifest·아이콘: 폰 홈 화면 앱 아이콘 (로그인 전에도 보여야 함)
                       // take.html: 테이크 체크 (명단 이름·비밀번호로 엶), scripter.html: 예전 주소 → take.html 로 넘김
 const enc = new TextEncoder();
@@ -53,6 +54,8 @@ async function handle(req, env, ctx) {
   if (isMcpPath(p)) return handleMcp(req, env, url, { store, hmac, b64e, b64d, same, json });
   if (p === '/' ) return Response.redirect(new URL('/admin.html', url).toString(), 302);
   if (p === '/login') return env.ASSETS.fetch(new Request(new URL('/login.html', url), req));
+  // 회사 서류 링크 (사업자등록증·통장사본): hub.mgrm.kr/d/<토큰> — 로그인 없이 엶
+  if (/^\/d\/[A-Za-z0-9]{6,20}$/.test(p)) return env.ASSETS.fetch(new Request(new URL('/docs.html', url), req));
   if (PUBLIC_FILES.includes(p)) return env.ASSETS.fetch(req);
 
   const who = await session(env, getCookie(req, COOKIE));
@@ -185,8 +188,8 @@ async function pub(req, env, ctx) {
   const a = pubAction(b);
   // 테이크 체크 · 키컷: 비밀번호 잠금과 접속 기록 때문에 NAS 가 IP·기기를 알아야 함.
   // 허브에 로그인한 관리자면 _admin 을 붙임 (NAS 가 QNAP 그룹으로 다시 확인). 브라우저가 보낸 _admin 은 덮어씀
-  if (a.startsWith('scripter.') || a.startsWith('keycut.')) {
-    const s = await session(env, getCookie(req, COOKIE)).catch(() => null);
+  if (a.startsWith('scripter.') || a.startsWith('keycut.') || a.startsWith('paper.')) {
+    const s = a.startsWith('paper.') ? null : await session(env, getCookie(req, COOKIE)).catch(() => null);
     const _admin = s && s.role === 'admin' ? { user: s.user, name: s.name } : null;
     try { return json(await (await store(env, '/public', Object.assign({}, b, { action: a, _admin,
       _ip: req.headers.get('cf-connecting-ip') || '', _ua: (req.headers.get('user-agent') || '').slice(0, 300) }))).json()); }

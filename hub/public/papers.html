@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>회사 서류 · 맹그라미</title>
+<link rel="stylesheet" href="wct-style.css">
+<style>
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+  @media (max-width:860px){.grid{grid-template-columns:1fr}}
+  .doc{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .doc:last-child{border-bottom:0}
+  .doc .nm{flex:1;min-width:0;font-weight:700;font-size:14px}
+  .doc .nm input{padding:6px 8px;font-weight:700}
+  .doc .sz{color:var(--dim);font-size:11.5px;font-weight:400;margin-top:2px}
+  .doc .ty{width:34px;height:42px;border-radius:5px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
+    font-size:10px;font-weight:800;color:var(--ci-b);background:var(--soft);flex:none}
+  .drop{border:1.5px dashed var(--line);border-radius:10px;padding:16px;text-align:center;color:var(--dim);font-size:12.5px;margin-top:10px;cursor:pointer}
+  .drop.on{border-color:var(--ci-a);background:var(--tint);color:var(--ci-a)}
+  .chk{display:flex;flex-direction:column;gap:7px;margin-top:4px}
+  .chk label{display:flex;align-items:center;gap:8px;font-weight:400;font-size:13.5px;color:var(--fg);margin:0}
+  .chk input{width:auto;flex:none;margin:0;padding:0}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{border:0;background:#fff;padding:8px 14px;font-size:13px;font-family:inherit;cursor:pointer;color:var(--dim)}
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button.on{background:var(--tint);color:var(--ci-a);font-weight:700}
+  .made{background:var(--tint);border:1px solid var(--tint2);border-radius:10px;padding:12px;margin-top:14px}
+  .made .u{font-size:13px;white-space:pre-wrap;word-break:break-all;margin:4px 0 10px;line-height:1.6}
+  .lk{padding:12px 0;border-bottom:1px solid var(--line)}
+  .lk:last-child{border-bottom:0}
+  .lk .hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .lk .to{font-weight:700;font-size:14px}
+  .lk .mt{color:var(--dim);font-size:12px;margin-top:3px;line-height:1.6}
+  .lk .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .lk.off .to{color:var(--dim)}
+  .lg{font-size:11.5px;color:var(--dim);margin-top:6px;line-height:1.7}
+  .acct{display:grid;grid-template-columns:1fr 1.6fr 1fr;gap:8px}
+  @media (max-width:560px){.acct{grid-template-columns:1fr}}
+</style>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="apple-mobile-web-app-title" content="MGRM 허브">
+</head>
+<body>
+<div class="wrap">
+  <div class="note">
+    사업자등록증·통장사본을 <b>한 번만 올려 두고</b>, 요청이 오면 받는 곳 이름으로 링크를 만들어 카톡·문자로 보내세요.<br>
+    받는 사람은 로그인 없이 링크를 열어 회사 정보·계좌를 복사하고 서류를 내려받아요. 기간이 지나면 링크가 저절로 닫혀요.
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>링크 만들기</h2>
+        <label>받는 곳</label>
+        <input id="lTo" placeholder="스튜디오 모락" maxlength="40">
+        <label>보낼 서류</label>
+        <div class="chk" id="lDocs"><span class="dim">서류를 먼저 올려 주세요.</span></div>
+        <label>열리는 기간</label>
+        <div class="seg" id="lDays"><button data-d="7" class="on">7일</button><button data-d="30">30일</button><button data-d="0">계속</button></div>
+        <label>'제출용' 표시</label>
+        <div class="chk"><label><input type="checkbox" id="lStamp" checked><span>내려받은 서류에 '<b id="lStampTx">○○ 제출용</b> · 날짜'를 연하게 찍기</span></label></div>
+        <div class="bar" style="margin:16px 0 0"><button class="b" id="lMake">링크 만들고 복사</button></div>
+        <div class="made hide" id="made">
+          <div class="dim" style="font-size:12px">이 문구를 복사했어요. 카톡·문자에 그대로 붙여 넣으세요.</div>
+          <div class="u" id="madeTx"></div>
+          <div class="bar" style="margin:0">
+            <button class="g sm" id="madeCopyTx">문구 복사</button>
+            <button class="g sm" id="madeCopyUrl">링크만 복사</button>
+            <button class="g sm" id="madeOpen">열어 보기 ↗</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>보낸 링크</h2>
+        <div id="links"><div class="dim">불러오는 중…</div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>서류</h2>
+        <div id="docs"><div class="dim">불러오는 중…</div></div>
+        <div class="drop" id="drop">PDF · JPG · PNG 를 끌어다 놓거나 눌러서 올리기 (9MB까지)</div>
+        <input type="file" id="fileIn" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple class="hide">
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>링크에 보이는 회사 정보</h2>
+        <div class="dim" style="font-size:12px">사업자등록증과 같은 내용이에요. 받는 사람이 서류를 열지 않고 바로 복사할 수 있어요.</div>
+        <div class="row r2">
+          <div><label>상호</label><input id="cName" data-k="company"></div>
+          <div><label>사업자번호</label><input id="cBiz" data-k="사업자번호"></div>
+        </div>
+        <div class="row r2">
+          <div><label>대표자</label><input id="cCeo" data-k="대표자"></div>
+          <div><label>대표 전화</label><input id="cTel" data-k="대표전화"></div>
+        </div>
+        <label>사업장 주소</label><input id="cAddr" data-k="사업장주소">
+        <label>계산서 받는 메일</label><input id="cMail" data-k="계산서이메일">
+        <label>입금 계좌 (은행 · 계좌번호 · 예금주)</label>
+        <div class="acct">
+          <input id="cBank" data-k="은행" placeholder="NH농협">
+          <input id="cAcct" data-k="계좌번호" placeholder="000-0000-0000-00" inputmode="numeric">
+          <input id="cHold" data-k="예금주" placeholder="주식회사 맹그라미">
+        </div>
+        <div class="bar" style="margin:14px 0 0"><button class="b" id="cSave">저장</button><span class="dim" id="cMsg" style="font-size:12px"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="wct-core.js"></script>
+<script>
+let S = { docs: [], links: [], company: {}, days: 7 };
+const ST = { open: '열림', expired: '기간 지남', closed: '닫음' };
+const ST_C = { open: 'done', expired: 'bad', closed: '' };
+const linkUrl = (t) => location.origin + '/d/' + t;
+const kb = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB';
+const md = (ymd) => { if (!ymd) return ''; const [, m, d] = ymd.split('-').map(Number); return `${m}월 ${d}일`; };
+async function copy(t) { try { await navigator.clipboard.writeText(t); return true; } catch { return false; } }
+
+(async function init() {
+  if (!await WCT.requireAuth(true)) return;
+  window.__onReload = load;
+  mountHeader('회사 서류');
+  $('lDays').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; S.days = Number(b.dataset.d);
+    $('lDays').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); };
+  $('lTo').oninput = () => { $('lStampTx').textContent = ($('lTo').value.trim() || '○○') + ' 제출용'; };
+  $('lMake').onclick = makeLink;
+  $('cSave').onclick = saveCompany;
+  $('drop').onclick = () => { $('fileIn').value = ''; $('fileIn').click(); };
+  $('fileIn').onchange = () => upload([...$('fileIn').files]);
+  ['dragenter', 'dragover'].forEach((ev) => $('drop').addEventListener(ev, (e) => { e.preventDefault(); $('drop').classList.add('on'); }));
+  ['dragleave', 'drop'].forEach((ev) => $('drop').addEventListener(ev, () => $('drop').classList.remove('on')));
+  $('drop').addEventListener('drop', (e) => { e.preventDefault(); upload([...e.dataTransfer.files]); });
+  document.addEventListener('dragover', (e) => e.preventDefault());
+  document.addEventListener('drop', (e) => e.preventDefault());
+  await load();
+})();
+
+async function load() {
+  const j = await WCT.api('paper.list', {});
+  S.docs = j.docs || []; S.links = j.links || []; S.company = j.company || {};
+  renderDocs(); renderLinks(); fillCompany();
+}
+
+/* ───────── 서류 */
+function renderDocs() {
+  const D = S.docs;
+  $('docs').innerHTML = D.length ? D.map((d, i) => `<div class="doc" data-id="${d.id}">
+      <span class="ty">${d.type === 'application/pdf' ? 'PDF' : d.type === 'image/png' ? 'PNG' : 'JPG'}</span>
+      <div class="nm"><input value="${esc(d.name)}" data-ren="${d.id}"><div class="sz">${kb(d.size)} · ${esc(d.at)}</div></div>
+      <button class="g sm" data-up="${i}" ${i ? '' : 'disabled'} title="위로">↑</button>
+      <button class="g sm" data-del="${d.id}">지우기</button></div>`).join('')
+    : '<div class="dim" style="font-size:13px">아직 없어요. 아래에 사업자등록증·통장사본을 올려 주세요.</div>';
+  $('lDocs').innerHTML = D.length ? D.map((d) => `<label><input type="checkbox" value="${d.id}" ${/사업자|통장/.test(d.name) ? 'checked' : ''}> ${esc(d.name)}</label>`).join('')
+    : '<span class="dim">서류를 먼저 올려 주세요.</span>';
+}
+$('docs').addEventListener('change', async (e) => {
+  const t = e.target.closest('[data-ren]'); if (!t) return;
+  try { await WCT.api('paper.rename', { id: Number(t.dataset.ren), name: t.value }); toast('이름을 바꿨어요.'); await load(); } catch (er) { toast(er.message, true); }
+});
+$('docs').addEventListener('click', async (e) => {
+  const up = e.target.closest('[data-up]'), del = e.target.closest('[data-del]');
+  if (up) {
+    const i = Number(up.dataset.up), ids = S.docs.map((d) => d.id);
+    [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
+    try { await WCT.api('paper.order', { ids }); await load(); } catch (er) { toast(er.message, true); }
+  }
+  if (del) {
+    const d = S.docs.find((x) => x.id === Number(del.dataset.del));
+    if (!d || !confirm(`'${d.name}' 을 지울까요? 이미 보낸 링크에서도 이 서류는 안 보이게 돼요.`)) return;
+    try { await WCT.api('paper.delete', { id: d.id }); toast('지웠어요.'); await load(); } catch (er) { toast(er.message, true); }
+  }
+});
+const b64 = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = rej; fr.readAsDataURL(blob); });
+// 큰 사진은 JPG 로 줄여서 올림 (긴 쪽 3000px)
+const loadJs = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('라이브러리를 불러오지 못했어요.')); document.head.appendChild(s); });
+// 은행 통장사본처럼 '편집 잠금'이 걸린 PDF 는 '제출용' 표시를 찍을 수 없어서, 올릴 때 그림 PDF(200dpi)로 바꿈
+async function unlockPdf(f) {
+  if (!window.pdfjsLib) await loadJs('/vendor/pdf.min.js');
+  if (!window.PDFLib) await loadJs('/vendor/pdf-lib.min.js');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.js';
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise;
+  const out = await PDFLib.PDFDocument.create();
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i), v1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: 200 / 72 });
+    const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+    const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+    await page.render({ canvasContext: g, viewport: vp }).promise;
+    const jpg = new Uint8Array(await (await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.9))).arrayBuffer());
+    const img = await out.embedJpg(jpg), p = out.addPage([v1.width, v1.height]);
+    p.drawImage(img, { x: 0, y: 0, width: v1.width, height: v1.height });
+  }
+  return new Blob([await out.save()], { type: 'application/pdf' });
+}
+async function isLocked(f) {
+  const t = new TextDecoder('latin1').decode(new Uint8Array(await f.arrayBuffer()));
+  return /\/Encrypt\s/.test(t);
+}
+async function prep(f) {
+  const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+  if (isPdf) {
+    let blob = f;
+    if (await isLocked(f)) { toast(`${f.name}: 잠긴 PDF 라 그림 PDF 로 바꿔서 올려요…`); blob = await unlockPdf(f); }
+    if (blob.size > 9 * 1024 * 1024) throw new Error(`${f.name}: PDF 가 9MB 를 넘어요.`);
+    return { type: 'application/pdf', blob };
+  }
+  if (!/^image\/(jpeg|png)$/.test(f.type)) throw new Error(`${f.name}: PDF · JPG · PNG 만 올릴 수 있어요.`);
+  if (f.size <= 8 * 1024 * 1024) return { type: f.type, blob: f };
+  const bmp = await createImageBitmap(f), k = Math.min(1, 3000 / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+  cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+  return { type: 'image/jpeg', blob: await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.9)) };
+}
+async function upload(files) {
+  if (!files.length) return;
+  let n = 0;
+  for (const f of files) {
+    try {
+      toast(`${f.name} 올리는 중…`);
+      const p = await prep(f);
+      await WCT.api('paper.upload', { name: f.name, type: p.type, data: await b64(p.blob) });
+      n++;
+    } catch (e) { toast(e.message, true); }
+  }
+  if (n) { toast(`${n}개 올렸어요.`); await load(); }
+}
+
+/* ───────── 링크 */
+function shareText(to, exp, names, url) {
+  const c = S.company;
+  return `${c.name || '주식회사 맹그라미'} ${names.join('·')}입니다.\n아래 링크에서 받으실 수 있어요${exp ? ` (${md(exp)}까지)` : ''}.\n${url}`;
+}
+async function makeLink() {
+  const to = $('lTo').value.trim();
+  const ids = [...$('lDocs').querySelectorAll('input:checked')].map((x) => Number(x.value));
+  if (!to) { toast('받는 곳을 적어 주세요.', true); $('lTo').focus(); return; }
+  if (!ids.length) { toast('보낼 서류를 골라 주세요.', true); return; }
+  if (!S.company.account && !confirm('입금 계좌가 비어 있어요. 계좌 없이 링크를 만들까요?')) return;
+  try {
+    const j = await WCT.api('paper.link', { to, ids, days: S.days, stamp: $('lStamp').checked });
+    const names = ids.map((i) => (S.docs.find((d) => d.id === i) || {}).name).filter(Boolean);
+    const url = linkUrl(j.token), tx = shareText(to, j.exp, names, url);
+    $('madeTx').textContent = tx; $('made').classList.remove('hide');
+    $('madeCopyTx').onclick = async () => toast(await copy(tx) ? '문구를 복사했어요.' : '복사가 막혔어요. 직접 골라서 복사해 주세요.');
+    $('madeCopyUrl').onclick = async () => toast(await copy(url) ? '링크를 복사했어요.' : url);
+    $('madeOpen').onclick = () => window.open(url, '_blank');
+    toast(await copy(tx) ? '링크를 만들고 문구를 복사했어요.' : '링크를 만들었어요.');
+    $('lTo').value = ''; $('lTo').oninput();
+    await load();
+  } catch (e) { toast(e.message, true); }
+}
+function renderLinks() {
+  const L = S.links;
+  if (!L.length) { $('links').innerHTML = '<div class="dim" style="font-size:13px">아직 보낸 링크가 없어요.</div>'; return; }
+  $('links').innerHTML = L.map((l) => `<div class="lk${l.state === 'open' ? '' : ' off'}" data-id="${l.id}">
+    <div class="hd"><span class="to">${esc(l.to)}</span><span class="pill ${ST_C[l.state]}">${ST[l.state]}</span>${l.stamp ? '' : '<span class="pill">표시 없음</span>'}</div>
+    <div class="mt">${esc(l.docNames.join(' · '))}<br>
+      ${esc(l.at.slice(0, 10))} 만듦 · ${l.exp ? md(l.exp) + '까지' : '기간 없음'} · 열람 ${l.views}번 · 내려받기 ${l.downs}번${l.last ? ' · 마지막 ' + esc(l.last) : ''}</div>
+    <div class="acts">
+      <button class="g sm" data-a="copy">링크 복사</button>
+      ${l.state === 'open' ? '<button class="g sm" data-a="close">닫기</button>' : '<button class="g sm" data-a="extend">7일 더 열기</button>'}
+      ${l.log.length ? '<button class="g sm" data-a="log">기록</button>' : ''}
+      <span style="flex:1"></span><button class="g sm" data-a="del" style="color:var(--bad)">지우기</button>
+    </div>
+    <div class="lg hide">${l.log.map((x) => `${esc(x.at)} · ${esc(x.act)}${x.doc ? ' ' + esc(x.doc) : ''} · <span title="${esc(x.ua)}">${esc(dev(x.ua))}</span>`).join('<br>')}</div>
+  </div>`).join('');
+}
+const dev = (ua) => /iPhone/.test(ua) ? '아이폰' : /iPad/.test(ua) ? '아이패드' : /Android/.test(ua) ? '안드로이드' : /Mac OS/.test(ua) ? '맥' : /Windows/.test(ua) ? '윈도우' : '기기 모름';
+$('links').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const el = b.closest('.lk'), l = S.links.find((x) => x.id === Number(el.dataset.id)); if (!l) return;
+  try {
+    if (b.dataset.a === 'copy') toast(await copy(linkUrl(l.token)) ? '링크를 복사했어요.' : linkUrl(l.token));
+    if (b.dataset.a === 'log') el.querySelector('.lg').classList.toggle('hide');
+    if (b.dataset.a === 'close') { await WCT.api('paper.close', { id: l.id }); toast('링크를 닫았어요.'); await load(); }
+    if (b.dataset.a === 'extend') { await WCT.api('paper.extend', { id: l.id, days: 7 }); toast('오늘부터 7일 더 열었어요.'); await load(); }
+    if (b.dataset.a === 'del') { if (!confirm(`${l.to} 링크를 지울까요? 링크도 안 열리고 기록도 지워져요.`)) return; await WCT.api('paper.unlink', { id: l.id }); toast('지웠어요.'); await load(); }
+  } catch (er) { toast(er.message, true); }
+});
+
+/* ───────── 회사 정보 */
+const CF = { company: 'name', '사업자번호': 'bizNo', '대표자': 'ceo', '대표전화': 'tel', '사업장주소': 'address', '계산서이메일': 'email', '은행': 'bank', '계좌번호': 'account', '예금주': 'holder' };
+function fillCompany() {
+  document.querySelectorAll('[data-k]').forEach((el) => { if (document.activeElement !== el) el.value = S.company[CF[el.dataset.k]] || ''; });
+  $('cMsg').textContent = S.company.account ? '' : '입금 계좌를 넣어 주세요.';
+}
+async function saveCompany() {
+  const body = {}; document.querySelectorAll('[data-k]').forEach((el) => { body[el.dataset.k] = el.value.trim(); });
+  try { await WCT.api('company.set', body); toast('저장했어요.'); await load(); } catch (e) { toast(e.message, true); }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>회사 서류 · 주식회사 맹그라미</title>
+<style>
+  @font-face{font-family:NS;src:local('NanumSquare'),local('NanumSquareOTF')}
+  :root{--ci-a:#E84278;--ci-b:#A63285;--ci-c:#482583;--fg:#1A1A1A;--dim:#6B6B6B;--line:#E6E6EA;--soft:#F6F6F8;--tint:#FBEAF1}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#fff;color:var(--fg);-webkit-text-size-adjust:100%}
+  body{font-family:NS,'Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif;font-size:15px;line-height:1.55}
+  .wrap{max-width:520px;margin:0 auto;padding:28px 20px 48px}
+  .sym{height:18px;display:block}
+  .line{height:2px;width:36px;border-radius:2px;background:linear-gradient(90deg,var(--ci-a),var(--ci-b),var(--ci-c));margin:14px 0 18px}
+  h1{font-size:21px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--dim);font-size:13px;margin:0 0 20px}
+  .sub b{color:var(--ci-a);font-weight:700}
+  .info{border-top:1px solid var(--line)}
+  .it{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+  .it .k{width:84px;flex:none;color:var(--dim);font-size:13px;padding-top:1px}
+  .it .v{flex:1;min-width:0;word-break:keep-all;overflow-wrap:anywhere}
+  .cp{flex:none;border:0;background:none;color:var(--ci-a);font:inherit;font-size:12.5px;font-weight:700;padding:2px 0 2px 8px;cursor:pointer}
+  .acct{background:var(--tint);border-radius:12px;padding:14px 16px;margin:20px 0}
+  .acct .k{font-size:12.5px;color:#8a2a52}
+  .acct .no{display:flex;align-items:center;gap:8px;margin-top:4px}
+  .acct .num{flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px;font-weight:700;letter-spacing:.01em;color:#4b1528}
+  .acct .cp{background:#fff;border-radius:8px;padding:7px 12px}
+  .acct .h{font-size:13px;color:#8a2a52;margin-top:3px}
+  .docs{display:flex;flex-direction:column;gap:8px}
+  .doc{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:13px 14px;background:#fff;
+    font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%}
+  .doc:hover{border-color:#cfcfd6}
+  .doc .ic{width:30px;height:38px;border-radius:5px;background:var(--soft);border:1px solid var(--line);flex:none;display:flex;align-items:center;justify-content:center;
+    font-size:9.5px;font-weight:800;color:var(--ci-b)}
+  .doc .nm{flex:1;font-weight:700}
+  .doc .sz{display:block;color:var(--dim);font-size:12px;font-weight:400}
+  .doc .dl{flex:none;color:var(--ci-a);font-size:13px;font-weight:700}
+  .doc[disabled]{opacity:.55;cursor:wait}
+  .all{margin-top:10px;width:100%;padding:13px;border:0;border-radius:12px;color:#fff;font:inherit;font-weight:700;cursor:pointer;
+    background:linear-gradient(90deg,var(--ci-a),var(--ci-b),var(--ci-c))}
+  .note{color:var(--dim);font-size:12px;margin-top:14px;line-height:1.7}
+  .foot{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:var(--dim);font-size:12px;line-height:1.8}
+  .msg{text-align:left;padding:30px 0}
+  .msg h1{font-size:19px}
+  .hide{display:none}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#1A1A1A;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;
+    opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+  .toast.on{opacity:.94}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="sym" src="/mgrm-symbol.svg" alt="맹그라미">
+  <div class="line"></div>
+
+  <div id="loading" class="sub">불러오는 중…</div>
+
+  <div id="closed" class="msg hide">
+    <h1 id="cTitle">이 링크는 기간이 지났어요</h1>
+    <p class="sub" style="margin-top:8px">서류가 필요하시면 맹그라미에 새 링크를 요청해 주세요.</p>
+    <div class="foot" id="cFoot"></div>
+  </div>
+
+  <div id="main" class="hide">
+    <h1 id="mName"></h1>
+    <p class="sub" id="mSub"></p>
+
+    <div class="info" id="info"></div>
+
+    <div class="acct hide" id="acct">
+      <div class="k">입금 계좌</div>
+      <div class="no"><span class="num" id="aNum"></span><button class="cp" id="aCopy">복사</button></div>
+      <div class="h" id="aHold"></div>
+    </div>
+
+    <div class="docs" id="docs" style="margin-top:20px"></div>
+    <button class="all hide" id="all">서류 모두 받기</button>
+    <p class="note" id="stampNote"></p>
+
+    <div class="foot" id="foot"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const T = (location.pathname.match(/^\/d\/([A-Za-z0-9]{6,20})$/) || [])[1] || new URLSearchParams(location.search).get('t') || '';
+let S = {};
+const md = (ymd) => { if (!ymd) return ''; const [y, m, d] = ymd.split('-').map(Number); return `${y}년 ${m}월 ${d}일`; };
+const kb = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB';
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('on'), 1800); }
+async function copy(t, label) {
+  try { await navigator.clipboard.writeText(t); toast(`${label} 복사했어요`); }
+  catch { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); try { document.execCommand('copy'); toast(`${label} 복사했어요`); } catch { toast(t); } a.remove(); }
+}
+async function call(body) {
+  const r = await fetch('/api/public', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ t: T }, body)) });
+  return r.json();
+}
+
+(async function init() {
+  let j;
+  try { j = await call({ action: 'paper.open' }); } catch { j = { ok: false, error: 'net' }; }
+  $('loading').classList.add('hide');
+  if (!j.ok) return showClosed(j);
+  S = j;
+  const c = j.company || {};
+  $('mName').textContent = c.name || '주식회사 맹그라미';
+  $('mSub').innerHTML = `<b>${esc(j.to)}</b> 제출용 서류예요${j.exp ? ` · ${esc(md(j.exp))}까지 열려요` : ''}`;
+  const rows = [
+    ['사업자번호', c.bizNo, true], ['대표자', c.ceo], ['사업장 주소', c.address, true],
+    ['업태 · 종목', [c.bizType, c.bizItem].filter(Boolean).join(' · ')], ['계산서 메일', c.email, true],
+  ].filter((r) => r[1]);
+  $('info').innerHTML = rows.map(([k, v, cp]) => `<div class="it"><span class="k">${k}</span><span class="v">${esc(v)}</span>${cp ? `<button class="cp" data-cp="${esc(v)}" data-l="${k}">복사</button>` : ''}</div>`).join('');
+  $('info').onclick = (e) => { const b = e.target.closest('[data-cp]'); if (b) copy(b.dataset.cp, b.dataset.l + '를'); };
+  if (c.account) {
+    $('acct').classList.remove('hide');
+    $('aNum').textContent = [c.bank, c.account].filter(Boolean).join(' ');
+    $('aHold').textContent = '예금주 ' + (c.holder || c.name || '');
+    $('aCopy').onclick = () => copy(c.account.replace(/[^0-9]/g, '').length >= 8 ? `${c.bank || ''} ${c.account}`.trim() : c.account, '계좌번호를');
+  }
+  const D = j.docs || [];
+  $('docs').innerHTML = D.map((d) => `<button class="doc" data-id="${d.id}"><span class="ic">${d.type === 'application/pdf' ? 'PDF' : 'IMG'}</span>
+    <span class="nm">${esc(d.name)}<span class="sz">${kb(d.size)}</span></span><span class="dl">받기</span></button>`).join('');
+  $('docs').onclick = (e) => { const b = e.target.closest('.doc'); if (b) get(Number(b.dataset.id), b); };
+  $('all').classList.toggle('hide', D.length < 2);
+  $('all').onclick = async () => { for (const b of [...document.querySelectorAll('.doc')]) { await get(Number(b.dataset.id), b); await new Promise((r) => setTimeout(r, 700)); } };
+  $('stampNote').textContent = j.stamp ? `내려받은 서류에는 '${j.to} 제출용 · ${j.today}'이 연하게 찍혀 있어요. 제출 목적 외에는 쓰지 말아 주세요.` : '';
+  $('foot').innerHTML = footer(c);
+  $('main').classList.remove('hide');
+  document.title = `${c.name || '맹그라미'} 서류 · ${j.to} 제출용`;
+})();
+function footer(c) {
+  return `${esc(c.name || '주식회사 맹그라미')} · 미디어 콘텐츠 그룹<br>` + [c.tel ? `문의 ${esc(c.tel)}` : '', c.email ? esc(c.email) : ''].filter(Boolean).join(' · ');
+}
+function showClosed(j) {
+  $('closed').classList.remove('hide');
+  const m = { expired: ['이 링크는 기간이 지났어요', '서류가 필요하시면 맹그라미에 새 링크를 요청해 주세요.'],
+    closed: ['이 링크는 닫혔어요', '서류가 필요하시면 맹그라미에 새 링크를 요청해 주세요.'],
+    none: ['링크를 찾을 수 없어요', '주소가 맞는지 확인해 주세요. 받은 문자나 카톡의 링크를 다시 눌러 보세요.'] }[j.error]
+    || ['잠시 서류를 불러올 수 없어요', '조금 뒤에 다시 열어 주세요. 계속 안 되면 맹그라미에 알려 주세요.'];
+  $('cTitle').textContent = m[0]; $('closed').querySelector('.sub').textContent = m[1];
+  $('cFoot').innerHTML = footer(j.company || { name: '주식회사 맹그라미', tel: '054-853-6231' });
+}
+
+/* ───────── 내려받기: '○○ 제출용' 표시가 켜져 있으면 브라우저에서 PDF 에 찍어서 줌 */
+let libP = null;
+const lib = () => libP || (libP = new Promise((res, rej) => {
+  const s = document.createElement('script'); s.src = '/vendor/pdf-lib.min.js';
+  s.onload = () => res(window.PDFLib); s.onerror = () => { libP = null; rej(new Error('lib')); }; document.head.appendChild(s);
+}));
+const b2u = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+async function get(id, btn) {
+  if (btn.disabled) return;
+  const lab = btn.querySelector('.dl'), old = lab.textContent;
+  btn.disabled = true; lab.textContent = '준비 중…';
+  try {
+    const j = await call({ action: 'paper.file', id });
+    if (!j.ok) throw new Error(j.error === 'expired' || j.error === 'closed' ? '링크 기간이 지났어요.' : (j.error || '받지 못했어요.'));
+    let bytes = b2u(j.data), type = j.type;
+    if (S.stamp) { bytes = await stamped(bytes, type); type = 'application/pdf'; }
+    const ext = type === 'application/pdf' ? '.pdf' : type === 'image/png' ? '.png' : '.jpg';
+    const co = ((S.company || {}).name || '맹그라미').replace(/\s+/g, '');
+    save(new Blob([bytes], { type }), `${j.name}_${co}${ext}`);
+    lab.textContent = '받음 ✓';
+    setTimeout(() => { lab.textContent = old; }, 2500);
+  } catch (e) {
+    lab.textContent = old;
+    toast(e.message === 'lib' ? '인터넷 연결을 확인하고 다시 눌러 주세요.' : e.message);
+  } finally { btn.disabled = false; }
+}
+function save(blob, name) {
+  const u = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 60000);
+}
+// 사진은 A4 한 장 PDF 로 감싸고, 모든 쪽에 표시 그림을 얹음
+async function stamped(bytes, type) {
+  const { PDFDocument, degrees } = await lib();
+  let doc;
+  if (type === 'application/pdf') doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  else {
+    doc = await PDFDocument.create();
+    const img = type === 'image/png' ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+    const land = img.width > img.height, W = land ? 842 : 595, H = land ? 595 : 842, m = 28;
+    const k = Math.min((W - m * 2) / img.width, (H - m * 2) / img.height);
+    const pg = doc.addPage([W, H]);
+    pg.drawImage(img, { x: (W - img.width * k) / 2, y: (H - img.height * k) / 2, width: img.width * k, height: img.height * k });
+  }
+  const cache = {};
+  for (const pg of doc.getPages()) {
+    const { width: w, height: h } = pg.getSize(), rot = ((pg.getRotation().angle % 360) + 360) % 360;
+    const side = rot === 90 || rot === 270;
+    const vw = side ? h : w, vh = side ? w : h;            // 화면에 보이는 가로·세로
+    const key = Math.round(vw) + 'x' + Math.round(vh);
+    const png = cache[key] || (cache[key] = await doc.embedPng(await markPng(vw, vh)));
+    // 쪽이 돌아가 있으면 표시도 같이 돌려서 똑바로 보이게
+    const o = { 0: { x: 0, y: 0 }, 90: { x: w, y: 0 }, 180: { x: w, y: h }, 270: { x: 0, y: h } }[rot] || { x: 0, y: 0 };
+    pg.drawImage(png, { x: o.x, y: o.y, width: vw, height: vh, rotate: degrees(rot) });
+  }
+  return doc.save();
+}
+// 표시 그림: 가운데 대각선 큰 글씨 + 아래쪽 작은 한 줄 (배경 투명)
+async function markPng(w, h) {
+  const W = 1600, H = Math.round(W * h / w), cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const g = cv.getContext('2d'), F = "'Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif";
+  const main = `${S.to} 제출용`, sub = `${S.today.replace(/-/g, '. ')} · ${(S.company || {}).name || '주식회사 맹그라미'}`;
+  g.save(); g.translate(W / 2, H / 2); g.rotate(-Math.atan2(H, W) * 0.85);
+  let fs = 150; g.font = `800 ${fs}px ${F}`;
+  const max = Math.hypot(W, H) * 0.6; const mw = g.measureText(main).width; if (mw > max) { fs = fs * max / mw; g.font = `800 ${fs}px ${F}`; }
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(70,70,78,0.17)';
+  g.fillText(main, 0, -fs * 0.18);
+  g.font = `600 ${fs * 0.36}px ${F}`; g.fillText(sub, 0, fs * 0.62);
+  g.restore();
+  g.font = `600 ${Math.round(W * 0.0125)}px ${F}`; g.fillStyle = 'rgba(70,70,78,0.62)'; g.textAlign = 'right'; g.textBaseline = 'bottom';
+  g.fillText(`${main} · ${S.today} · 제출 목적 외 사용 금지`, W - W * 0.04, H - W * 0.022);
+  return new Promise((r) => cv.toBlob((b) => b.arrayBuffer().then((x) => r(new Uint8Array(x))), 'image/png'));
+}
+</script>
+</body>
+</html>
