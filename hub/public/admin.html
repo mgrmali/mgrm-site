@@ -10,11 +10,32 @@
 <title>맹그라미 업무 허브</title>
 <link rel="stylesheet" href="wct-style.css">
 <style>
-  .hero{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
-    padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:20px;flex-wrap:wrap}
-  .hero .hi{font-size:22px;font-weight:800;letter-spacing:-.3px}
-  .hero .brand img{height:18px}
-  .hero .sub{color:var(--dim);font-size:13px;margin-top:4px}
+  /* 머리 */
+  .top{display:flex;align-items:center;gap:12px;padding:4px 0 14px;border-bottom:1.5px solid var(--fg);margin-bottom:22px}
+  .top .sym img{height:15px;display:block}
+  .top .tt{font-weight:800;font-size:14px;letter-spacing:.01em;white-space:nowrap}
+  .top button{white-space:nowrap}
+  @media(max-width:520px){.top{gap:10px}.top .dt{font-size:11px}.top .dt .who{display:none}}
+  .top .dt{margin-left:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--dim)}
+  /* 메뉴 목차 */
+  .menu{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;margin-bottom:34px}
+  @media(max-width:860px){.menu{grid-template-columns:1fr;gap:20px}}
+  .gh{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:8px;border-bottom:1px solid var(--line);font-size:12px;color:var(--dim)}
+  .gh b{color:var(--fg);font-size:12.5px;font-weight:800;letter-spacing:.02em}
+  .gh .gn{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+  .mrow{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid #F0F0F3;color:var(--fg)}
+  .mrow:hover{background:var(--soft)}
+  .mrow:hover b{color:var(--ci-a)}
+  .mrow .mn{flex:1;min-width:0}
+  .mrow b{display:block;font-size:14.5px;font-weight:800;transition:color .12s}
+  .mrow i{display:block;font-style:normal;font-size:12px;color:var(--faint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mrow em{font-style:normal;flex:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--faint);text-align:right}
+  .mrow em:empty::after{content:"→";font-family:inherit;color:#C4C4CC}
+  .mrow em.ext:empty::after{content:"↗"}
+  .mrow em .badge{all:unset;color:var(--dim)}
+  .mrow em .badge.hot,.mrow em .badge.bad{color:var(--ci-a);font-weight:700}
+  /* 아래 정보: 카드 대신 위 선만 */
+  #app .card{border:0;border-top:1px solid var(--line);border-radius:0;box-shadow:none;padding:14px 0 6px;background:none}
   .due{display:flex;gap:14px;align-items:baseline;padding:8px 0;
     border-bottom:1px solid var(--line)}
   .due:last-child{border-bottom:0}
@@ -40,72 +61,37 @@
   <p class="dim" id="lockSub">확인 중…</p>
 </div>
 <div id="app" class="wrap hide">
-  <div class="hero">
-    <div>
-      <div class="brand" style="margin-bottom:12px"><img src="logo.png" alt="맹그라미"><span class="bt">Work Hub</span></div>
-      <div class="hi" id="greet">안녕하세요.</div>
-      <div class="sub" id="todayLine"></div>
-    </div>
+  <!-- 머리: 심볼 · 업무 허브 · 날짜/이름 -->
+  <div class="top">
+    <a class="sym" href="https://mgrm.kr" title="mgrm.kr"><img src="logo.png" alt="맹그라미"></a>
+    <span class="tt">업무 허브</span>
+    <span class="dt" id="todayLine"></span>
     <button class="g sm" onclick="WCT.lock()">로그아웃</button>
   </div>
 
-  <div class="grid g4" style="margin-bottom:20px">
-    <a class="tile adminOnly" href="withholding.html">
-      <div class="ic">🧾</div>
-      <div class="tt">원천징수</div>
-      <div class="ds">인력 · 지급 · 원천세 · 지급명세서</div>
-      <div id="badgeWht"></div>
-    </a>
-    <a class="tile" href="board.html">
-      <div class="ic">📌</div>
-      <div class="tt">게시판</div>
-      <div class="ds">업무 메모 · 공지 · 체크리스트</div>
-      <div id="badgeBoard"></div>
-    </a>
-    <a class="tile" href="projects.html">
-      <div class="ic">🎬</div>
-      <div class="tt">프로젝트</div>
-      <div class="ds">프리 · 프로덕션 · 포스트 진행 현황</div>
-      <div id="badgeProj"></div>
-    </a>
-    <a class="tile adminOnly" href="papers.html">
-      <div class="ic">📄</div>
-      <div class="tt">회사 서류</div>
-      <div class="ds">사업자등록증 · 통장사본 링크로 보내기</div>
-    </a>
-    <a class="tile adminOnly" href="vault.html">
-      <div class="ic">🔐</div>
-      <div class="tt">금고</div>
-      <div class="ds">라이선스 키 · 계정 정보</div>
-      <div id="badgeVault"></div>
-    </a>
-    <a class="tile adminOnly" href="invoices.html">
-      <div class="ic">📑</div>
-      <div class="tt">세금계산서</div>
-      <div class="ds">매출 · 매입 · 부가세 · 미수금</div>
-      <div id="badgeInv"></div>
-    </a>
-    <a class="tile adminOnly" href="reviews.html">
-      <div class="ic">🎞️</div>
-      <div class="tt">리뷰 · 납품</div>
-      <div class="ds">컬러리버브 리뷰 링크 · 코멘트 · 납품 · 문진 · 문의</div>
-      <div id="badgeRev"></div>
-    </a>
-    <a class="tile adminOnly" href="scripters.html">
-      <div class="ic">🎬</div>
-      <div class="tt">테이크 체크</div>
-      <div class="ds">촬영 테이크 확인 링크 · OK/NG · 코멘트</div>
-      <div id="badgeScr"></div>
-    </a>
-    <a class="tile" href="https://diary.mgrm.kr/">
-      <div class="ic">🎨</div>
-      <div class="tt">컬러 다이어리</div>
-      <div class="ds">레퍼런스 분석 · 라이브러리</div>
-      <div></div>
-    </a>
+  <!-- 메뉴: 세 묶음 목차 (알림은 오른쪽 분홍 글자, 없으면 →) -->
+  <div class="menu">
+    <section>
+      <div class="gh"><b>업무</b><span class="gn"></span></div>
+      <a class="mrow" href="projects.html"><span class="mn"><b>프로젝트</b><i>진행 · 작업 · 회차</i></span><em id="badgeProj"></em></a>
+      <a class="mrow" href="board.html"><span class="mn"><b>게시판</b><i>메모 · 공지 · 체크리스트</i></span><em id="badgeBoard"></em></a>
+    </section>
+    <section>
+      <div class="gh"><b>촬영 · 후반</b><span class="gn"></span></div>
+      <a class="mrow adminOnly" href="scripters.html"><span class="mn"><b>테이크 체크</b><i>OK/NG · 코멘트 · 키컷 리뷰</i></span><em id="badgeScr"></em></a>
+      <a class="mrow adminOnly" href="reviews.html"><span class="mn"><b>리뷰 · 납품</b><i>컬러리버브 리뷰 · 납품 · 문진 · 문의</i></span><em id="badgeRev"></em></a>
+      <a class="mrow" href="https://diary.mgrm.kr/"><span class="mn"><b>컬러 다이어리</b><i>레퍼런스 분석 · 라이브러리</i></span><em class="ext"></em></a>
+    </section>
+    <section class="adminOnly">
+      <div class="gh"><b>경영 · 세무</b><span class="gn"></span></div>
+      <a class="mrow" href="invoices.html"><span class="mn"><b>세금계산서</b><i>매출 · 매입 · 부가세 · 미수금</i></span><em id="badgeInv"></em></a>
+      <a class="mrow" href="withholding.html"><span class="mn"><b>원천징수</b><i>인력 · 지급 · 원천세 · 지급명세서</i></span><em id="badgeWht"></em></a>
+      <a class="mrow" href="papers.html"><span class="mn"><b>회사 서류</b><i>사업자등록증 · 통장사본 보내기</i></span><em id="badgePap"></em></a>
+      <a class="mrow" href="vault.html"><span class="mn"><b>금고</b><i>라이선스 키 · 계정 정보</i></span><em id="badgeVault"></em></a>
+    </section>
   </div>
 
-  <div class="grid g3">
+  <div class="grid g4">
     <div class="card" style="margin:0">
       <h2>다가오는 마감</h2>
       <div id="wDue"><span class="dim">불러오는 중…</span></div>
@@ -132,7 +118,7 @@
     <h2>확인할 제출</h2>
     <div id="wSub"><span class="dim">불러오는 중…</span></div>
   </div>
-  <p class="wct-foot">(주)맹그라미 · <b>MEDIA CONTENTS GROUP</b> · mgrm.kr</p>
+  <p class="wct-foot">(주)맹그라미 · 미디어 콘텐츠 그룹 · mgrm.kr</p>
 </div>
 
 <script src="wct-core.js"></script>
@@ -147,6 +133,10 @@ function applyRole() {
   const admin = WCT.isAdmin();
   document.querySelectorAll('.adminOnly').forEach((el) =>
     el.classList.toggle('hide', !admin));
+  // 묶음마다 보이는 메뉴 개수
+  document.querySelectorAll('.menu section').forEach((sec) => {
+    sec.querySelector('.gn').textContent = sec.querySelectorAll('.mrow:not(.hide)').length;
+  });
 }
 
 
@@ -161,19 +151,13 @@ async function showHub() {
 
   const now = new Date();
   const days = ['일', '월', '화', '수', '목', '금', '토'];
-  const h = now.getHours();
-  $('greet').textContent = h < 6 ? '늦은 시간까지 고생 많으십니다.'
-    : h < 12 ? '좋은 아침입니다.' : h < 18 ? '안녕하세요.' : '오늘도 수고하셨습니다.';
-  $('todayLine').textContent =
-    `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 (${days[now.getDay()]})`;
-  if (WCT.me && WCT.me.name) $('greet').textContent = `${WCT.me.name}님, ` + $('greet').textContent;
+  const p2 = (n) => String(n).padStart(2, '0');
+  $('todayLine').innerHTML = `${now.getFullYear()}.${p2(now.getMonth() + 1)}.${p2(now.getDate())} (${days[now.getDay()]})`
+    + (WCT.me && WCT.me.name ? `<span class="who"> · ${esc(WCT.me.name)}</span>` : '');
 
   const draw = () => {
     applyRole();
     const D = WCT.data;
-    if (D.company && !$('todayLine').textContent.includes(D.company)) {
-      $('todayLine').textContent += ` · ${D.company}`;
-    }
     renderDue(D); renderStat(D); renderProj(D); renderInv(D);
     renderVault(D); renderBoard(D); renderSub(D); renderRev(D); renderScr(D);
   };
@@ -283,7 +267,7 @@ function renderProj(D) {
   const over = soon.some((p) => dday(new Date(p.due + 'T00:00:00')).left < 0);
   $('badgeProj').innerHTML = soon.length
     ? `<span class="badge ${over ? 'bad' : 'hot'}">${over ? '마감 초과' : `마감 임박 ${soon.length}건`}</span>`
-    : `<span class="badge">진행 ${act.length}건</span>`;
+    : `<span class="badge">진행 ${act.length}</span>`;
 }
 
 function renderSub(D) {
@@ -319,7 +303,7 @@ function renderScr(D) {
 
 function renderVault(D) {
   const n = (D.vault || []).length;
-  $('badgeVault').innerHTML = n ? `<span class="badge">${n}개 보관</span>` : '';
+  $('badgeVault').innerHTML = n ? `<span class="badge">${n}개</span>` : '';
 }
 
 function renderInv(D) {
@@ -341,7 +325,7 @@ function renderBoard(D) {
       <div class="m">${esc(p.cat)} · ${esc(String(p.createdAt).slice(0, 10))}</div>
     </a>`).join('') : '<div class="dim">아직 글이 없습니다.</div>';
   $('badgeBoard').innerHTML = (D.board || []).some((p) => p.pinned)
-    ? '<span class="badge hot">고정 글 있음</span>' : '';
+    ? '<span class="badge hot">고정 글</span>' : '';
 }
 
 </script>

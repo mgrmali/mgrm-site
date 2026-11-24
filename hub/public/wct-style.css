@@ -29,7 +29,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none}
 h1{font-size:19px;margin:0;font-weight:800;letter-spacing:-.2px}
 h2{font-size:13px;margin:0 0 14px;font-weight:700;letter-spacing:.02em;color:var(--fg);
   display:flex;align-items:center;gap:8px}
-h2::before{content:"";width:16px;height:3px;border-radius:2px;background:var(--ci);flex:none}
+h2::before{content:none}
 h3{font-size:14px;margin:0 0 10px;font-weight:700}
 
 /* 브랜드 마크 */
@@ -45,8 +45,7 @@ h3{font-size:14px;margin:0 0 10px;font-weight:700}
 .appbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;
   padding:12px 18px;background:rgba(255,255,255,.9);backdrop-filter:blur(8px);
   border-bottom:1px solid var(--line)}
-.appbar::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;
-  background:var(--ci);opacity:.9}
+.appbar{border-bottom:1.5px solid var(--fg);background:rgba(255,255,255,.96);backdrop-filter:none}
 .appbar .brand img{height:15px}
 .appbar .back{color:var(--dim);font-size:13px}
 .appbar .back:hover{color:var(--accent)}
