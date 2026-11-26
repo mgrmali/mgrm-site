@@ -25,8 +25,14 @@ const enc = new TextEncoder();
 
 export default {
   async fetch(req, env, ctx) {
-    try { return await handle(req, env, ctx); }
-    catch (e) { console.error(e); return json({ ok: false, error: 'server' }, 500); }
+    let res;
+    try { res = await handle(req, env, ctx); }
+    catch (e) { console.error(e); res = json({ ok: false, error: 'server' }, 500); }
+    // 사내 허브는 검색에 안 나오게: 모든 응답에 noindex (구글 서치 콘솔 '401 차단' 알림 방지)
+    if (res.status === 101) return res;
+    const out = new Response(res.body, res);
+    out.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    return out;
   },
   // 10분마다: NAS 가 꺼져 있을 때 받아 둔 제출물을 NAS 로 넘깁니다
   async scheduled(ev, env, ctx) { ctx.waitUntil(flush(env)); },
@@ -39,6 +45,8 @@ async function handle(req, env, ctx) {
   const miss = ['STORE_URL', 'STORE_TOKEN', 'SESSION_SECRET'].filter((k) => !env[k]);
   if (miss.length) return text(`설정이 덜 됐어요: Cloudflare 비밀 값 ${miss.join(', ')} 를 넣어주세요.`, 500);
 
+  // 검색 로봇: 허브 전체를 긁지 말 것 (로그인 화면·API 가 401·302 로 막혀 서치 콘솔 경고가 남)
+  if (p === '/robots.txt') return new Response('User-agent: *\nDisallow: /\n', { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
   if (p === '/api/login' && req.method === 'POST') return login(req, env);
   if (p === '/api/logout') return json({ ok: true }, 200, { 'set-cookie': cookie('', 0) });
   // 회사 홈페이지(mgrm.kr)의 리뷰·납품·문진·문의 폼이 여기로 보냅니다 → 교차 출처 허용
