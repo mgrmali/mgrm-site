@@ -6,6 +6,7 @@
      2. 허브 데이터 읽기·쓰기 (구글 시트 대신)  POST /rpc
      3. 외부 공개 기능 (정산 정보 제출 폼)     POST /public
      4. 구글 시트 → NAS 한 번 옮기기          POST /import
+     5. NAS 파일 (Claude 커넥터)              POST /rpc nas.* , /xfer/up · /xfer/down (1회용 주소)
 
    Cloudflare 터널을 통해 hub.mgrm.kr Worker 만 접근합니다.
    모든 요청은 비밀 열쇠(STORE_TOKEN)가 있어야 하고,
@@ -21,7 +22,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.15.0';
+const VERSION = 'hub-store 1.16.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -131,6 +132,9 @@ const SHEETS = {
   '회사서류':       ['ID', '이름', '파일', '종류', '크기', '순서', '올린시각'],
   '서류링크':       ['ID', '토큰', '받는곳', '서류', '도장', '만료', '만든이', '만든시각', '열람', '내려받기', '마지막열람', '닫음'],
   '서류기록':       ['링크ID', '시각', '동작', '서류', 'IP', '기기'],
+  // NAS 파일 (1.16.0) — Claude 커넥터가 한 파일 작업 기록, 휴지통(_to_delete)으로 옮긴 것
+  'NAS기록':        ['시각', '누가', '동작', '경로', '대상', '결과', '메모'],
+  'NAS휴지통':      ['ID', '원래경로', '휴지통경로', '시각', '누가', '이유', '되돌림'],
 };
 const VIDEO_BASE = process.env.VIDEO_BASE || 'https://mgrm.myqnapcloud.com:8081/review/';
 /* 리뷰 영상 올리기: 허브에서 올린 파일을 이 폴더에 저장합니다.
@@ -2175,6 +2179,530 @@ const PAPER = (() => {
   return { pub, admin };
 })();
 
+/* ══════════════════════════════════════════ NAS 파일 (1.16.0) — Claude 커넥터용
+   허브 커넥터(hub.mgrm.kr/mcp)가 hub-admin 계정으로 연결됐을 때만 씁니다.
+   컨테이너에 /share 를 그대로 연결해 두면(docker-compose: "/share:/share") 공유 폴더 전체를 다룹니다.
+
+   경로는 "공유폴더/하위/파일" 형식 (예: MGRM-Qnap/1. 의뢰/2026/11_KSP_준공기념영상)
+   막아 둔 곳 : HubData(허브 데이터·열쇠), Container(서버 코드·비밀 값), QNAP 시스템 폴더(@Recycle 등)
+   지우기     : 완전 삭제는 없음. 그 공유 폴더의 _to_delete/날짜시각/원래경로 로 옮기고, 되돌릴 수 있음
+   덮어쓰기   : 기존 파일을 먼저 _to_delete 로 옮긴 뒤 저장
+   큰 파일    : 1회용 주소(1시간)로 올리기(hub.mgrm.kr/u/…) · 가져오기(hub.mgrm.kr/f/…) */
+const NASF = (() => {
+  const ROOT = path.resolve(process.env.NAS_ROOT || '/share');
+  const SMB_FILES = String(process.env.SMB_CONF || '/qnap/config/smb.conf,/etc/config/smb.conf').split(',').map((s) => s.trim()).filter(Boolean);
+  const HIDE = ['HubData', 'Container'].concat(String(process.env.NAS_HIDE || '').split(',').map((s) => s.trim()).filter(Boolean))
+    .map((s) => s.normalize('NFC').toLowerCase());
+  const TRASH = '_to_delete';
+  const N = (s) => String(s).normalize('NFC');
+  const SYS_NAMES = ['#recycle', '#snapshot', 'lost+found', '.ds_store', 'thumbs.db', 'desktop.ini', '.streams', '.qpkg', '.@__thumb',
+    '@recycle', '@recently-snapshot', '@transcode', '@thumbnail', '.@__qini', '.@upload_cache', '.@sharelink', '.spotlight-v100', '.fseventsd', '.trashes'];
+  const sys = (n) => { const l = N(n).toLowerCase(); return l.startsWith('@') || l.startsWith('.@') || SYS_NAMES.includes(l) || /^cachedev\d/.test(l); };
+  const hiddenShare = (n) => HIDE.includes(N(n).toLowerCase()) || sys(n) || N(n).endsWith('$');
+  const TEXT_EXT = ['.txt', '.md', '.csv', '.tsv', '.json', '.xml', '.html', '.htm', '.css', '.js', '.srt', '.vtt', '.ass', '.edl', '.ale',
+    '.fcpxml', '.xmp', '.cdl', '.ccc', '.cc', '.cube', '.log', '.mhl', '.yml', '.yaml', '.ini', '.conf', '.sh', '.py', '.drx', '.otio', '.sfv', '.md5', '.sha1', '.sha256', '.rtf', '.tex'];
+  const IMG = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
+  const MAX_TEXT_OUT = 200 * 1024, MAX_IMG = 4 * 1024 * 1024, MAX_WRITE = 5 * 1024 * 1024;
+
+  /* ── 공유 폴더 목록: smb.conf 의 [이름] / path = … 를 읽고, 없으면 /share 를 훑습니다 */
+  let cache = { at: 0, list: [] };
+  function shares_() {
+    if (Date.now() - cache.at < 60e3) return cache.list;
+    const out = new Map();
+    for (const f of SMB_FILES) {
+      let txt; try { txt = fs.readFileSync(f, 'utf8'); } catch { continue; }
+      let cur = null;
+      txt.split(/\r?\n/).forEach((line) => {
+        const sec = line.match(/^\s*\[(.+)\]\s*$/);
+        if (sec) { cur = sec[1].trim(); return; }
+        const pm = line.match(/^\s*path\s*=\s*(.+?)\s*$/i);
+        if (cur && pm && !['global', 'printers', 'print$'].includes(cur.toLowerCase())) out.set(N(cur), pm[1]);
+      });
+      if (out.size) break;
+    }
+    const list = [];
+    const add = (name, p) => {
+      if (hiddenShare(name) || list.some((x) => x.name === name)) return;
+      // 컨테이너 안에서는 /share/이름 이 /share/CACHEDEV1_DATA/이름 을 가리키는 바로가기라 /share/이름 으로 찾습니다
+      const cands = [path.join(ROOT, name), p ? path.resolve(p) : null].filter(Boolean);
+      for (const c of cands) {
+        try { if (fs.statSync(c).isDirectory()) { list.push({ name, dir: fs.realpathSync(c) }); return; } } catch {}
+      }
+    };
+    out.forEach((p, name) => add(name, p));
+    if (!list.length) {
+      try { fs.readdirSync(ROOT).forEach((n) => add(N(n), null)); } catch {}
+    }
+    list.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    cache = { at: Date.now(), list };
+    return list;
+  }
+  function ready() { return shares_().length > 0; }
+
+  /** 맥에서 만든 이름(NFD)도 찾아서 실제 이름으로 */
+  function real_(dir, name) {
+    const p = path.join(dir, name);
+    if (fs.existsSync(p)) return p;
+    try { const hit = fs.readdirSync(dir).find((n) => N(n) === N(name)); if (hit) return path.join(dir, hit); } catch {}
+    return null;
+  }
+  /** "공유폴더/a/b" → { share, base, abs, rel, exists } */
+  function resolve_(vp, opt) {
+    const raw = N(String(vp == null ? '' : vp)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/^share\//i, '');
+    if (!raw) return { root: true };
+    const segs = raw.split('/').filter((s) => s !== '' && s !== '.');
+    if (segs.some((s) => s === '..' || /[\u0000]/.test(s))) throw new Error('경로에 .. 은 쓸 수 없어요.');
+    const shs = shares_();
+    const want = segs[0];
+    const sh = shs.find((s) => s.name === want) || shs.find((s) => s.name.toLowerCase() === want.toLowerCase());
+    if (!sh) {
+      if (hiddenShare(want)) throw new Error(`'${want}' 은(는) 허브 보안상 Claude가 열 수 없는 폴더예요.`);
+      throw new Error(`'${want}' 공유 폴더가 없어요. 경로를 비우고 nas_list 로 공유 폴더 목록을 확인해 주세요.`);
+    }
+    let cur = sh.dir; const relSegs = [];
+    let missing = false, lastReal = sh.dir;
+    for (const s of segs.slice(1)) {
+      if (sys(s) && !(opt && opt.allowSys)) throw new Error(`'${s}' 은(는) QNAP 시스템 폴더라 열 수 없어요.`);
+      const hit = missing ? null : real_(cur, s);
+      if (hit) { cur = hit; lastReal = hit; relSegs.push(N(path.basename(hit))); }
+      else { missing = true; cur = path.join(cur, s); relSegs.push(s); }
+    }
+    const abs = path.resolve(cur);
+    if (abs !== sh.dir && !abs.startsWith(sh.dir + path.sep)) throw new Error('공유 폴더 밖으로 나갈 수 없어요.');
+    // 실제로 있는 가장 깊은 곳을 바로가기까지 풀어서 확인 (없는 경로를 만들 때도 바로가기를 타고 밖으로 못 나가게)
+    let rp; try { rp = fs.realpathSync(lastReal); } catch { rp = null; }
+    if (!rp || (rp !== sh.dir && !rp.startsWith(sh.dir + path.sep))) throw new Error('바로가기가 공유 폴더 밖을 가리켜서 열 수 없어요.');
+    return { share: sh.name, base: sh.dir, abs, rel: relSegs.join('/'), vp: [sh.name].concat(relSegs).join('/'), exists: !missing && fs.existsSync(abs) };
+  }
+  const vpOf = (r, name) => r.vp + (name ? '/' + N(name) : '');
+  const kt = (ms) => kst_(ms).slice(0, 16).replace('T', ' ');
+  function entry_(abs, vp) {
+    let st; try { st = fs.lstatSync(abs); } catch { return null; }
+    const link = st.isSymbolicLink();
+    if (link) { try { st = fs.statSync(abs); } catch { return { path: vp, name: path.basename(vp), type: 'link', broken: true }; } }
+    return { path: vp, name: N(path.basename(abs)), type: st.isDirectory() ? 'dir' : 'file', size: st.isDirectory() ? undefined : st.size,
+      modified: kt(st.mtimeMs), link: link || undefined };
+  }
+  const need = (r) => { if (r.root) throw new Error('공유 폴더 이름부터 적어 주세요.'); };
+  function mustExist(r) { need(r); if (!r.exists) throw new Error(`없는 경로예요: ${r.vp}`); }
+  const fmtB = (n) => n >= 1e12 ? (n / 1e12).toFixed(2) + ' TB' : n >= 1e9 ? (n / 1e9).toFixed(2) + ' GB' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : n >= 1e3 ? (n / 1e3).toFixed(0) + ' KB' : n + ' B';
+  function df_(dir) {
+    try { const s = fs.statfsSync(dir); return { free: fmtB(s.bavail * s.bsize), total: fmtB(s.blocks * s.bsize), freeBytes: s.bavail * s.bsize }; }
+    catch { return {}; }
+  }
+  const skipName = (n, hidden) => sys(n) || (!hidden && N(n).startsWith('.'));
+
+  /* ── 기록 */
+  function log(who, act, p, to, ok, note) {
+    try { append_('NAS기록', [nowStr_(), String(who.name || who.user || ''), act, p || '', to || '', ok ? 'OK' : '실패', String(note || '').slice(0, 300)]); } catch {}
+  }
+
+  /* ── 보기 */
+  function list(b) {
+    const r = resolve_(b.path);
+    if (r.root) {
+      const shs = shares_();
+      const vols = new Map();
+      return { ok: true, path: '', shares: shs.map((s) => {
+        let d = vols.get(s.dir.split(path.sep).slice(0, 3).join(path.sep));
+        if (!d) { d = df_(s.dir); vols.set(s.dir.split(path.sep).slice(0, 3).join(path.sep), d); }
+        return { path: s.name, name: s.name, type: 'share', free: d.free, total: d.total };
+      }), hidden: '보안상 HubData·Container·시스템 폴더는 목록에 없어요.' };
+    }
+    mustExist(r);
+    if (!fs.statSync(r.abs).isDirectory()) return { ok: true, path: r.vp, entry: entry_(r.abs, r.vp) };
+    const depth = Math.min(Math.max(Number(b.depth) || 1, 1), 4);
+    const limit = Math.min(Math.max(Number(b.limit) || 500, 1), 2000);
+    const items = []; let truncated = false;
+    (function walk(dir, vp, d) {
+      let names; try { names = fs.readdirSync(dir); } catch { return; }
+      const ents = names.filter((n) => !skipName(n, b.hidden)).map((n) => entry_(path.join(dir, n), vp + '/' + N(n))).filter(Boolean)
+        .sort((x, y) => (x.type === 'dir' ? 0 : 1) - (y.type === 'dir' ? 0 : 1) || x.name.localeCompare(y.name, 'ko', { numeric: true }));
+      for (const e of ents) {
+        if (items.length >= limit) { truncated = true; return; }
+        e.depth = d; items.push(e);
+        if (e.type === 'dir' && d < depth && !e.link) walk(path.join(dir, e.name), e.path, d + 1);
+      }
+    })(r.abs, r.vp, 1);
+    return { ok: true, path: r.vp, count: items.length, truncated, items };
+  }
+
+  function find(b) {
+    const r = resolve_(b.path);
+    const roots = r.root ? shares_().map((s) => ({ abs: s.dir, vp: s.name })) : (mustExist(r), [{ abs: r.abs, vp: r.vp }]);
+    const q = N(String(b.name || '')).toLowerCase().trim();
+    const re = q.includes('*') || q.includes('?')
+      ? new RegExp('^' + q.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$') : null;
+    const exts = (Array.isArray(b.ext) ? b.ext : (b.ext ? String(b.ext).split(',') : [])).map((e) => '.' + String(e).trim().replace(/^\./, '').toLowerCase()).filter((e) => e.length > 1);
+    const since = /^\d{4}-\d{2}-\d{2}$/.test(String(b.since || '')) ? new Date(b.since + 'T00:00:00+09:00').getTime() : 0;
+    const type = ['file', 'dir'].includes(b.type) ? b.type : '';
+    const limit = Math.min(Math.max(Number(b.limit) || 200, 1), 1000);
+    const maxDepth = Math.min(Math.max(Number(b.depth) || 12, 1), 30);
+    const t0 = Date.now(), BUDGET = 15000;
+    const hits = []; let seen = 0, stopped = '';
+    const queue = roots.map((x) => ({ abs: x.abs, vp: x.vp, d: 0 }));
+    while (queue.length) {
+      if (Date.now() - t0 > BUDGET) { stopped = 'time'; break; }
+      const cur = queue.shift();
+      let ents; try { ents = fs.readdirSync(cur.abs, { withFileTypes: true }); } catch { continue; }
+      for (const e of ents) {
+        if (skipName(e.name, b.hidden) || (r.root && cur.d === 0 && N(e.name) === TRASH && !b.trash)) continue;
+        if (N(e.name) === TRASH && !b.trash) continue;
+        seen++;
+        const nm = N(e.name), low = nm.toLowerCase(), vp = cur.vp + '/' + nm, abs = path.join(cur.abs, e.name);
+        const isDir = e.isDirectory();
+        let ok = !q || (re ? re.test(low) : low.includes(q));
+        if (ok && exts.length) ok = !isDir && exts.includes(path.extname(low));
+        if (ok && type) ok = type === (isDir ? 'dir' : 'file');
+        if (ok && since) { try { ok = fs.statSync(abs).mtimeMs >= since; } catch { ok = false; } }
+        if (ok) { const en = entry_(abs, vp); if (en) hits.push(en); if (hits.length >= limit) { stopped = 'limit'; break; } }
+        if (isDir && cur.d + 1 < maxDepth) queue.push({ abs, vp, d: cur.d + 1 });
+      }
+      if (stopped === 'limit') break;
+    }
+    return { ok: true, path: r.root ? '(전체)' : r.vp, count: hits.length, scanned: seen, stopped: stopped || undefined,
+      note: stopped === 'time' ? '15초 안에 다 못 훑었어요. path 를 좁혀서 다시 찾아 주세요.' : undefined, items: hits };
+  }
+
+  function du_(abs, budget) {
+    const t0 = Date.now(); let files = 0, dirs = 0, bytes = 0, partial = false;
+    const stack = [abs];
+    while (stack.length) {
+      if (Date.now() - t0 > budget) { partial = true; break; }
+      const d = stack.pop();
+      let ents; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; }
+      for (const e of ents) {
+        if (sys(e.name)) continue;
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) { dirs++; stack.push(p); }
+        else if (e.isFile()) { files++; try { bytes += fs.statSync(p).size; } catch {} }
+      }
+    }
+    return { files, dirs, bytes, size: fmtB(bytes), partial };
+  }
+  function info(b) {
+    const r = resolve_(b.path); mustExist(r);
+    const e = entry_(r.abs, r.vp);
+    const st = fs.statSync(r.abs);
+    const out = { ok: true, path: r.vp, share: r.share, type: e.type, size: e.size, sizeText: e.size != null ? fmtB(e.size) : undefined,
+      modified: e.modified, created: kt(st.birthtimeMs || st.ctimeMs), disk: df_(r.abs) };
+    if (e.type === 'dir' && b.total !== false) { out.total = du_(r.abs, 15000); if (out.total.partial) out.note = '폴더가 커서 15초 동안 센 값이에요 (일부).'; }
+    return out;
+  }
+
+  function decode_(buf) {
+    try { return { text: new TextDecoder('utf-8', { fatal: true }).decode(buf), enc: 'utf-8' }; }
+    catch { try { return { text: new TextDecoder('euc-kr').decode(buf), enc: 'euc-kr' }; } catch { return { text: buf.toString('latin1'), enc: 'latin1' }; } }
+  }
+  function read(b) {
+    const r = resolve_(b.path); mustExist(r);
+    const st = fs.statSync(r.abs);
+    if (st.isDirectory()) return { ok: false, error: '폴더예요. nas_list 로 보세요.' };
+    const ext = path.extname(r.abs).toLowerCase();
+    if (IMG[ext]) {
+      if (st.size > MAX_IMG) return { ok: false, error: `사진이 커요 (${fmtB(st.size)}). nas_download_link 로 작업 공간에 가져와서 줄여 보세요.` };
+      return { ok: true, path: r.vp, size: st.size, image: { mime: IMG[ext], data: fs.readFileSync(r.abs).toString('base64') } };
+    }
+    const fd = fs.openSync(r.abs, 'r');
+    try {
+      const head = Buffer.alloc(Math.min(8192, st.size)); fs.readSync(fd, head, 0, head.length, 0);
+      const binary = !TEXT_EXT.includes(ext) && head.includes(0);
+      if (binary) return { ok: false, path: r.vp, size: st.size, sizeText: fmtB(st.size),
+        error: '글자 파일이 아니라서 바로 읽을 수 없어요 (PDF·워드·엑셀·영상 등). nas_download_link 로 작업 공간에 가져와서 열어 주세요.' };
+      const offset = Math.max(Number(b.offset) || 0, 0);
+      const len = Math.max(0, Math.min(st.size - offset, MAX_TEXT_OUT));
+      const buf = Buffer.alloc(len); fs.readSync(fd, buf, 0, len, offset);
+      const d = decode_(buf);
+      return { ok: true, path: r.vp, size: st.size, encoding: d.enc, offset, next: offset + len < st.size ? offset + len : undefined,
+        truncated: offset + len < st.size, text: d.text };
+    } finally { fs.closeSync(fd); }
+  }
+
+  /* ── 만들기·저장 */
+  function mkdirp_(abs, base) {
+    const parts = path.relative(base, abs).split(path.sep).filter(Boolean);
+    let cur = base;
+    for (const p of parts) {
+      cur = real_(cur, p) || path.join(cur, p);
+      if (!fs.existsSync(cur)) { fs.mkdirSync(cur); try { fs.chmodSync(cur, 0o777); } catch {} }
+      else if (!fs.statSync(cur).isDirectory()) throw new Error('같은 이름의 파일이 있어서 폴더를 만들 수 없어요: ' + p);
+    }
+    return cur;
+  }
+  function mkdir(b, who) {
+    const r = resolve_(b.path); need(r);
+    if (!r.rel) throw new Error('공유 폴더 자체는 만들 수 없어요 (QNAP 제어판에서 만들어 주세요).');
+    if (r.exists) {
+      if (!fs.statSync(r.abs).isDirectory()) throw new Error('같은 이름의 파일이 있어요: ' + r.vp);
+      return { ok: true, path: r.vp, created: false };
+    }
+    mkdirp_(r.abs, r.base); log(who, '폴더 만들기', r.vp, '', true);
+    return { ok: true, path: r.vp, created: true };
+  }
+  function freeName_(dir, name) {
+    if (!real_(dir, name)) return name;
+    const ext = path.extname(name), base = name.slice(0, name.length - ext.length);
+    for (let i = 2; i < 1000; i++) { const n = `${base}_${i}${ext}`; if (!real_(dir, n)) return n; }
+    throw new Error('비슷한 이름이 너무 많아요.');
+  }
+  const okName = (n) => { const s = N(n); if (!s || /[\\/:*?"<>|\u0000-\u001f]/.test(s) || s === '.' || s === '..' || sys(s)) throw new Error('파일 이름에 쓸 수 없는 글자가 있어요: ' + n); return s; };
+  function write(b, who) {
+    const r = resolve_(b.path); need(r);
+    if (!r.rel) throw new Error('파일 경로를 적어 주세요 (공유폴더/폴더/파일이름).');
+    okName(path.basename(r.abs));
+    const text = String(b.text == null ? '' : b.text);
+    const buf = Buffer.from(text, 'utf8');
+    if (buf.length > MAX_WRITE) throw new Error('5MB 보다 큰 파일은 nas_upload_link 로 올려 주세요.');
+    const dir = mkdirp_(path.dirname(r.abs), r.base);
+    let name = N(path.basename(r.abs)), trashed;
+    const existing = real_(dir, name);
+    if (existing) {
+      if (fs.statSync(existing).isDirectory()) throw new Error('같은 이름의 폴더가 있어요.');
+      if (b.overwrite) trashed = trash({ path: vpOf({ vp: r.vp.split('/').slice(0, -1).join('/') }, path.basename(existing)) }, who, '덮어쓰기 전 보관').trash;
+      else if (b.rename) name = freeName_(dir, name);
+      else throw new Error('같은 이름의 파일이 있어요. overwrite(기존 것은 _to_delete 로) 또는 rename(새 이름) 을 골라 주세요.');
+    }
+    const dst = path.join(dir, name);
+    fs.writeFileSync(dst, b.bom ? Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), buf]) : buf);
+    try { fs.chmodSync(dst, 0o666); } catch {}
+    const vp = r.vp.split('/').slice(0, -1).join('/') + '/' + name;
+    log(who, '저장', vp, '', true, trashed ? '기존 파일 → ' + trashed : '');
+    return { ok: true, path: vp, size: buf.length, replaced: trashed ? { trash: trashed } : undefined };
+  }
+
+  /* ── 옮기기·복사 */
+  const JOBS = new Map();
+  function job_(kind, from, to, who, fn) {
+    const id = crypto.randomBytes(5).toString('hex');
+    const j = { id, kind, from, to, by: String(who.name || who.user || ''), state: '진행 중', started: nowStr_(), ended: '', error: '' };
+    JOBS.set(id, j);
+    const p = Promise.resolve().then(fn).then(() => { j.state = '완료'; j.ended = nowStr_(); log(who, kind, from, to, true); },
+      (e) => { j.state = '실패'; j.ended = nowStr_(); j.error = String(e.message || e); log(who, kind, from, to, false, j.error); });
+    for (const [k, v] of JOBS) if (JOBS.size > 50 && v.state !== '진행 중') JOBS.delete(k);
+    return { j, p };
+  }
+  async function settle_(r, ms) { await Promise.race([r.p, new Promise((x) => setTimeout(x, ms))]); return r.j; }
+  function target_(b) {
+    const src = resolve_(b.from); mustExist(src);
+    if (!src.rel) throw new Error('공유 폴더 자체는 옮기거나 복사할 수 없어요.');
+    let dst = resolve_(b.to); need(dst);
+    if (dst.exists && fs.statSync(dst.abs).isDirectory() && b.into !== false) dst = resolve_(dst.vp + '/' + path.basename(src.abs));
+    if (!dst.rel) throw new Error('받는 곳 경로를 적어 주세요.');
+    okName(path.basename(dst.abs));
+    if (dst.exists) throw new Error(`받는 곳에 같은 이름이 이미 있어요: ${dst.vp}`);
+    if (dst.abs === src.abs || dst.abs.startsWith(src.abs + path.sep)) throw new Error('폴더를 자기 안으로 옮기거나 복사할 수는 없어요.');
+    return { src, dst };
+  }
+  async function move(b, who) {
+    const { src, dst } = target_(b);
+    const parent = mkdirp_(path.dirname(dst.abs), dst.base);
+    const to = path.join(parent, path.basename(dst.abs));
+    try { fs.renameSync(src.abs, to); log(who, '옮기기', src.vp, dst.vp, true); return { ok: true, from: src.vp, to: dst.vp, state: '완료' }; }
+    catch (e) { if (e.code !== 'EXDEV') throw e; }
+    // 다른 볼륨: 복사가 끝까지 되면 원래 것을 정리 (옮기기)
+    const r = job_('옮기기', src.vp, dst.vp, who, async () => {
+      await fs.promises.cp(src.abs, to, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true });
+      const a = du_(src.abs, 600000), c = du_(to, 600000);
+      if (a.bytes !== c.bytes || a.files !== c.files) throw new Error(`복사본 크기가 달라서 원래 것은 그대로 뒀어요 (${a.size} / ${c.size})`);
+      fs.rmSync(src.abs, { recursive: true, force: true });
+    });
+    const j = await settle_(r, 8000);
+    return { ok: j.state !== '실패', from: src.vp, to: dst.vp, state: j.state, job: j.state === '진행 중' ? j.id : undefined, error: j.error || undefined,
+      note: j.state === '진행 중' ? '다른 볼륨이라 복사 후 정리 중이에요. nas_jobs 로 확인하세요.' : undefined };
+  }
+  async function copy(b, who) {
+    const { src, dst } = target_(b);
+    const parent = mkdirp_(path.dirname(dst.abs), dst.base);
+    const to = path.join(parent, path.basename(dst.abs));
+    const free = df_(parent).freeBytes;
+    const need = du_(src.abs, 5000);
+    if (free != null && !need.partial && need.bytes > free) throw new Error(`남은 공간이 모자라요 (필요 ${need.size} / 남은 ${fmtB(free)})`);
+    const r = job_('복사', src.vp, dst.vp, who, async () => {
+      await fs.promises.cp(src.abs, to, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true });
+      try { fs.chmodSync(to, fs.statSync(to).isDirectory() ? 0o777 : 0o666); } catch {}
+    });
+    r.j.bytes = need.partial ? undefined : need.bytes;
+    const j = await settle_(r, 8000);
+    return { ok: j.state !== '실패', from: src.vp, to: dst.vp, size: need.size, state: j.state, job: j.state === '진행 중' ? j.id : undefined,
+      error: j.error || undefined, note: j.state === '진행 중' ? '뒤에서 복사 중이에요. nas_jobs 로 진행 상황을 확인하세요.' : undefined };
+  }
+  function jobs(b) {
+    const list = [...JOBS.values()].reverse().map((j) => {
+      const o = Object.assign({}, j);
+      if (j.state === '진행 중' && j.kind === '복사' && j.bytes) {
+        try { const d = du_(resolve_(j.to).abs, 3000); o.progress = Math.min(99, Math.round(d.bytes / j.bytes * 100)) + '%'; } catch {}
+      }
+      delete o.bytes; return o;
+    });
+    return { ok: true, jobs: b.id ? list.filter((j) => j.id === b.id) : list };
+  }
+
+  /* ── 휴지통 (_to_delete) */
+  function trash(b, who, why) {
+    const r = resolve_(b.path); mustExist(r);
+    if (!r.rel) throw new Error('공유 폴더 자체는 휴지통으로 옮길 수 없어요.');
+    if (r.rel.split('/')[0] === TRASH) throw new Error('이미 _to_delete 안에 있어요. 완전히 지우는 건 직접 해 주세요.');
+    const stamp = kst_().slice(0, 16).replace(/[-:]/g, '').replace('T', '_');
+    const dstRel = TRASH + '/' + stamp + '/' + r.rel;
+    const parent = mkdirp_(path.dirname(path.join(r.base, dstRel)), r.base);
+    let to = path.join(parent, path.basename(r.abs));
+    if (fs.existsSync(to)) to = path.join(parent, freeName_(parent, path.basename(r.abs)));
+    fs.renameSync(r.abs, to);
+    const tvp = r.share + '/' + N(path.relative(r.base, to)).split(path.sep).join('/');
+    const id = nextId_('NAS휴지통');
+    append_('NAS휴지통', [id, r.vp, tvp, nowStr_(), String(who.name || who.user || ''), why || String(b.reason || ''), '']);
+    log(who, '휴지통', r.vp, tvp, true, why || b.reason);
+    return { ok: true, id, from: r.vp, trash: tvp };
+  }
+  function trashList(b) {
+    const q = N(String(b.query || '')).toLowerCase();
+    const list = rows_('NAS휴지통').filter((x) => !x['되돌림']).map((x) => ({ id: Number(x.ID), from: String(x['원래경로']), trash: String(x['휴지통경로']),
+      at: String(x['시각']), by: String(x['누가']), why: String(x['이유'] || '') }))
+      .filter((x) => !q || (x.from + ' ' + x.trash).toLowerCase().includes(q))
+      .map((x) => { try { x.exists = resolve_(x.trash, { allowSys: true }).exists; } catch { x.exists = false; } return x; })
+      .reverse().slice(0, Math.min(Number(b.limit) || 100, 500));
+    return { ok: true, count: list.length, items: list, note: '_to_delete 안의 것을 완전히 지우는 건 File Station 에서 직접 해 주세요.' };
+  }
+  function restore(b, who) {
+    const row = byId_('NAS휴지통', b.id);
+    if (!row || row['되돌림']) throw new Error('휴지통 기록을 찾지 못했어요. nas_trash_list 로 확인해 주세요.');
+    const src = resolve_(String(row['휴지통경로'])); mustExist(src);
+    let dst = resolve_(b.to || String(row['원래경로'])); need(dst);
+    if (dst.exists) throw new Error(`원래 자리에 같은 이름이 생겼어요: ${dst.vp} — to 로 다른 경로를 적어 주세요.`);
+    const parent = mkdirp_(path.dirname(dst.abs), dst.base);
+    fs.renameSync(src.abs, path.join(parent, path.basename(dst.abs)));
+    patch_(row, { '되돌림': nowStr_() });
+    log(who, '되돌리기', src.vp, dst.vp, true);
+    return { ok: true, id: Number(row.ID), restored: dst.vp };
+  }
+  function history(b) {
+    const q = N(String(b.query || '')).toLowerCase();
+    const list = rows_('NAS기록').map((x) => ({ at: x['시각'], by: x['누가'], act: x['동작'], path: x['경로'], to: x['대상'] || undefined,
+      result: x['결과'], note: x['메모'] || undefined })).filter((x) => !q || JSON.stringify(x).toLowerCase().includes(q))
+      .reverse().slice(0, Math.min(Number(b.limit) || 50, 500));
+    return { ok: true, count: list.length, items: list };
+  }
+
+  /* ── 1회용 주소 (올리기·가져오기) — 메모리에만 둠, 서버를 다시 켜면 사라짐 */
+  const LINKS = new Map();
+  const tok_ = () => { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; return Array.from(crypto.randomBytes(24), (x) => A[x % A.length]).join(''); };
+  function sweep_() { const n = Date.now(); for (const [k, v] of LINKS) if (v.exp < n) { if (v.part) { try { fs.unlinkSync(v.part); } catch {} } LINKS.delete(k); } }
+  function uploadLink(b, who) {
+    sweep_();
+    const r = resolve_(b.path); need(r);
+    if (!r.rel) throw new Error('올릴 파일 경로를 적어 주세요 (공유폴더/폴더/파일이름).');
+    if (r.exists && fs.statSync(r.abs).isDirectory()) throw new Error('폴더 말고 파일 이름까지 적어 주세요 (예: …/견적서.pdf).');
+    okName(path.basename(r.abs));
+    const dir = mkdirp_(path.dirname(r.abs), r.base);
+    const t = tok_();
+    const part = path.join(dir, `.${t.slice(0, 10)}.part`);
+    fs.writeFileSync(part, '');
+    LINKS.set(t, { kind: 'up', vp: r.vp, dir, name: N(path.basename(r.abs)), part, overwrite: !!b.overwrite, who, exp: Date.now() + 3600e3, size: Number(b.size) || 0 });
+    log(who, '올리기 주소', r.vp, '', true);
+    return { ok: true, token: t, path: r.vp, expires: kt(Date.now() + 3600e3) };
+  }
+  function downloadLink(b, who) {
+    sweep_();
+    const r = resolve_(b.path); mustExist(r);
+    const st = fs.statSync(r.abs);
+    if (st.isDirectory()) throw new Error('폴더는 가져올 수 없어요. 파일을 골라 주세요.');
+    const t = tok_();
+    LINKS.set(t, { kind: 'down', vp: r.vp, abs: r.abs, uses: 0, who, exp: Date.now() + 3600e3 });
+    log(who, '가져오기 주소', r.vp, '', true);
+    return { ok: true, token: t, path: r.vp, size: st.size, sizeText: fmtB(st.size), expires: kt(Date.now() + 3600e3) };
+  }
+  /** HTTP: /xfer/up?t=&offset= (PUT/POST 본문 = 조각), /xfer/up?t=&op=finish&size=&sha256= , /xfer/down?t= (Range 지원) */
+  async function http(req, res, url) {
+    sweep_();
+    const t = url.searchParams.get('t') || '';
+    const L = /^[A-Za-z0-9]{24}$/.test(t) ? LINKS.get(t) : null;
+    const j = (code, o) => send(res, code, o);
+    if (!L) return j(404, { ok: false, error: '주소가 없거나 1시간이 지났어요. 새 주소를 만들어 주세요.' });
+    if (url.pathname === '/xfer/down') {
+      if (L.kind !== 'down') return j(400, { ok: false, error: 'kind' });
+      if (++L.uses > 20) return j(410, { ok: false, error: '이 주소는 너무 많이 썼어요. 새 주소를 만들어 주세요.' });
+      let st; try { st = fs.statSync(L.abs); } catch { return j(404, { ok: false, error: '파일이 없어졌어요.' }); }
+      const m = String(req.headers.range || '').match(/^bytes=(\d*)-(\d*)$/);
+      let start = 0, end = st.size - 1, code = 200;
+      if (m && (m[1] || m[2])) {
+        if (m[1]) { start = +m[1]; end = m[2] ? Math.min(+m[2], end) : end; } else { start = Math.max(0, st.size - +m[2]); }
+        if (start > end || start >= st.size) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
+        code = 206;
+      }
+      const name = path.basename(L.abs);
+      const h = { 'Content-Type': 'application/octet-stream', 'Content-Length': end - start + 1, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store',
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}` };
+      if (code === 206) h['Content-Range'] = `bytes ${start}-${end}/${st.size}`;
+      res.writeHead(code, h);
+      if (req.method === 'HEAD') return res.end();
+      if (start === 0 && L.uses === 1) log(L.who, '가져오기', L.vp, '', true, fmtB(st.size));
+      fs.createReadStream(L.abs, { start, end }).on('error', () => res.destroy()).pipe(res);
+      return;
+    }
+    if (url.pathname !== '/xfer/up' || L.kind !== 'up') return j(400, { ok: false, error: 'kind' });
+    L.exp = Math.max(L.exp, Date.now() + 15 * 60e3);   // 올리는 중에는 끊기지 않게
+    if (url.searchParams.get('op') === 'finish') {
+      const have = fs.statSync(L.part).size;
+      const want = url.searchParams.get('size');
+      if (want != null && Number(want) !== have) return j(200, { ok: false, error: `크기가 맞지 않아요 (받은 ${have} / 보낸 ${want})`, have });
+      const sha = String(url.searchParams.get('sha256') || '').toLowerCase();
+      let got;
+      if (sha) {
+        got = await new Promise((ok, no) => { const h = crypto.createHash('sha256'); fs.createReadStream(L.part).on('data', (c) => h.update(c)).on('end', () => ok(h.digest('hex'))).on('error', no); });
+        if (got !== sha) return j(200, { ok: false, error: 'sha256 이 맞지 않아요. 처음부터 다시 올려 주세요.', sha256: got });
+      }
+      let name = L.name, trashed;
+      const ex = real_(L.dir, name);
+      if (ex) {
+        const parentVp = L.vp.split('/').slice(0, -1).join('/');
+        if (L.overwrite && !fs.statSync(ex).isDirectory()) trashed = trash({ path: parentVp + '/' + N(path.basename(ex)) }, L.who, '덮어쓰기 전 보관').trash;
+        else name = freeName_(L.dir, name);
+      }
+      const dst = path.join(L.dir, name);
+      fs.renameSync(L.part, dst);
+      try { fs.chmodSync(dst, 0o666); } catch {}
+      LINKS.delete(t);
+      const vp = L.vp.split('/').slice(0, -1).join('/') + '/' + name;
+      log(L.who, '올리기', vp, '', true, fmtB(have) + (trashed ? ' · 기존 파일 → ' + trashed : ''));
+      return j(200, { ok: true, path: vp, size: have, sizeText: fmtB(have), sha256: got, replaced: trashed ? { trash: trashed } : undefined });
+    }
+    if (url.searchParams.get('op') === 'cancel') { try { fs.unlinkSync(L.part); } catch {} LINKS.delete(t); return j(200, { ok: true }); }
+    const offset = Number(url.searchParams.get('offset') || 0);
+    const have = fs.statSync(L.part).size;
+    if (offset > have) return j(200, { ok: false, error: 'offset 이 받은 크기보다 커요', have });
+    if (offset < have) fs.truncateSync(L.part, offset);
+    await new Promise((resolve, reject) => {
+      const ws = fs.createWriteStream(L.part, { flags: 'a' });
+      let n = 0;
+      req.on('data', (c) => { n += c.length; if (n > 100 * 1024 * 1024) { req.destroy(); reject(new Error('조각은 95MB 까지예요')); } });
+      req.pipe(ws); ws.on('finish', resolve); ws.on('error', reject); req.on('error', reject);
+    });
+    return j(200, { ok: true, have: fs.statSync(L.part).size });
+  }
+
+  async function rpc(a, b, who) {
+    switch (a) {
+      case 'nas.list': return list(b);
+      case 'nas.find': return find(b);
+      case 'nas.info': return info(b);
+      case 'nas.read': return read(b);
+      case 'nas.mkdir': return mkdir(b, who);
+      case 'nas.write': return write(b, who);
+      case 'nas.move': return move(b, who);
+      case 'nas.copy': return copy(b, who);
+      case 'nas.jobs': return jobs(b);
+      case 'nas.trash': return trash(b, who);
+      case 'nas.trash.list': return trashList(b);
+      case 'nas.restore': return restore(b, who);
+      case 'nas.log': return history(b);
+      case 'nas.uplink': return uploadLink(b, who);
+      case 'nas.downlink': return downloadLink(b, who);
+    }
+    return { ok: false, error: 'unknown action: ' + a };
+  }
+  return { rpc, http, ready, shares: shares_, ROOT };
+})();
+
 const READ_ONLY = ['bootstrap', 'me', 'paper.list', 'review.videos', 'envelope', 'envelopes', 'unlock', 'user.list',
                    'recovery.status', 'calendar.check', 'log.list', 'folder.list', 'scripter.list', 'scripter.csv', 'scripter.log', 'scripter.summary', 'scripter.orphans'];
 
@@ -2193,6 +2721,13 @@ async function rpc_(b) {
     const r = await GCAL.importShoots(b.projectId);
     if (r.ok) GCAL.later();
     log_(who.user, role, a, b._ip, r.ok);
+    return r;
+  }
+  // NAS 파일 (관리자만 — PD_ALLOWED 에 없어서 위에서 이미 걸러짐)
+  if (a.startsWith('nas.')) {
+    let r;
+    try { r = await NASF.rpc(a, b, who); } catch (e) { r = { ok: false, error: String(e.message || e) }; }
+    if (!['nas.list', 'nas.find', 'nas.info', 'nas.read', 'nas.jobs', 'nas.trash.list', 'nas.log'].includes(a)) log_(who.user, role, a, b._ip, r && r.ok);
     return r;
   }
   if (a === 'calendar.sync' || a === 'calendar.check') {
@@ -3052,7 +3587,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
     if (url.pathname === '/health') return send(res, 200, { ok: true, v: VERSION,
-      folder: FOLDER.ready(), scripter: SCRIPTER.ready(), calendar: GCAL.ready() ? 'direct' : (GAS_URL ? 'gas' : 'off') });
+      folder: FOLDER.ready(), nas: NASF.ready(), scripter: SCRIPTER.ready(), calendar: GCAL.ready() ? 'direct' : (GAS_URL ? 'gas' : 'off') });
     if (!okToken(req)) return send(res, 401, { ok: false, error: 'unauthorized' });
 
     if (req.method === 'GET' && url.pathname === '/export') {
@@ -3060,6 +3595,8 @@ const server = http.createServer(async (req, res) => {
       if (roleOf_(who.user || '') !== 'admin') return send(res, 403, { ok: false, error: '관리자만' });
       return send(res, 200, exportCsv_(url.searchParams.get('sheet') || ''), 'text/csv; charset=utf-8');
     }
+    // NAS 파일 1회용 주소 (Worker 가 hub.mgrm.kr/u/<토큰>, /f/<토큰> 을 이리로 넘김)
+    if (url.pathname === '/xfer/up' || url.pathname === '/xfer/down') return await NASF.http(req, res, url);
     if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'method' });
     if (url.pathname === '/upload') {
       return await upload_(req, res, url, JSON.parse(String(req.headers['x-hub-who'] || '{}')));
@@ -3086,5 +3623,6 @@ server.listen(PORT, () => {
   try { fs.accessSync(REVIEW_DIR, fs.constants.W_OK); rv = REVIEW_DIR; } catch {}
   console.log(`${VERSION} — :${PORT}, 데이터 ${DATA}, QNAP ${QNAP_URL || '(미설정)'}, 그룹 파일 ${gf || '(없음!)'}, 리뷰 영상 폴더 ${rv}`);
   console.log(`테이크 체크 영상 폴더 ${SCRIPTER.ready() ? SCRIPTER.DIR : '(쓸 수 없음!) ' + SCRIPTER.DIR} → ${SCRIPTER.BASE}`);
+  console.log(`NAS 파일(Claude) ${NASF.ready() ? NASF.shares().map((x) => x.name).join(', ') : '(공유 폴더 연결 안 됨 — docker-compose 에 "/share:/share" 추가)'}`);
   console.log(`의뢰 폴더 ${FOLDER.ready() ? FOLDER.ROOT : '(연결 안 됨)'}, 캘린더 ${GCAL.ready() ? '직접 연동' : (GAS_URL ? '앱스스크립트 경유' : '(미설정)')}`);
 });

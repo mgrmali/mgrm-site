@@ -243,3 +243,27 @@ Claude 가 허브의 **프로젝트·작업·촬영 회차**를 읽고, 작업�
 - 파일: NAS 데이터 폴더 `papers/` (지우면 `papers/_삭제됨/`). 입금 계좌는 저장소에 남기지 않고 허브 설정(은행·계좌번호·예금주)에 저장
 - PDF 라이브러리는 `public/vendor/` 에서 직접 내보냄 (외부 CDN 안 씀)
 
+
+## Claude 커넥터 1.2.0 — 허브 기능 확장 + NAS 파일 (hub-store 1.16.0)
+
+커넥터에 프로젝트 만들기·고치기, 문진·문의(연락처 포함), 리뷰·납품, 회사 서류 링크, **NAS 파일**(공유 폴더 전체) 도구가 더해졌습니다.
+문의·리뷰·서류·NAS 파일은 **hub-admin** 계정으로 연결했을 때만 열립니다.
+
+| 막아 둔 것 | 이유 |
+|---|---|
+| `HubData`, `Container` 공유 폴더 | 허브 데이터·열쇠, 서버 코드·비밀 값 |
+| `@Recycle`, `.@__thumb` 등 QNAP 시스템 폴더 | |
+| 공유 폴더 밖을 가리키는 바로가기 | |
+| 완전 삭제 | 대신 그 공유 폴더의 `_to_delete/날짜시각/원래경로` 로 옮김 (되돌리기 가능) |
+
+배포 순서
+1. **NAS** — File Station 에서 `Container/mgrm-hub/server.js` 를 `server_1.15.0_백업.js` 로 이름 바꾸고 새 `nas/server.js` 올리기
+2. **Container Station** — 앱 YAML 의 hub-store 에 두 줄 추가 → 적용(컨테이너 다시 만들기)
+   - environment: `- NAS_ROOT=/share`
+   - volumes: `- /share:/share`
+3. 확인: `https://hub.mgrm.kr/api/health` → `"v":"hub-store 1.16.0"`, `"nas":true`
+4. **Worker** — 이 브랜치를 main 에 합치면 Cloudflare 가 자동 배포 (`/u/<토큰>`, `/f/<토큰>` 주소가 생김)
+5. **claude.ai** — 설정 → 기능(Capabilities) → 허용 도메인에 `hub.mgrm.kr` 추가 (Claude 작업 공간에서 큰 파일 올리기·가져오기용)
+6. claude.ai 커넥터 설정에서 허브 커넥터를 다시 연결(또는 새로고침)하면 새 도구가 보입니다
+
+기록: 허브 데이터의 `NAS기록`(모든 파일 작업)·`NAS휴지통`(옮긴 것) 탭. 1회용 주소는 1시간, NAS 를 다시 켜면 사라집니다.

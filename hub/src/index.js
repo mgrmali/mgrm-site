@@ -60,6 +60,8 @@ async function handle(req, env, ctx) {
   if (p === '/api/health') return health(env);
   // Claude 커넥터 (src/mcp.js) — 자체 OAuth 로 로그인하므로 쿠키 확인 전에 넘깁니다
   if (isMcpPath(p)) return handleMcp(req, env, url, { store, hmac, b64e, b64d, same, json });
+  // NAS 파일 1회용 주소 (Claude 커넥터가 만든 것): 올리기 /u/<토큰>, 가져오기 /f/<토큰> — 토큰이 곧 열쇠 (1시간)
+  if (/^\/[uf]\/[A-Za-z0-9]{24}$/.test(p)) return xfer(req, env, url, p);
   if (p === '/' ) return Response.redirect(new URL('/admin.html', url).toString(), 302);
   if (p === '/login') return env.ASSETS.fetch(new Request(new URL('/login.html', url), req));
   // 회사 서류 링크 (사업자등록증·통장사본): hub.mgrm.kr/d/<토큰> — 로그인 없이 엶
@@ -103,6 +105,29 @@ const NAS_DOWN = { ok: false, error: 'NAS에 연결할 수 없어요. NAS와 인
 async function health(env) {
   try { const r = await store(env, '/health'); return json({ ok: true, nas: await r.json() }); }
   catch { return json({ ok: false, nas: 'down' }); }
+}
+
+/* ───────── NAS 파일 1회용 주소 — 본문을 읽지 않고 NAS 로 그대로 흘려보냄 (Cloudflare 한 번에 100MB 까지라 조각으로) */
+async function xfer(req, env, url, p) {
+  const up = p[1] === 'u';
+  const t = p.slice(3);
+  if (up && !['PUT', 'POST'].includes(req.method)) return json({ ok: false, error: '올리기는 PUT(조각) / POST(?op=finish) 로 보내 주세요.' }, 405);
+  if (!up && !['GET', 'HEAD'].includes(req.method)) return json({ ok: false, error: 'method' }, 405);
+  const q = new URLSearchParams(url.search); q.set('t', t);
+  const headers = { 'x-store-token': env.STORE_TOKEN };
+  if (up) headers['content-type'] = 'application/octet-stream';
+  if (!up && req.headers.get('range')) headers.range = req.headers.get('range');
+  let r;
+  try {
+    r = await fetch(env.STORE_URL.replace(/\/$/, '') + (up ? '/xfer/up?' : '/xfer/down?') + q.toString(), {
+      method: up ? 'POST' : req.method, headers, body: up ? req.body : undefined, duplex: up ? 'half' : undefined });
+  } catch { return json(NAS_DOWN, 503); }
+  if ([502, 503, 504, 530].includes(r.status)) return json(NAS_DOWN, 503);
+  const out = new Headers({ 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+  ['content-type', 'content-length', 'content-disposition', 'content-range', 'accept-ranges'].forEach((k) => {
+    const v = r.headers.get(k); if (v) out.set(k, v);
+  });
+  return new Response(r.body, { status: r.status, headers: out });
 }
 
 /* ───────── 로그인 */
