@@ -110,6 +110,7 @@
       </div>
       <div class="bar" style="margin-top:16px">
         <button class="g" id="btnVatExcel">이 기간 자료 엑셀로 받기</button>
+        <button class="g" id="btnVatDoc" title="이 분기 부가세 자료와 올해 매출매입 장부를 NAS MGRM-Doc 세무 폴더에 저장">MGRM-Doc 에 저장</button>
       </div>
     </div>
   </section>
@@ -526,6 +527,18 @@ function renderVat() {
     : '<div class="dim" style="font-size:12.5px">확인이 필요한 항목이 없습니다.</div>';
 }
 
+$('btnVatDoc').onclick = async () => {
+  const p = $('vPeriod').value, [y, q] = p.split('-'), btn = $('btnVatDoc'), old = btn.textContent;
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    const a = await WCT.api('taxdoc.save', { kind: 'vat', year: y, q: Number(q[0]) });
+    const b = await WCT.api('taxdoc.save', { kind: 'sales', year: y });
+    const fs = [...(a.files || []), ...(b.files || [])];
+    const st = { '새로': '새로 저장', '바꿈': '바꿔 저장', '같음': '바뀐 것 없음' };
+    alert(fs.length ? 'MGRM-Doc 에 저장했어요.\n\n' + fs.map((f) => `· ${f.path.replace(/^MGRM-Doc\//, '')} — ${st[f.state] || f.state}`).join('\n') : '이 기간에 저장할 자료가 없어요.');
+  } catch (e) { toast(e.message, true); }
+  finally { btn.disabled = false; btn.textContent = old; }
+};
 $('btnVatExcel').onclick = () => {
   const period = $('vPeriod').value;
   const d = vatData(period);

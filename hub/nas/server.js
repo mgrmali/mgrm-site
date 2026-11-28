@@ -7,6 +7,7 @@
      3. 외부 공개 기능 (정산 정보 제출 폼)     POST /public
      4. 구글 시트 → NAS 한 번 옮기기          POST /import
      5. NAS 파일 (Claude 커넥터)              POST /rpc nas.* , /xfer/up · /xfer/down (1회용 주소)
+     6. 세무 자료 → MGRM-Doc (엑셀)          POST /rpc taxdoc.* + 매월 자동
 
    Cloudflare 터널을 통해 hub.mgrm.kr Worker 만 접근합니다.
    모든 요청은 비밀 열쇠(STORE_TOKEN)가 있어야 하고,
@@ -22,7 +23,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = 'hub-store 1.16.0';
+const VERSION = 'hub-store 1.17.0';
 const PORT = +(process.env.PORT || 8080);
 const DATA = path.resolve(process.env.DATA_DIR || '/data');
 const TOKEN = process.env.STORE_TOKEN || '';
@@ -2470,6 +2471,33 @@ const NASF = (() => {
     return { ok: true, path: vp, size: buf.length, replaced: trashed ? { trash: trashed } : undefined };
   }
 
+  /** 허브가 만든 파일 저장 (세무 자료 등). 같은 내용이면 건너뛰고, 바뀌었으면 예전 것은 _to_delete 로.
+      opt.rename 이면 덮지 않고 _2 를 붙임 */
+  function saveBuffer(vp, buf, who, opt) {
+    const r = resolve_(vp); need(r);
+    if (!r.rel) throw new Error('파일 경로를 적어 주세요.');
+    okName(path.basename(r.abs));
+    const dir = mkdirp_(path.dirname(r.abs), r.base);
+    const parentVp = r.vp.split('/').slice(0, -1).join('/');
+    let name = N(path.basename(r.abs)), replaced, state = '새로';
+    const ex = real_(dir, name);
+    if (ex) {
+      if (fs.statSync(ex).isDirectory()) throw new Error('같은 이름의 폴더가 있어요: ' + r.vp);
+      if (opt && opt.rename) name = freeName_(dir, name);
+      else {
+        if (fs.readFileSync(ex).equals(buf)) return { path: r.vp, state: '같음' };
+        replaced = trash({ path: parentVp + '/' + N(path.basename(ex)) }, who, '새 버전으로 바꾸기 전 보관').trash;
+        state = '바꿈';
+      }
+    }
+    const dst = path.join(dir, name);
+    fs.writeFileSync(dst, buf);
+    try { fs.chmodSync(dst, 0o666); } catch {}
+    const out = parentVp + '/' + name;
+    log(who, '저장', out, '', true, replaced ? '예전 파일 → ' + replaced : '');
+    return { path: out, state, replaced };
+  }
+
   /* ── 옮기기·복사 */
   const JOBS = new Map();
   function job_(kind, from, to, who, fn) {
@@ -2700,8 +2728,351 @@ const NASF = (() => {
     }
     return { ok: false, error: 'unknown action: ' + a };
   }
-  return { rpc, http, ready, shares: shares_, ROOT };
+  return { rpc, http, ready, shares: shares_, saveBuffer, ROOT };
 })();
+/* ══════════════════════════════════════════ 세무 자료 → MGRM-Doc (1.17.0)
+   허브는 입력·계산하는 곳(원본), MGRM-Doc 은 신고·보관용 엑셀이 쌓이는 곳.
+
+   1. 세무/원천세납부서/YYYY/YYYY-MM/
+        YYYY-MM_지급대장.xlsx          주민번호·계좌 가림
+        YYYY-MM_원천세_요약.xlsx
+        세무사 제출용/간이지급명세서_사업소득_YYYY-MM.xlsx   주민번호 전체 (홈택스 양식, 허브 화면과 같음)
+        (허브에서 올린 납부서·신고서 PDF)
+   3. 인사·급여/법인급여대장/YYYY/YYYY-MM_급여대장.xlsx
+   1. 세무/매출매입계산서/YYYY/YYYY_매출매입.xlsx, YYYY-N분기_부가세자료.xlsx
+   1. 세무/법인세/YYYY년도 법인세 준비자료/  (다음 해 1월 10일에 1년치)
+
+   자동: 매월 5일(놓치면 그 뒤 첫 실행 때) 지난달 원천세·급여, 그 해 매출매입, 분기 첫 달엔 지난 분기 부가세,
+         1월 10일엔 지난해 묶음. [신고 완료로 기록]·[신고완료 표시]·[이 달 급여 저장] 때도 그 달 것을 다시 저장.
+   주민번호는 NAS 안에서만 풀고(관리자 열쇠 = DATA_KEY 로 잠긴 개인키) 바로 파일로 씁니다.
+   같은 내용이면 다시 쓰지 않고, 바뀌었으면 예전 파일은 _to_delete 로 옮깁니다. */
+const TAXDOC = (() => {
+  const SHARE = process.env.TAX_SHARE || 'MGRM-Doc';
+  const P = {
+    wht: (ym) => `${SHARE}/1. 세무/원천세납부서/${ym.slice(0, 4)}/${ym}`,
+    pay: (y) => `${SHARE}/3. 인사·급여/법인급여대장/${y}`,
+    sales: (y) => `${SHARE}/1. 세무/매출매입계산서/${y}`,
+    year: (y) => `${SHARE}/1. 세무/법인세/${y}년도 법인세 준비자료`,
+  };
+  const SYS = { name: '허브 자동', user: 'hub' };
+
+  /* ── 엑셀(xlsx) 만들기 — 추가 설치 없이 zip 을 직접 씁니다 */
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = (b) => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  function zip_(files) {
+    const zlib = require('zlib');
+    const parts = [], central = []; let off = 0;
+    const DT = 0x0000, DD = ((2026 - 1980) << 9) | (1 << 5) | 1;   // 날짜 고정 → 같은 내용이면 같은 파일
+    for (const [name, data] of files) {
+      const nm = Buffer.from(name, 'utf8'), raw = Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf8');
+      const comp = zlib.deflateRawSync(raw, { level: 9 }), crc = crc32(raw);
+      const h = Buffer.alloc(30); h.writeUInt32LE(0x04034b50, 0); h.writeUInt16LE(20, 4); h.writeUInt16LE(0x0800, 6); h.writeUInt16LE(8, 8);
+      h.writeUInt16LE(DT, 10); h.writeUInt16LE(DD, 12); h.writeUInt32LE(crc, 14); h.writeUInt32LE(comp.length, 18); h.writeUInt32LE(raw.length, 22);
+      h.writeUInt16LE(nm.length, 26); h.writeUInt16LE(0, 28);
+      parts.push(h, nm, comp);
+      const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(20, 4); c.writeUInt16LE(20, 6); c.writeUInt16LE(0x0800, 8); c.writeUInt16LE(8, 10);
+      c.writeUInt16LE(DT, 12); c.writeUInt16LE(DD, 14); c.writeUInt32LE(crc, 16); c.writeUInt32LE(comp.length, 20); c.writeUInt32LE(raw.length, 24);
+      c.writeUInt16LE(nm.length, 28); c.writeUInt32LE(off, 42);
+      central.push(c, nm);
+      off += 30 + nm.length + comp.length;
+    }
+    const cd = Buffer.concat(central);
+    const e = Buffer.alloc(22); e.writeUInt32LE(0x06054b50, 0); e.writeUInt16LE(files.length, 8); e.writeUInt16LE(files.length, 10);
+    e.writeUInt32LE(cd.length, 12); e.writeUInt32LE(off, 16);
+    return Buffer.concat([...parts, cd, e]);
+  }
+  const xe = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+  const colName = (i) => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  /** sheets: [{ name, rows: [[...]], money: [열번호], total: true(마지막 줄 굵게), widths: [] }] */
+  function xlsx_(sheets) {
+    const sx = sheets.map((sh, si) => {
+      const rows = sh.rows || [];
+      const money = new Set(sh.money || []);
+      const ncol = Math.max(1, ...rows.map((r) => r.length));
+      const widths = sh.widths || Array.from({ length: ncol }, (_, c) =>
+        Math.min(40, Math.max(8, ...rows.map((r) => [...String(r[c] == null ? '' : r[c])].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 2 : 1), 0) + 2))));
+      const body = rows.map((r, ri) => {
+        const bold = ri === 0 || (sh.total && ri === rows.length - 1);
+        return `<row r="${ri + 1}">` + r.map((v, ci) => {
+          const ref = colName(ci) + (ri + 1);
+          if (v === '' || v == null) return '';
+          if (typeof v === 'number' && isFinite(v)) {
+            const s = bold ? (money.has(ci) ? 4 : 2) : (money.has(ci) ? 3 : 0);
+            return `<c r="${ref}"${s ? ` s="${s}"` : ''}><v>${v}</v></c>`;
+          }
+          return `<c r="${ref}" t="inlineStr"${bold ? ' s="1"' : ''}><is><t xml:space="preserve">${xe(v)}</t></is></c>`;
+        }).join('') + '</row>';
+      }).join('');
+      return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0">${rows.length > 1 ? '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>' : ''}</sheetView></sheetViews>`
+        + `<cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>`
+        + `<sheetData>${body}</sheetData></worksheet>`;
+    });
+    const names = sheets.map((s, i) => xe(String(s.name || 'Sheet' + (i + 1)).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31)));
+    const files = [
+      ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sx.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`],
+      ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+      ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${names.map((n, i) => `<sheet name="${n}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`],
+      ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sx.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sx.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+      ['xl/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="맑은 고딕"/></font><font><b/><sz val="11"/><name val="맑은 고딕"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="3" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`],
+      ...sx.map((x, i) => [`xl/worksheets/sheet${i + 1}.xml`, x]),
+    ];
+    return zip_(files);
+  }
+
+  /* ── 주민번호 풀기 (NAS 안에서만) */
+  let privKey = null;
+  function priv_() {
+    if (privKey) return privKey;
+    const k = keystore_();
+    if (!k.pkcs8) throw new Error('개인키가 없어요 (허브 이사 때 열쇠를 넣지 않음).');
+    privKey = crypto.createPrivateKey({ key: Buffer.from(k.pkcs8, 'base64'), format: 'der', type: 'pkcs8' });
+    return privKey;
+  }
+  function open_(env) {
+    const aes = crypto.privateDecrypt({ key: priv_(), padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
+      Buffer.from(env.wk, 'base64'));
+    const ct = Buffer.from(env.ct, 'base64');
+    const d = crypto.createDecipheriv('aes-256-gcm', aes, Buffer.from(env.iv, 'base64'));
+    d.setAuthTag(ct.subarray(ct.length - 16));
+    return JSON.parse(Buffer.concat([d.update(ct.subarray(0, ct.length - 16)), d.final()]).toString('utf8'));
+  }
+  function rrnOf_(person, cache) {
+    if (!person || !person.envFileId) return '';
+    if (cache.has(person.id)) return cache.get(person.id);
+    let r = '';
+    try { r = String(open_(JSON.parse(fileRead_(person.envFileId))).rrn || '').replace(/\D/g, ''); } catch { r = ''; }
+    cache.set(person.id, r);
+    return r;
+  }
+  const fullRrn = (d) => d.length === 13 ? `${d.slice(0, 6)}-${d.slice(6)}` : '';
+  const maskRrn = (d) => d.length === 13 ? `${d.slice(0, 6)}-${d[6]}******` : '';
+  const TYPE = { biz: '사업소득 3.3%', other: '기타소득 8.8%' };
+  const sum = (a, k) => a.reduce((s, x) => s + (Number(x[k]) || 0), 0);
+
+  /* ── 자료 모으기 */
+  const people_ = () => new Map(rows_('인력').map(mapPerson_).map((p) => [p.id, p]));
+  const payMonth_ = (p) => (p.payDate || '').slice(0, 7) || p.ym || '';
+  const paid_ = (ym) => rows_('지급').map(mapPay_).filter((p) => payMonth_(p) === ym && p.status !== '예정')
+    .sort((a, b) => (a.payDate || '').localeCompare(b.payDate || '') || a.name.localeCompare(b.name, 'ko'));
+  const payroll_ = (ym) => rows_('급여').filter((r) => ym_(r['지급연월']) === ym).map((r) => {
+    const g = Number(r['지급액']) || 0, t = Number(r['소득세']) || 0, l = Number(r['지방소득세']) || 0;
+    const np = Number(r['국민연금료']) || 0, hi = Number(r['건강보험료']) || 0, ltc = Number(r['장기요양료']) || 0, ei = Number(r['고용보험료']) || 0;
+    const who = rows_('급여자').find((x) => Number(x['ID']) === Number(r['급여자ID']));
+    return { name: String(r['성명']), kind: who ? String(who['구분'] || '직원') : '', gross: g, tax: t, local: l, np, hi, ltc, ei,
+      net: g - t - l - np - hi - ltc - ei, memo: String(r['메모'] || '') };
+  });
+  const sales_ = (from, to) => rows_('매출').map((r) => ({ date: ymd_(r['일자']), project: String(r['프로젝트'] || ''), client: String(r['거래처'] || ''),
+    item: String(r['항목'] || ''), supply: Number(r['공급가액']) || 0, vat: Number(r['부가세']) || 0, total: Number(r['합계']) || 0,
+    proof: String(r['증빙'] || ''), status: String(r['발행상태'] || ''), issued: ymd_(r['발행일']), paid: ymd_(r['입금일']), memo: String(r['메모'] || '') }))
+    .filter((x) => x.date >= from && x.date <= to).sort((a, b) => a.date.localeCompare(b.date));
+  const purch_ = (from, to) => rows_('매입').map((r) => ({ date: ymd_(r['일자']), project: String(r['프로젝트'] || ''), vendor: String(r['거래처'] || ''),
+    cat: String(r['분류'] || ''), item: String(r['항목'] || ''), supply: Number(r['공급가액']) || 0, vat: Number(r['부가세']) || 0, total: Number(r['합계']) || 0,
+    proof: String(r['증빙'] || ''), deduct: String(r['공제여부'] || '공제'), memo: String(r['메모'] || '') }))
+    .filter((x) => x.date >= from && x.date <= to).sort((a, b) => a.date.localeCompare(b.date));
+
+  /* ── 파일 만들기 */
+  function ledgerSheet_(list, ppl, cache, name) {
+    const rows = [['지급일', '귀속월', '프로젝트', '성명', '주민등록번호', '소득구분', '지급액', '소득세', '지방소득세', '실지급액', '은행', '계좌', '상태', '메모']];
+    list.forEach((p) => { const per = ppl.get(p.personId);
+      rows.push([p.payDate, p.ym, p.project, p.name, maskRrn(rrnOf_(per, cache)), TYPE[p.incomeType] || p.incomeType,
+        p.gross, p.incomeTax, p.localTax, p.net, per ? per.bank : '', per ? per.accMask : '', p.status, p.memo]); });
+    rows.push(['', '', '', `합계 ${list.length}건`, '', '', sum(list, 'gross'), sum(list, 'incomeTax'), sum(list, 'localTax'), sum(list, 'net'), '', '', '', '']);
+    return { name, rows, money: [6, 7, 8, 9], total: true };
+  }
+  /** 간이지급명세서 — 허브 화면(withholding.html)의 엑셀과 같은 칸·같은 묶음 */
+  function statementRows_(ym, type, ppl, cache) {
+    const by = {};
+    paid_(ym).filter((p) => (p.incomeType || 'biz') === type).forEach((p) => {
+      const acc = p.ym || ym, k = p.personId + '|' + acc;
+      by[k] = by[k] || { personId: p.personId, name: p.name, gross: 0, incomeTax: 0, localTax: 0, acc };
+      by[k].gross += p.gross; by[k].incomeTax += p.incomeTax; by[k].localTax += p.localTax;
+    });
+    return Object.values(by).map((r) => { const per = ppl.get(r.personId);
+      return Object.assign(r, { rrn: fullRrn(rrnOf_(per, cache)), industry: per ? per.industry : '940909',
+        base: type === 'other' ? Math.round(r.gross * 0.4) : r.gross, year: r.acc.split('-')[0], month: String(+r.acc.split('-')[1]) }); })
+      .sort((a, b) => a.name.localeCompare(b.name, 'ko') || a.acc.localeCompare(b.acc));
+  }
+  function statementXlsx_(ym, type, rows) {
+    const other = type === 'other';
+    const aoa = [other ? ['일련번호', '소득자성명', '주민등록번호', '귀속연도', '귀속월', '지급액', '필요경비', '기타소득금액', '세율', '소득세', '지방소득세']
+      : ['일련번호', '소득자성명', '주민등록번호', '귀속연도', '귀속월', '업종구분', '지급액', '세율', '소득세', '지방소득세']];
+    rows.forEach((r, i) => aoa.push(other ? [i + 1, r.name, r.rrn, r.year, r.month, r.gross, r.gross - r.base, r.base, 20, r.incomeTax, r.localTax]
+      : [i + 1, r.name, r.rrn, r.year, r.month, r.industry, r.gross, 3, r.incomeTax, r.localTax]));
+    aoa.push(other ? ['', '합계', '', '', '', sum(rows, 'gross'), sum(rows, 'gross') - sum(rows, 'base'), sum(rows, 'base'), '', sum(rows, 'incomeTax'), sum(rows, 'localTax')]
+      : ['', '합계', '', '', '', '', sum(rows, 'gross'), '', sum(rows, 'incomeTax'), sum(rows, 'localTax')]);
+    return xlsx_([{ name: ym, rows: aoa, money: other ? [5, 6, 7, 9, 10] : [6, 8, 9], total: true }]);
+  }
+  function whtSummary_(ym) {
+    const rec = rows_('원천세').find((x) => ym_(x['지급연월']) === ym);
+    const list = paid_(ym), pr = payroll_(ym);
+    const biz = list.filter((p) => (p.incomeType || 'biz') === 'biz'), oth = list.filter((p) => p.incomeType === 'other');
+    const calc = { wageCount: pr.length, wageGross: sum(pr, 'gross'), wageTax: sum(pr, 'tax'),
+      bizCount: new Set(biz.map((p) => p.personId)).size, bizGross: sum(biz, 'gross'), bizTax: sum(biz, 'incomeTax'),
+      otherCount: new Set(oth.map((p) => p.personId)).size, otherGross: sum(oth, 'gross'), otherTax: sum(oth, 'incomeTax'),
+      local: sum(list, 'localTax') + sum(pr, 'local') };
+    const n = (k) => Number(rec && rec[k]) || 0;
+    const rows = [['항목', '인원', '지급액', '소득세']];
+    rows.push(['근로소득 (A01)', rec ? n('근로소득인원') : calc.wageCount, rec ? n('근로소득지급액') : calc.wageGross, rec ? n('근로소득세') : calc.wageTax]);
+    rows.push(['사업소득 (A25)', rec ? n('사업소득인원') : calc.bizCount, rec ? n('사업소득지급액') : calc.bizGross, rec ? n('사업소득세') : calc.bizTax]);
+    rows.push(['기타소득 (A40)', rec ? n('기타소득인원') : calc.otherCount, rec ? n('기타소득지급액') : calc.otherGross, rec ? n('기타소득세') : calc.otherTax]);
+    const tot = rows.slice(1).reduce((a, r) => [a[0] + r[1], a[1] + r[2], a[2] + r[3]], [0, 0, 0]);
+    rows.push(['합계', tot[0], tot[1], rec ? n('소득세합계') || tot[2] : tot[2]]);
+    const info = [['항목', '내용'], ['지급연월', ym], ['귀속연월', rec ? ym_(rec['귀속연월']) : ym],
+      ['지방소득세', rec ? n('지방소득세') : calc.local], ['홈택스 신고일', rec ? fmt_(rec['홈택스신고일']) : ''], ['위택스 신고일', rec ? fmt_(rec['위택스신고일']) : ''],
+      ['메모', rec ? String(rec['메모'] || '') : ''], ['상태', rec ? '허브에 신고 기록 있음' : '신고 기록 전 — 허브 계산값'],
+      ['급여 반영', `급여 ${pr.length}명 (근로소득)`], ['신고 기한', `${nextMonth_(ym)}-10 (원천세) · ${monthEnd_(nextMonth_(ym))} (간이지급명세서)`]];
+    return xlsx_([{ name: '원천세 ' + ym, rows, money: [2, 3], total: true }, { name: '신고 정보', rows: info, money: [1] }]);
+  }
+  const nextMonth_ = (ym) => { const [y, m] = ym.split('-').map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`; };
+  const prevMonth_ = (ym) => { const [y, m] = ym.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`; };
+  const monthEnd_ = (ym) => { const [y, m] = ym.split('-').map(Number); return `${ym}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`; };
+  function payrollXlsx_(ym, pr) {
+    const rows = [['성명', '구분', '지급액', '소득세', '지방소득세', '국민연금', '건강보험', '장기요양', '고용보험', '실지급액', '메모']];
+    pr.forEach((r) => rows.push([r.name, r.kind, r.gross, r.tax, r.local, r.np, r.hi, r.ltc, r.ei, r.net, r.memo]));
+    rows.push([`합계 ${pr.length}명`, '', sum(pr, 'gross'), sum(pr, 'tax'), sum(pr, 'local'), sum(pr, 'np'), sum(pr, 'hi'), sum(pr, 'ltc'), sum(pr, 'ei'), sum(pr, 'net'), '']);
+    return xlsx_([{ name: '급여 ' + ym, rows, money: [2, 3, 4, 5, 6, 7, 8, 9], total: true }]);
+  }
+  function salesXlsx_(from, to, title) {
+    const s = sales_(from, to), p = purch_(from, to);
+    const sr = [['일자', '프로젝트', '거래처', '항목', '공급가액', '부가세', '합계', '증빙', '발행상태', '발행일', '입금일', '메모']];
+    s.forEach((x) => sr.push([x.date, x.project, x.client, x.item, x.supply, x.vat, x.total, x.proof, x.status, x.issued, x.paid, x.memo]));
+    sr.push(['', '', '', `합계 ${s.length}건`, sum(s, 'supply'), sum(s, 'vat'), sum(s, 'total'), '', '', '', '', '']);
+    const pr = [['일자', '프로젝트', '거래처', '분류', '항목', '공급가액', '부가세', '합계', '증빙', '공제여부', '메모']];
+    p.forEach((x) => pr.push([x.date, x.project, x.vendor, x.cat, x.item, x.supply, x.vat, x.total, x.proof, x.deduct, x.memo]));
+    pr.push(['', '', '', '', `합계 ${p.length}건`, sum(p, 'supply'), sum(p, 'vat'), sum(p, 'total'), '', '', '']);
+    // 분기 합계 (매출세액 - 공제 매입세액)
+    const qr = [['분기', '매출 공급가액', '매출세액', '매입 공급가액', '매입세액(공제)', '매입세액(불공제)', '납부 예상 세액']];
+    const y = from.slice(0, 4);
+    for (let q = 1; q <= 4; q++) {
+      const a = `${y}-${String(q * 3 - 2).padStart(2, '0')}-01`, b = monthEnd_(`${y}-${String(q * 3).padStart(2, '0')}`);
+      if (b < from || a > to) continue;
+      const ss = s.filter((x) => x.date >= a && x.date <= b), pp = p.filter((x) => x.date >= a && x.date <= b);
+      const ded = pp.filter((x) => x.deduct !== '불공제'), non = pp.filter((x) => x.deduct === '불공제');
+      qr.push([`${y}년 ${q}분기`, sum(ss, 'supply'), sum(ss, 'vat'), sum(pp, 'supply'), sum(ded, 'vat'), sum(non, 'vat'), sum(ss, 'vat') - sum(ded, 'vat')]);
+    }
+    if (qr.length > 2) qr.push(['합계', ...[1, 2, 3, 4, 5, 6].map((c) => qr.slice(1).reduce((a, r) => a + r[c], 0))]);
+    return { buf: xlsx_([{ name: '매출', rows: sr, money: [4, 5, 6], total: true }, { name: '매입', rows: pr, money: [5, 6, 7], total: true },
+      { name: '분기 합계', rows: qr, money: [1, 2, 3, 4, 5, 6], total: qr.length > 2 }]), count: s.length + p.length, title };
+  }
+
+  /* ── 저장 (같은 내용이면 건너뜀) */
+  function put_(vp, buf, who, out) {
+    const r = NASF.saveBuffer(vp, buf, who || SYS);
+    out.push({ path: vp, state: r.state, replaced: r.replaced });
+  }
+
+  function month(ym, who) {
+    if (!/^\d{4}-\d{2}$/.test(String(ym))) throw new Error('월은 YYYY-MM 형식이에요.');
+    const out = [], ppl = people_(), cache = new Map(), dir = P.wht(ym);
+    const list = paid_(ym), pr = payroll_(ym), rec = rows_('원천세').some((x) => ym_(x['지급연월']) === ym);
+    if (list.length) put_(`${dir}/${ym}_지급대장.xlsx`, xlsx_([ledgerSheet_(list, ppl, cache, '지급대장 ' + ym)]), who, out);
+    if (list.length || pr.length || rec) put_(`${dir}/${ym}_원천세_요약.xlsx`, whtSummary_(ym), who, out);
+    const warn = [];
+    for (const type of ['biz', 'other']) {
+      const rows = statementRows_(ym, type, ppl, cache);
+      if (!rows.length) continue;
+      rows.filter((r) => !r.rrn).forEach((r) => warn.push(`${r.name} — 주민등록번호를 열지 못했어요`));
+      put_(`${dir}/세무사 제출용/간이지급명세서_${type === 'other' ? '기타소득' : '사업소득'}_${ym}.xlsx`, statementXlsx_(ym, type, rows), who, out);
+    }
+    if (pr.length) put_(`${P.pay(ym.slice(0, 4))}/${ym}_급여대장.xlsx`, payrollXlsx_(ym, pr), who, out);
+    return { ok: true, kind: '원천세·급여', ym, files: out, empty: !out.length, warnings: warn.length ? warn : undefined };
+  }
+  function sales(year, who) {
+    const y = String(year); if (!/^\d{4}$/.test(y)) throw new Error('연도는 YYYY 형식이에요.');
+    const out = [], x = salesXlsx_(`${y}-01-01`, `${y}-12-31`);
+    if (x.count) put_(`${P.sales(y)}/${y}_매출매입.xlsx`, x.buf, who, out);
+    return { ok: true, kind: '매출매입', year: y, files: out, empty: !out.length };
+  }
+  function vat(year, q, who) {
+    const y = String(year), n = Number(q); if (!/^\d{4}$/.test(y) || !(n >= 1 && n <= 4)) throw new Error('연도·분기(1~4)를 확인해 주세요.');
+    const out = [], x = salesXlsx_(`${y}-${String(n * 3 - 2).padStart(2, '0')}-01`, monthEnd_(`${y}-${String(n * 3).padStart(2, '0')}`));
+    if (x.count) put_(`${P.sales(y)}/${y}-${n}분기_부가세자료.xlsx`, x.buf, who, out);
+    return { ok: true, kind: '부가세', year: y, quarter: n, files: out, empty: !out.length };
+  }
+  function year(yy, who) {
+    const y = String(yy); if (!/^\d{4}$/.test(y)) throw new Error('연도는 YYYY 형식이에요.');
+    const out = [], ppl = people_(), cache = new Map(), dir = P.year(y);
+    const months = Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
+    const all = months.flatMap((m) => paid_(m));
+    if (all.length) put_(`${dir}/${y}_지급대장(연간).xlsx`, xlsx_([ledgerSheet_(all, ppl, cache, `지급대장 ${y}`)]), who, out);
+    const prAll = months.flatMap((m) => payroll_(m).map((r) => Object.assign({ ym: m }, r)));
+    if (prAll.length) {
+      const rows = [['지급연월', '성명', '구분', '지급액', '소득세', '지방소득세', '국민연금', '건강보험', '장기요양', '고용보험', '실지급액']];
+      prAll.forEach((r) => rows.push([r.ym, r.name, r.kind, r.gross, r.tax, r.local, r.np, r.hi, r.ltc, r.ei, r.net]));
+      rows.push(['합계', '', '', ...['gross', 'tax', 'local', 'np', 'hi', 'ltc', 'ei', 'net'].map((k) => sum(prAll, k))]);
+      put_(`${dir}/${y}_급여대장(연간).xlsx`, xlsx_([{ name: `급여 ${y}`, rows, money: [3, 4, 5, 6, 7, 8, 9, 10], total: true }]), who, out);
+    }
+    const wr = [['지급연월', '근로 인원', '근로 지급액', '근로 소득세', '사업 인원', '사업 지급액', '사업 소득세', '기타 인원', '기타 지급액', '기타 소득세', '소득세 합계', '지방소득세', '홈택스', '위택스']];
+    rows_('원천세').filter((r) => ym_(r['지급연월']).startsWith(y)).sort((a, b) => ym_(a['지급연월']).localeCompare(ym_(b['지급연월']))).forEach((r) => {
+      const n = (k) => Number(r[k]) || 0;
+      wr.push([ym_(r['지급연월']), n('근로소득인원'), n('근로소득지급액'), n('근로소득세'), n('사업소득인원'), n('사업소득지급액'), n('사업소득세'),
+        n('기타소득인원'), n('기타소득지급액'), n('기타소득세'), n('소득세합계'), n('지방소득세'), fmt_(r['홈택스신고일']), fmt_(r['위택스신고일'])]);
+    });
+    if (wr.length > 1) { wr.push(['합계', ...Array.from({ length: 11 }, (_, i) => wr.slice(1).reduce((a, r) => a + (Number(r[i + 1]) || 0), 0)), '', '']);
+      put_(`${dir}/${y}_원천세(연간요약).xlsx`, xlsx_([{ name: `원천세 ${y}`, rows: wr, money: [2, 3, 5, 6, 8, 9, 10, 11], total: true }]), who, out); }
+    const x = salesXlsx_(`${y}-01-01`, `${y}-12-31`);
+    if (x.count) put_(`${dir}/${y}_매출매입.xlsx`, x.buf, who, out);
+    return { ok: true, kind: '법인세 준비자료', year: y, files: out, empty: !out.length };
+  }
+  function upload(b, who) {
+    const ym = String(b.ym || '');
+    if (!/^\d{4}-\d{2}$/.test(ym)) throw new Error('어느 달 서류인지(YYYY-MM) 골라 주세요.');
+    const ext = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png' }[String(b.type)];
+    if (!ext) throw new Error('PDF · JPG · PNG 만 올릴 수 있어요.');
+    const buf = Buffer.from(String(b.data || ''), 'base64');
+    if (!buf.length || buf.length > 9 * 1024 * 1024) throw new Error('파일이 비었거나 너무 커요 (9MB까지).');
+    let name = String(b.name || '').normalize('NFC').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').trim().slice(0, 80) || '서류';
+    const r = NASF.saveBuffer(`${P.wht(ym)}/${name}${ext}`, buf, who, { rename: true });
+    return { ok: true, path: r.path, state: r.state };
+  }
+
+  /* ── 자동 실행 */
+  function logRun_(label, r) {
+    const files = (r.files || []).filter((f) => f.state !== '같음');
+    try { append_('NAS기록', [nowStr_(), '허브 자동', '세무자료 ' + label, (r.files || []).map((f) => f.path).join(' | ').slice(0, 900), '', 'OK', `${files.length}개 저장 · ${(r.files || []).length - files.length}개 같음`]); } catch {}
+  }
+  function safe_(label, fn) {
+    try { const r = fn(); logRun_(label, r); return r; }
+    catch (e) { console.error('[taxdoc]', label, e.message); try { append_('NAS기록', [nowStr_(), '허브 자동', '세무자료 ' + label, '', '', '실패', String(e.message || e).slice(0, 300)]); } catch {} return { ok: false, error: String(e.message || e) }; }
+  }
+  function tick() {
+    if (!NASF.ready() || !NASF.shares().some((s) => s.name === SHARE)) return;
+    const now = kst_(), y = now.slice(0, 4), m = now.slice(5, 7), d = Number(now.slice(8, 10)), cur = `${y}-${m}`;
+    if (d >= 5 && cfgGet_('taxdoc_month') !== cur) {
+      const pm = prevMonth_(cur);
+      safe_('월간 ' + pm, () => month(pm));
+      safe_('매출매입 ' + pm.slice(0, 4), () => sales(pm.slice(0, 4)));
+      if (['01', '04', '07', '10'].includes(m)) { const q = Math.ceil(Number(pm.slice(5)) / 3); safe_(`부가세 ${pm.slice(0, 4)}-${q}Q`, () => vat(pm.slice(0, 4), q)); }
+      cfgSet_('taxdoc_month', cur);
+    }
+    if (m === '01' && d >= 10 && cfgGet_('taxdoc_year') !== y) {
+      safe_('연간 ' + (Number(y) - 1), () => year(Number(y) - 1));
+      cfgSet_('taxdoc_year', y);
+    }
+  }
+  /** 허브에서 신고 완료·급여 저장할 때 — 응답은 먼저 돌려주고 뒤에서 */
+  function later(label, fn) { setTimeout(() => { if (NASF.ready()) safe_(label, fn); }, 1500); }
+  setInterval(tick, 30 * 60e3); setTimeout(tick, 20e3);
+
+  function rpc(a, b, who) {
+    if (a === 'taxdoc.upload') return upload(b, who);
+    if (a === 'taxdoc.status') return { ok: true, share: SHARE, ready: NASF.ready() && NASF.shares().some((s) => s.name === SHARE),
+      lastMonth: cfgGet_('taxdoc_month') || '', lastYear: cfgGet_('taxdoc_year') || '',
+      log: rows_('NAS기록').filter((r) => String(r['동작']).startsWith('세무자료')).slice(-10).reverse()
+        .map((r) => ({ at: r['시각'], act: r['동작'], result: r['결과'], note: r['메모'] })) };
+    const k = String(b.kind || 'month');
+    if (k === 'month') return month(String(b.ym), who);
+    if (k === 'sales') return sales(b.year, who);
+    if (k === 'vat') return vat(b.year, b.q, who);
+    if (k === 'year') return year(b.year, who);
+    if (k === 'all') { const ym = String(b.ym); return { ok: true, results: [month(ym, who), sales(ym.slice(0, 4), who)] }; }
+    throw new Error('kind 는 month · sales · vat · year · all 중 하나예요.');
+  }
+  return { rpc, later, month, sales, vat, year, tick, xlsx_, SHARE };
+})();
+
 
 const READ_ONLY = ['bootstrap', 'me', 'paper.list', 'review.videos', 'envelope', 'envelopes', 'unlock', 'user.list',
                    'recovery.status', 'calendar.check', 'log.list', 'folder.list', 'scripter.list', 'scripter.csv', 'scripter.log', 'scripter.summary', 'scripter.orphans'];
@@ -2730,6 +3101,13 @@ async function rpc_(b) {
     if (!['nas.list', 'nas.find', 'nas.info', 'nas.read', 'nas.jobs', 'nas.trash.list', 'nas.log'].includes(a)) log_(who.user, role, a, b._ip, r && r.ok);
     return r;
   }
+  // 세무 자료 → MGRM-Doc (관리자만)
+  if (a.startsWith('taxdoc.')) {
+    let r;
+    try { r = TAXDOC.rpc(a, b, who); } catch (e) { r = { ok: false, error: String(e.message || e) }; }
+    if (a !== 'taxdoc.status') log_(who.user, role, a, b._ip, r && r.ok);
+    return r;
+  }
   if (a === 'calendar.sync' || a === 'calendar.check') {
     return GCAL.ready() ? (a === 'calendar.check' ? GCAL.check() : GCAL.syncAll(b.events || []))
                         : calendarRelay_(a, b);
@@ -2738,6 +3116,11 @@ async function rpc_(b) {
   const res = READ_ONLY.includes(a) ? run() : tx_(run);
   // 프로젝트·작업이 바뀌면 캘린더를 뒤에서 조용히 맞춥니다 (직접 연동일 때만)
   if (res && res.ok && /^(project|task|folder|shoot|payment|payroll|wht)\./.test(a) && a !== 'folder.list') GCAL.later();
+  // 신고 완료 기록·급여 저장 → 그 달 세무 자료를 MGRM-Doc 에 다시 저장 (뒤에서)
+  if (res && res.ok) {
+    const ym = a === 'wht.save' ? String(b.payYm || '') : (a === 'payment.markReported' || a === 'payroll.save') ? String(b.ym || '') : '';
+    if (/^\d{4}-\d{2}$/.test(ym)) TAXDOC.later(`${a} ${ym}`, () => TAXDOC.month(ym, { name: who.name || who.user, user: who.user }));
+  }
   if (!READ_ONLY.includes(a) || a === 'envelope' || a === 'envelopes' || a === 'unlock') {
     log_(who.user, role, a, b._ip, res && res.ok);
   }

@@ -235,6 +235,9 @@
         <button class="g" id="whtGuide">신고 순서 보기</button>
         <button class="g" id="whtDetail">지급 내역 확인</button>
         <button class="b" id="whtSave">신고 완료로 기록</button>
+        <button class="g" id="whtDoc" title="지급대장·원천세 요약·간이지급명세서(세무사 제출용)·급여대장을 NAS MGRM-Doc 세무 폴더에 저장">MGRM-Doc 에 저장</button>
+        <button class="g" id="whtPdf" title="원천세 납부서·신고서 PDF 를 이 달 폴더에 보관">납부서 PDF 올리기</button>
+        <input type="file" id="whtPdfFile" accept="application/pdf,image/jpeg,image/png" multiple hidden>
       </div>
       <div class="msg hide" id="whtMsg"></div>
       <pre id="whtOut" style="white-space:pre-wrap;font-size:12.5px;line-height:1.8;
@@ -258,6 +261,7 @@
         <button class="g" id="repCheck">검증</button>
         <button class="b" id="repMake">엑셀 만들기</button>
         <button class="g" id="repDone">신고완료 표시</button>
+        <button class="g" id="repDoc" title="이 달 간이지급명세서(주민번호 전체)를 MGRM-Doc 세무사 제출용 폴더에 저장">MGRM-Doc 에 저장</button>
       </div>
       <pre id="repOut" style="white-space:pre-wrap;font-size:12.5px;line-height:1.8;
         background:var(--soft);border:1px solid var(--line);border-radius:9px;
@@ -1381,6 +1385,43 @@ $('repMake').onclick = async () => {
   }
   if (!made) alert('신고 대상이 없습니다.');
   else if (made > 1) alert('사업소득·기타소득 두 개의 파일을 만들었습니다.\n홈택스에서 각각 따로 제출하세요.');
+};
+
+
+/* ── MGRM-Doc 에 저장 (NAS 의 세무 폴더에 엑셀로) */
+function docSaved(r) {
+  const fs = [].concat(...(r.results ? r.results.map((x) => x.files || []) : [r.files || []]));
+  if (!fs.length) return '저장할 자료가 없어요.';
+  const st = { '새로': '새로 저장', '바꿈': '바꿔 저장 (예전 것은 _to_delete)', '같음': '바뀐 것 없음' };
+  const warn = [].concat(...(r.results ? r.results.map((x) => x.warnings || []) : [r.warnings || []]));
+  return fs.map((f) => `· ${f.path.replace(/^MGRM-Doc\//, '')} — ${st[f.state] || f.state}`).join('\n')
+    + (warn.length ? '\n\n⚠ ' + warn.join('\n⚠ ') : '');
+}
+async function saveToDoc(btn, body, out) {
+  const old = btn.textContent; btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    const r = await WCT.api('taxdoc.save', body);
+    const t = 'MGRM-Doc 에 저장했어요.\n\n' + docSaved(r);
+    if (out) { out.textContent = t; out.classList && out.classList.remove('hide'); } else alert(t);
+    toast('MGRM-Doc 에 저장했어요.');
+  } catch (e) { toast(e.message, true); }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+
+$('whtDoc').onclick = () => saveToDoc($('whtDoc'), { kind: 'month', ym: $('whtYm').value }, $('whtOut'));
+$('repDoc').onclick = () => saveToDoc($('repDoc'), { kind: 'month', ym: $('repYm').value }, $('repOut'));
+$('whtPdf').onclick = () => $('whtPdfFile').click();
+$('whtPdfFile').onchange = async (ev) => {
+  const ym = $('whtYm').value, files = [...ev.target.files]; ev.target.value = '';
+  if (!files.length) return;
+  const done = [];
+  for (const f of files) {
+    if (f.size > 9 * 1024 * 1024) { toast(`${f.name} — 9MB 까지만 올릴 수 있어요.`, true); continue; }
+    const data = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = no; r.readAsDataURL(f); });
+    try { const r = await WCT.api('taxdoc.upload', { ym, name: f.name, type: f.type, data }); done.push(r.path.replace(/^MGRM-Doc\//, '')); }
+    catch (e) { toast(`${f.name} — ${e.message}`, true); }
+  }
+  if (done.length) { $('whtOut').textContent = `${ym} 폴더에 올렸어요.\n\n` + done.map((x) => '· ' + x).join('\n'); toast(done.length + '개 올렸어요.'); }
 };
 
 $('repDone').onclick = async () => {

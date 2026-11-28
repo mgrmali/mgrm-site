@@ -219,11 +219,11 @@ async function dispatch(m, env, who, req, h) {
       return { jsonrpc: '2.0', id, result: {
         protocolVersion: PROTOCOLS.includes(want) ? want : PROTOCOLS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'mgrm-hub', title: '맹그라미 업무 허브', version: '1.2.0' },
+        serverInfo: { name: 'mgrm-hub', title: '맹그라미 업무 허브', version: '1.3.0' },
         instructions: '맹그라미 업무 허브(hub.mgrm.kr)와 회사 NAS(QNAP)를 다룹니다. 날짜는 한국 시간(YYYY-MM-DD).\n'
           + '· 허브: 하루 요약 hub_today, 프로젝트 hub_projects/hub_project/hub_add_project/hub_update_project, 작업 hub_add_task/hub_update_task, '
           + '촬영 회차 hub_save_shoots, 문진·문의 hub_inbox/hub_inbox_item/hub_inbox_set, 리뷰·납품 hub_reviews/hub_review/hub_review_save/hub_review_comment, '
-          + '회사 서류 링크 hub_papers/hub_paper_link/hub_paper_set.\n'
+          + '회사 서류 링크 hub_papers/hub_paper_link/hub_paper_set, 세무 자료를 MGRM-Doc 에 엑셀로 저장 hub_taxdoc.\n'
           + '· NAS 파일: 경로는 "공유폴더/하위/파일". 처음엔 nas_list(경로 비움)로 공유 폴더를 보세요. 찾기 nas_find, 읽기 nas_read, '
           + '텍스트 저장 nas_write, 큰 파일(PDF·워드·영상)은 작업 공간에서 nas_upload_link 로 올리고 nas_download_link 로 가져옵니다. '
           + '지우기는 없고 nas_trash 가 _to_delete 로 옮깁니다(nas_restore 로 되돌림). 옮기기·복사·휴지통은 사용자가 요청한 것만 하세요.\n'
@@ -415,6 +415,18 @@ const TOOLS = [
       id: { type: 'integer', description: '링크 id (hub_papers 의 links)' },
       action: { type: 'string', enum: ['close', 'open', 'extend'] },
       days: { type: 'integer', description: 'extend 기간 (기본 7)' } } },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } },
+
+  /* ── 1.3.0 세무 자료 → MGRM-Doc (관리자) */
+  { name: 'hub_taxdoc', title: '세무 자료를 MGRM-Doc 에 저장',
+    description: '허브의 원천세·급여·매출매입 자료를 NAS MGRM-Doc 세무 폴더에 엑셀로 저장합니다 (같은 내용이면 건너뛰고, 바뀌면 예전 것은 _to_delete). '
+      + 'month: 그 달 지급대장(주민번호 가림)·원천세 요약·간이지급명세서(세무사 제출용, 주민번호 전체)·급여대장 / sales: 그 해 매출매입 / vat: 분기 부가세 자료 / '
+      + 'year: 법인세 준비자료(1년치) / status: 자동 저장 기록. 매월 5일·분기·1월 10일에 자동으로도 돌아갑니다. 결과는 저장한 경로만 알려 주고 주민번호는 돌려주지 않습니다.',
+    inputSchema: { type: 'object', required: ['kind'], properties: {
+      kind: { type: 'string', enum: ['month', 'sales', 'vat', 'year', 'status'] },
+      ym: { type: 'string', description: 'month 일 때 지급 월 YYYY-MM' },
+      year: { type: 'string', description: 'sales·vat·year 일 때 YYYY' },
+      q: { type: 'integer', minimum: 1, maximum: 4, description: 'vat 분기' } } },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } },
 
   /* ── 1.2.0 NAS 파일 (관리자) */
@@ -891,6 +903,15 @@ const RUN = {
   nas_trash_list: nas('nas.trash.list', (a) => ({ query: a.query, limit: a.limit })),
   nas_restore: nas('nas.restore', (a) => ({ id: a.id, to: a.to })),
   nas_log: nas('nas.log', (a) => ({ query: a.query, limit: a.limit })),
+  hub_taxdoc: async (a, env, who, req, h) => {
+    if (who.role !== 'admin') return ADMIN_ONLY;
+    const k = String((a && a.kind) || 'month');
+    const r = await call(env, who, req, h, k === 'status' ? { action: 'taxdoc.status' }
+      : { action: 'taxdoc.save', kind: k, ym: a.ym, year: a.year, q: a.q });
+    if (!r || !r.ok) return { error: (r && r.error) || 'NAS 가 답하지 않았어요.' };
+    delete r.ok;
+    return r;
+  },
   nas_upload_link: nas('nas.uplink', (a) => ({ path: a.path, overwrite: !!a.overwrite }), (r, h) => {
     const url = h.origin + '/u/' + r.token;
     return { ok: true, path: r.path, url, expires: r.expires,
